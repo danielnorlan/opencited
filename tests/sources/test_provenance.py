@@ -24,6 +24,8 @@ from opencited.sources import DataResult, Language, Observation, QueryResult, Sy
 from opencited.sources.ssb import BASE_URL, SsbClient, explained_symbols
 
 TRANSPORT = replay_transport(FIXTURES)
+# Queries fetch no data in SSB's revision period, so the tests use a fixed time outside it.
+NOON = datetime(2026, 10, 14, 10, 0, tzinfo=UTC)
 SYMBOLS = {
     "RegionSamisk": ["1849", "1850", "1853"],
     "ContentsCode": ["*"],
@@ -82,9 +84,8 @@ def query(
 ) -> QueryResult:
     async def call() -> QueryResult:
         async with make_client(BASE_URL, transport=TRANSPORT) as http:
-            return await SsbClient(http, max_get_url_length=limit).query(
-                table_id, selection, language
-            )
+            client = SsbClient(http, max_get_url_length=limit, now=lambda: NOON)
+            return await client.query(table_id, selection, language)
 
     return asyncio.run(call())
 

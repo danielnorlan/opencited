@@ -3,11 +3,14 @@
 from opencited.model import TableId
 from opencited.sources.errors import (
     InvalidResponseError,
+    InvalidSelectionError,
     RateLimitedError,
     RejectedRequestError,
+    RevisionPeriodError,
     SourceError,
     SourceUnavailableError,
     TableNotFoundError,
+    TooManyCellsError,
 )
 from opencited.sources.models import (
     LANGUAGES,
@@ -30,12 +33,14 @@ __all__ = [
     "DataResult",
     "Dimension",
     "InvalidResponseError",
+    "InvalidSelectionError",
     "Language",
     "Observation",
     "QueryResult",
     "RateLimitedError",
     "RejectedRequestError",
     "Retrieved",
+    "RevisionPeriodError",
     "SearchResult",
     "SourceError",
     "SourceUnavailableError",
@@ -44,6 +49,7 @@ __all__ = [
     "TableMetadata",
     "TableNotFoundError",
     "TableSummary",
+    "TooManyCellsError",
     "Unit",
     "Value",
 ]

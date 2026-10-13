@@ -45,7 +45,8 @@ lives outside the package, in `evals/`.
 | `opencited.http` | The HTTP client, the rate limiter and the response cache | M1 |
 | `opencited.provenance` | The provenance record, built from the exchange that a result came from | M1 |
 | `opencited.sources` | The interface every source implements, and the registry of sources | M1 |
-| `opencited.sources.ssb` | The StatBank client: search, metadata, data, selections and JSON-stat parsing | M1 |
+| `opencited.sources.pxweb` | PxWebApi 2 selections: codes and expressions expanded on the metadata, and cell counts | M1 |
+| `opencited.sources.ssb` | The StatBank client: search, metadata, data, queries with provenance, and JSON-stat parsing | M1 |
 | `opencited.snapshots` | Write-once snapshots of raw responses, with the parsed values in Parquet | M2 |
 | `opencited.mcp` | The MCP server, its three tools and the command line entry point | M1 |
 | `opencited.calc` | Typed calculation plans, the SQL they generate and exact rational arithmetic | M2 |

@@ -1,0 +1,33 @@
+{
+  "name": "data-05810-eliminated-en",
+  "reason": "dimensions that can be eliminated, left out",
+  "recorded_at": "2026-10-13T23:04:54Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/05810/data?lang=en&valueCodes%5BContentsCode%5D=Personer&valueCodes%5BTid%5D=2026&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "data-05810-eliminated-en.2026-10-13.body",
+    "body_sha256": "c5aa0d382b230bcb73272195dda836a7e18e064b1b4451f07918071d635558e8",
+    "original_body_sha256": "cbf4e2b17576a9f6a01cbd3556e20d60b07df14d8805d127d0ed71b0bf655fff",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

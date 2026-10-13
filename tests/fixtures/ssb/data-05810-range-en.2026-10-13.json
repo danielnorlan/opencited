@@ -1,0 +1,33 @@
+{
+  "name": "data-05810-range-en",
+  "reason": "range in brackets combined with from",
+  "recorded_at": "2026-10-13T23:04:50Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/05810/data?lang=en&valueCodes%5BKjonn%5D=0&valueCodes%5BAlder%5D=999B&valueCodes%5BContentsCode%5D=Personer&valueCodes%5BTid%5D=%5Brange%282020%2C2022%29%5D%2Cfrom%282025%29&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "data-05810-range-en.2026-10-13.body",
+    "body_sha256": "185ffcd55c54ef3e35f9108922aa762d88f6f398c4f476c26b991b12b2bb8dff",
+    "original_body_sha256": "3f38e8b03880649c53c982250906ac95b02322a37ad0dbfa96b0e828b9e7f4e0",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

@@ -28,8 +28,32 @@ class RateLimitedError(SourceUnavailableError):
 
 
 class RejectedRequestError(SourceError):
-    """The source rejected the request, for example an unknown dimension or code."""
+    """The source rejected the request. A query checks its selection first, so this comes
+    from requests that skip that check, or from rules the client does not know."""
 
 
 class InvalidResponseError(SourceError):
     """The source answered with a body that is not valid JSON, or not in a known shape."""
+
+
+class InvalidSelectionError(SourceError):
+    """A selection that does not fit the table: an unknown dimension or code, a missing
+    dimension, or no code selected. Raised before any data request."""
+
+
+class TooManyCellsError(InvalidSelectionError):
+    """A selection that covers more cells than the limit allows. Raised before any data
+    request."""
+
+    def __init__(self, message: str, cells: int, limit: int) -> None:
+        super().__init__(message)
+        self.cells = cells
+        self.limit = limit
+
+    def __reduce__(self) -> tuple[type[TooManyCellsError], tuple[str, int, int]]:
+        return (TooManyCellsError, (str(self), self.cells, self.limit))
+
+
+class RevisionPeriodError(SourceUnavailableError):
+    """A data request in the period when SSB shows figures under revision as 0 or a dot
+    (ADR 0007). Raised before any request."""

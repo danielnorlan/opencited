@@ -88,20 +88,25 @@ DATA: list[tuple[str, Mapping[str, Sequence[str]], Language, str]] = [
 ]
 
 
-def run[T](action: Callable[[SsbClient], Awaitable[T]], **options: int) -> T:
+def run[T](
+    action: Callable[[SsbClient], Awaitable[T]], max_get_url_length: int = MAX_GET_URL_LENGTH
+) -> T:
     """Run one call of the client against the recordings."""
 
     async def call() -> T:
         async with make_client(BASE_URL, transport=TRANSPORT) as http:
-            return await action(SsbClient(http, **options))
+            return await action(SsbClient(http, max_get_url_length=max_get_url_length))
 
     return asyncio.run(call())
 
 
 def data(
-    table_id: str, selection: Mapping[str, Sequence[str]], language: Language = "en", **options: int
+    table_id: str,
+    selection: Mapping[str, Sequence[str]],
+    language: Language = "en",
+    max_get_url_length: int = MAX_GET_URL_LENGTH,
 ) -> Retrieved[DataResult]:
-    return run(lambda client: client.data(table_id, selection, language), **options)
+    return run(lambda client: client.data(table_id, selection, language), max_get_url_length)
 
 
 def check_described(result: TableMetadata | DataResult, body: Json, table_id: str) -> None:

@@ -1,9 +1,10 @@
 """Statistics Norway's StatBank through PxWebApi 2 (ADR 0007).
 
 The client searches tables, reads their metadata and fetches data. Responses are parsed
-from their raw bytes with decimals (ADR 0009), and every result is a frozen model. The
-client checks table IDs, languages, limits and selections before it sends anything, so
-invalid input never reaches SSB.
+from their raw bytes with decimals (ADR 0009), and every result is a frozen model. Table
+IDs, languages, limits and the form of a selection are checked before any request. A
+query also checks its selection against the table's metadata and counts its cells
+before the data request.
 """
 
 from __future__ import annotations
@@ -11,11 +12,13 @@ from __future__ import annotations
 import itertools
 import math
 import re
-from collections.abc import Mapping, Sequence
-from datetime import datetime
+from collections.abc import Callable, Mapping, Sequence
+from datetime import UTC, datetime
+from datetime import time as clock
 from decimal import Decimal
 from http import HTTPStatus
 from typing import cast
+from zoneinfo import ZoneInfo
 
 import httpx2
 
@@ -26,9 +29,11 @@ from opencited.sources.errors import (
     InvalidResponseError,
     RateLimitedError,
     RejectedRequestError,
+    RevisionPeriodError,
     SourceError,
     SourceUnavailableError,
     TableNotFoundError,
+    TooManyCellsError,
 )
 from opencited.sources.models import (
     LANGUAGES,
@@ -45,6 +50,7 @@ from opencited.sources.models import (
     Unit,
     Value,
 )
+from opencited.sources.pxweb import cell_count, normalise, resolve
 from opencited.values import load_json
 
 BASE_URL = "https://data.ssb.no/api/pxwebapi/v2"
@@ -65,6 +71,12 @@ MAX_SEARCH_LIMIT = 50
 # The title of SSB's error document when a table does not exist. A metadata request
 # gets it with HTTP 404 and a data request with HTTP 400.
 NO_SUCH_TABLE = "Non-existent table"
+# The project's own limit on the cells of one query, far below SSB's (ADR 0007).
+MAX_CELLS = 5000
+# From 05:00 to 08:00 SSB shows figures that are revised at 08:00 as 0 or a dot, and
+# the guide asks users to avoid the minutes around the publication (ADR 0007).
+REVISION_PERIOD = (clock(5, 0), clock(8, 15))
+OSLO = ZoneInfo("Europe/Oslo")
 # Whole numbers that describe structure, such as sizes and positions, stay far below
 # this. A larger one would make ``int`` slow and cannot describe a real table.
 MAX_WHOLE_DIGITS = 18
@@ -149,12 +161,19 @@ class SsbClient:
     """A client for StatBank. It shares the HTTP client that it is given."""
 
     def __init__(
-        self, http: httpx2.AsyncClient, *, max_get_url_length: int = MAX_GET_URL_LENGTH
+        self,
+        http: httpx2.AsyncClient,
+        *,
+        max_get_url_length: int = MAX_GET_URL_LENGTH,
+        max_cells: int = MAX_CELLS,
+        now: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         if not str(http.base_url).startswith("https://"):
             raise ValueError("the HTTP client needs SSB's base URL, BASE_URL")
         self._http = http
         self._max_get_url_length = max_get_url_length
+        self._max_cells = max_cells
+        self._now = now
 
     async def config(self) -> ApiConfig:
         """Return what the API reports about itself."""
@@ -206,9 +225,25 @@ class SsbClient:
         selection: Mapping[str, Sequence[str]],
         language: Language = "no",
     ) -> QueryResult:
-        """Return the cells of a selection with their provenance record and symbols."""
-        retrieved = await self.data(table_id, selection, language)
+        """Return the cells of a selection with their provenance record and symbols.
+
+        Before the data request, the selection is checked against the table's metadata
+        and its cells are counted, and no data is requested in SSB's revision period.
+        """
+        check_table_id(table_id)
+        check_language(language)
+        check_selection(selection)
+        self._check_revision_period()
+        metadata = await self.metadata(table_id, language)
+        sent = normalise(selection)
+        resolved = resolve(metadata, sent)
+        cells = cell_count(resolved)
+        if cells > self._max_cells:
+            raise too_many_cells(metadata, resolved, cells, self._max_cells)
+        self._check_revision_period()
+        retrieved = await self.data(table_id, sent, language)
         result = retrieved.value
+        check_reply(result, resolved, cells)
         provenance = record_of(
             retrieved.exchange,
             source_id=SOURCE_ID,
@@ -227,6 +262,21 @@ class SsbClient:
                 "cached": retrieved.cached,
             }
         )
+
+    @property
+    def max_cells(self) -> int:
+        """The most cells that one query may cover."""
+        return self._max_cells
+
+    def _check_revision_period(self) -> None:
+        moment = self._now()
+        if moment.tzinfo is None:
+            raise ValueError("the clock must give a time with a time zone")
+        if in_revision_period(moment):
+            raise RevisionPeriodError(
+                "No data is fetched from 05:00 to 08:15 Norwegian time, since SSB shows "
+                "figures under revision as 0 or as a dot until 08:00. Try again after 08:15."
+            )
 
     async def _fetch(
         self, request: httpx2.Request, table_id: str | None = None
@@ -259,6 +309,57 @@ class SsbClient:
         except ValueError as error:
             raise InvalidResponseError("SSB's answer is not valid JSON") from error
         return document, exchange
+
+
+def in_revision_period(moment: datetime) -> bool:
+    """Return whether a moment falls in SSB's revision period, in Norwegian time."""
+    start, end = REVISION_PERIOD
+    return start <= moment.astimezone(OSLO).time() < end
+
+
+def too_many_cells(
+    metadata: TableMetadata, resolved: Mapping[str, Sequence[str]], cells: int, limit: int
+) -> TooManyCellsError:
+    """Return the error for a selection above the cell limit, with how to narrow it."""
+    sizes = ", ".join(f"{code}: {len(codes)}" for code, codes in resolved.items())
+    named = [dimension for dimension in metadata.dimensions if dimension.code in resolved]
+    ways: list[str] = []
+    time = [dimension.code for dimension in named if dimension.time]
+    if time:
+        ways.append(f"fewer periods, for example top(n) in {time[0]}")
+    ways.append("fewer codes in the largest dimension")
+    eliminable = [dimension.code for dimension in named if dimension.eliminable]
+    if eliminable:
+        ways.append(
+            f"leaving out {' or '.join(eliminable)}, for which SSB then gives one value, "
+            "usually the total"
+        )
+    return TooManyCellsError(
+        f"The selection covers {cells:,} cells (codes per dimension: {sizes}), more than "
+        f"the limit of {limit:,}. "
+        f"Narrow it with {', or '.join(ways)}.",
+        cells,
+        limit,
+    )
+
+
+def check_reply(result: DataResult, resolved: Mapping[str, Sequence[str]], cells: int) -> None:
+    """Refuse a reply whose cells differ from the codes that the metadata gives the selection.
+
+    SSB returns cells in the order of the request, so each dimension is compared by its
+    set of codes. A dimension left out of the selection must be absent from the reply.
+    """
+    returned = {
+        dimension.code: {value.code for value in dimension.values}
+        for dimension in result.dimensions
+    }
+    expected = {code: set(codes) for code, codes in resolved.items()}
+    if returned != expected or len(result.observations) != cells:
+        raise InvalidResponseError(
+            "The reply had other cells than the table's metadata gives for this selection, "
+            "so no data is returned. Selecting the codes themselves, without expressions, "
+            "may help."
+        )
 
 
 def client_error(exchange: Exchange, table_id: str | None) -> SourceError:
