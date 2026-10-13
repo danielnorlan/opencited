@@ -21,6 +21,7 @@ from typing import cast
 from zoneinfo import ZoneInfo
 
 import httpx2
+from pydantic import ValidationError
 
 from opencited.http import Exchange, send
 from opencited.model import Frozen
@@ -167,18 +168,26 @@ class SsbClient:
         max_get_url_length: int = MAX_GET_URL_LENGTH,
         max_cells: int = MAX_CELLS,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
+        revision_period: bool = True,
     ) -> None:
+        """Wrap an HTTP client whose base URL is ``BASE_URL``.
+
+        ``max_cells`` and ``now`` let tests set the cell limit and the clock.
+        ``revision_period`` turns the check of SSB's revision period off for recorded
+        responses, which were all taken outside it.
+        """
         if not str(http.base_url).startswith("https://"):
             raise ValueError("the HTTP client needs SSB's base URL, BASE_URL")
         self._http = http
         self._max_get_url_length = max_get_url_length
         self._max_cells = max_cells
         self._now = now
+        self._revision_period = revision_period
 
     async def config(self) -> ApiConfig:
         """Return what the API reports about itself."""
         document, _ = await self._fetch(self._http.build_request("GET", "/config"))
-        return parse_config(document)
+        return parsed(lambda: parse_config(document))
 
     async def search(self, query: str, language: Language = "no", limit: int = 10) -> SearchResult:
         """Return the tables that match a free-text query, in SSB's order."""
@@ -189,7 +198,7 @@ class SsbClient:
             raise ValueError(f"the limit is from 1 to {MAX_SEARCH_LIMIT}, not {limit}")
         params: Params = (("query", query), ("lang", language), ("pageSize", str(limit)))
         document, _ = await self._fetch(self._http.build_request("GET", "/tables", params=params))
-        return parse_search(document)
+        return parsed(lambda: parse_search(document, language))
 
     async def metadata(self, table_id: str, language: Language = "no") -> TableMetadata:
         """Return the dimensions, units and notes of a table."""
@@ -199,7 +208,7 @@ class SsbClient:
             "GET", f"/tables/{table_id}/metadata", params=(("lang", language),)
         )
         document, _ = await self._fetch(request, table_id)
-        return parse_metadata(document, table_id)
+        return parsed(lambda: parse_metadata(document, table_id, language))
 
     async def data(
         self,
@@ -217,7 +226,7 @@ class SsbClient:
         check_selection(selection)
         request = data_request(self._http, table_id, selection, language, self._max_get_url_length)
         document, exchange = await self._fetch(request, table_id)
-        return Retrieved(parse_data(document, table_id), exchange)
+        return Retrieved(parsed(lambda: parse_data(document, table_id, language)), exchange)
 
     async def query(
         self,
@@ -269,6 +278,8 @@ class SsbClient:
         return self._max_cells
 
     def _check_revision_period(self) -> None:
+        if not self._revision_period:
+            return
         moment = self._now()
         if moment.tzinfo is None:
             raise ValueError("the clock must give a time with a time zone")
@@ -416,6 +427,22 @@ def problem_title(exchange: Exchange) -> str | None:
 # describe structure are converted here and checked.
 
 
+def parsed[T](parse: Callable[[], T]) -> T:
+    """Return what ``parse`` builds from SSB's answer, reporting a refused value as SSB's.
+
+    The models check values such as table IDs, so a value that breaks a rule is an
+    invalid answer from SSB, not a mistake in the caller's request.
+    """
+    try:
+        return parse()
+    except ValidationError as error:
+        first = error.errors()[0]
+        place = ".".join(str(part) for part in first["loc"]) or "a value"
+        raise InvalidResponseError(
+            f"SSB's answer does not have the expected form: {place}: {first['msg']}"
+        ) from error
+
+
 def _obj(value: object, what: str) -> JsonObject:
     if not isinstance(value, dict):
         raise InvalidResponseError(f"{what} must be an object")
@@ -478,7 +505,7 @@ def parse_config(document: object) -> ApiConfig:
     )
 
 
-def parse_search(document: object) -> SearchResult:
+def parse_search(document: object, language: Language) -> SearchResult:
     found = _obj(document, "the search result")
     summaries: list[TableSummary] = []
     for item in _arr(found.get("tables"), "the list of tables"):
@@ -489,6 +516,7 @@ def parse_search(document: object) -> SearchResult:
             TableSummary(
                 table_id=table_id,
                 title=title_of(_text(table.get("label"), "a table label"), table_id),
+                url=TABLE_PAGES[language].format(table_id),
                 first_period=_text(table.get("firstPeriod"), "firstPeriod"),
                 last_period=_text(table.get("lastPeriod"), "lastPeriod"),
                 updated=_timestamp(table.get("updated"), "updated"),
@@ -567,12 +595,13 @@ def parse_units(dataset: JsonObject, dimensions: tuple[Dimension, ...]) -> tuple
     return tuple(units)
 
 
-def parse_described(dataset: JsonObject, table_id: str) -> dict[str, object]:
+def parse_described(dataset: JsonObject, table_id: str, language: Language) -> dict[str, object]:
     """Return the fields that metadata and data results share."""
     dimensions = parse_dimensions(dataset)
     return {
         "table_id": table_id,
         "title": title_of(_text(dataset.get("label"), "the table label"), table_id),
+        "url": TABLE_PAGES[language].format(table_id),
         "updated": _timestamp(dataset.get("updated"), "updated"),
         "source": _text(dataset.get("source"), "the source"),
         "dimensions": dimensions,
@@ -581,8 +610,10 @@ def parse_described(dataset: JsonObject, table_id: str) -> dict[str, object]:
     }
 
 
-def parse_metadata(document: object, table_id: str) -> TableMetadata:
-    return TableMetadata.model_validate(parse_described(_obj(document, "the metadata"), table_id))
+def parse_metadata(document: object, table_id: str, language: Language) -> TableMetadata:
+    return TableMetadata.model_validate(
+        parse_described(_obj(document, "the metadata"), table_id, language)
+    )
 
 
 def cell_values(dataset: JsonObject, count: int) -> list[Decimal | None]:
@@ -613,9 +644,9 @@ def cell_symbols(dataset: JsonObject, count: int) -> list[str | None]:
     return found
 
 
-def parse_data(document: object, table_id: str) -> DataResult:
+def parse_data(document: object, table_id: str, language: Language) -> DataResult:
     dataset = _obj(document, "the data")
-    shared = parse_described(dataset, table_id)
+    shared = parse_described(dataset, table_id, language)
     dimensions = cast("tuple[Dimension, ...]", shared["dimensions"])
     sizes = [_whole(size, "a size") for size in _arr(dataset.get("size"), "size")]
     if sizes != [len(dimension.values) for dimension in dimensions]:

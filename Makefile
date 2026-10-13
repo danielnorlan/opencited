@@ -27,6 +27,7 @@ package: ## Build the package and import it from the wheel
 	rm -rf dist
 	uv build --quiet
 	uv run --isolated --no-project --with dist/*.whl python -c "import opencited"
+	uv run --isolated --no-project --with dist/*.whl opencited --version
 
 format: ## Format the code and apply safe lint fixes
 	uv run ruff format

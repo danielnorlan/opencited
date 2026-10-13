@@ -406,15 +406,15 @@ def test_the_order_of_index_keys_does_not_matter() -> None:
         category = cast("Json", get(body, "dimension", "Tid", "category"))
         category["index"] = dict(reversed(cast("dict[str, Decimal]", category["index"]).items()))
 
-    original = parse_metadata(recorded("metadata-05810-en"), "05810")
-    assert parse_metadata(changed("metadata-05810-en", reverse_years), "05810") == original
+    original = parse_metadata(recorded("metadata-05810-en"), "05810", "en")
+    assert parse_metadata(changed("metadata-05810-en", reverse_years), "05810", "en") == original
 
 
 def test_a_dimension_note_is_kept() -> None:
     def add_note(body: Json) -> None:
         cast("Json", get(body, "dimension", "Kjonn"))["note"] = ["A note on the dimension"]
 
-    metadata = parse_metadata(changed("metadata-05810-en", add_note), "05810")
+    metadata = parse_metadata(changed("metadata-05810-en", add_note), "05810", "en")
     assert metadata.dimensions[0].notes == ("A note on the dimension",)
 
 
@@ -466,7 +466,7 @@ def test_bodies_that_break_the_structure_are_refused(
     change: Callable[[Json], None], message: str
 ) -> None:
     with pytest.raises(InvalidResponseError, match=message):
-        parse_data(changed("data-06856-symbols-en", change), "06856")
+        parse_data(changed("data-06856-symbols-en", change), "06856", "en")
 
 
 def test_results_cannot_change() -> None:

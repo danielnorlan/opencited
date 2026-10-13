@@ -38,8 +38,8 @@ from opencited.sources.ssb import BASE_URL, MAX_CELLS, SsbClient, in_revision_pe
 from opencited.values import load_json
 
 NOON = datetime(2026, 10, 14, 10, 0, tzinfo=UTC)
-POPULATION = parse_metadata(load_json(raw("metadata-05810-en")), "05810")
-FISH = parse_metadata(load_json(raw("metadata-06856-en")), "06856")
+POPULATION = parse_metadata(load_json(raw("metadata-05810-en")), "05810", "en")
+FISH = parse_metadata(load_json(raw("metadata-06856-en")), "06856", "en")
 
 
 def dimension(metadata: TableMetadata, code: str) -> Dimension:
