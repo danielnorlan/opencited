@@ -22,10 +22,10 @@ flowchart LR
 | Component | Responsibility | Status |
 | --- | --- | --- |
 | MCP server | Table search, metadata and data from each source, with a provenance record on every data result | Specification in draft ([spec 0001](specs/0001-ssb-mcp-server.md)) |
-| Calculation engine | Runs typed calculation plans as SQL in DuckDB over stored snapshots, with exact decimals | Planned, M2 |
-| Evidence gate | Matches every number in an answer to source data or a calculation result, and blocks the answer otherwise | Planned, M2 |
-| Agent | Plans, calls tools and drafts the answer, built with LangGraph | Planned, M2 |
-| Evaluation suite | Versioned questions with computed answers, run with Inspect AI | Planned, M2 |
+| Calculation engine | Runs typed calculation plans over stored snapshots: DuckDB selects and sums, and division and rounding use exact rational numbers | Specification in draft ([spec 0002](specs/0002-snapshots-and-calculation.md)) |
+| Evidence gate | Matches every number in an answer to source data or a calculation result, and blocks the answer otherwise | Specification in draft ([spec 0003](specs/0003-evidence-gate.md)) |
+| Agent | Plans, calls tools and drafts the answer, in a loop of its own over a chat completions API | Specification in draft ([spec 0004](specs/0004-agent.md)) |
+| Evaluation suite | Versioned questions with computed answers, run with Inspect AI | Specification in draft ([spec 0005](specs/0005-evaluation-suite.md)) |
 | Table search | Hybrid full-text and vector search over table metadata, in PostgreSQL with pgvector | Planned, M3 |
 | Model gateway | Routes requests between local and hosted models within budgets, using LiteLLM | Planned, M3 |
 | Tracing | OpenTelemetry traces, viewed in Langfuse | Planned, M3 |
@@ -44,10 +44,10 @@ share the source clients without depending on each other.
 | `opencited.sources` | The interface every source implements, and the registry of sources | M1 |
 | `opencited.sources.ssb` | The StatBank client: search, metadata, data, selections and JSON-stat parsing | M1 |
 | `opencited.mcp` | The MCP server, its three tools and the command line entry point | M1 |
-| `opencited.snapshots` | Stored raw responses and the parsed values as DuckDB tables | M2 |
-| `opencited.calc` | Typed calculation plans and their translation to SQL | M2 |
+| `opencited.snapshots` | Write-once snapshots of raw responses, with the parsed values in Parquet | M2 |
+| `opencited.calc` | Typed calculation plans, the SQL they generate and exact rational arithmetic | M2 |
 | `opencited.gate` | Number extraction from answer text and matching against values and results | M2 |
-| `opencited.agent` | The LangGraph graph that plans, calls tools, drafts and retries | M2 |
+| `opencited.agent` | The loop that calls the model and the tools, checks answers and retries | M2 |
 | `opencited.evals` | Inspect AI tasks and the deterministic scorer | M2 |
 
 ## Source layer and MCP server (M1)
@@ -132,14 +132,16 @@ this record. [Spec 0001](specs/0001-ssb-mcp-server.md) defines it.
 
 ## Calculation and the evidence gate (M2)
 
-The agent never states a number that it did not receive from a tool. It writes a
-typed calculation plan, the engine turns the plan into SQL over the stored
-snapshots, and DuckDB runs it with exact decimals. Division and rounding are
-explicit steps in the plan, because DuckDB returns floating point for division of
-decimals. Before an answer is released, the gate reads every number in the text and
-matches it to a provenance record or a calculation result
-([ADR 0004](adr/0004-evidence-gate.md)). The evaluation suite scores answers with a
-deterministic scorer that compares them with answers computed by the same engine.
+The agent never states a number that it did not receive from a tool. The MCP server
+stores every data result as a snapshot that never changes. The agent writes a typed
+calculation plan over these snapshots: DuckDB selects and sums the values, and
+division, means and rounding use exact rational numbers, because DuckDB returns
+floating point for division and means of decimals
+([ADR 0011](adr/0011-snapshots-and-exact-arithmetic.md)). Before an answer is
+released, the gate reads every number in the text and matches it to a value in the
+results that the sentence cites ([spec 0003](specs/0003-evidence-gate.md)). The
+evaluation suite runs the agent through Inspect AI and scores its answers against
+answers computed by the same engine ([spec 0005](specs/0005-evaluation-suite.md)).
 
 ## Trust boundaries
 

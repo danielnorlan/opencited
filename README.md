@@ -10,7 +10,8 @@ source is Statistics Norway (SSB).
 
 > [!NOTE]
 > OpenCited is in early development. This repository holds the project foundation
-> and the first specification. Nothing is usable yet. See the [roadmap](docs/roadmap.md).
+> and the plan and specifications for the first two milestones. Nothing is usable
+> yet. See the [roadmap](docs/roadmap.md).
 
 ## How it will work
 
@@ -29,8 +30,9 @@ flowchart LR
 2. The agent finds the right tables through the OpenCited MCP server. Every value
    it gets back carries a provenance record: source, licence, table, API request,
    retrieval time and a hash of the raw response.
-3. Calculations run as SQL in DuckDB with exact decimals. The language model never
-   states a number from its own knowledge.
+3. Calculations run as typed plans over stored snapshots, with exact arithmetic.
+   DuckDB selects and sums the values, and every step is shown. The language
+   model never states a number from its own knowledge.
 4. Before an answer is released, an evidence gate matches every number in it to a
    source value or a calculation result. An answer that fails is retried or refused
    with a reason.
@@ -64,8 +66,10 @@ Every source passes a review before it is added. See [sources](docs/sources.md).
 
 The code is licensed under the [Apache License 2.0](LICENSE). Evaluation datasets
 will be published under CC BY 4.0. Data from each source keeps its own licence.
-Statistics Norway publishes its statistics under CC BY 4.0. Whether that covers data
-taken through its API is an open question in [spec 0001](docs/specs/0001-ssb-mcp-server.md).
+
+Data from StatBank comes from Statistics Norway (SSB) and is licensed under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), as SSB's
+[API guide](https://www.ssb.no/en/api/pxwebapiv2) states.
 
 OpenCited is an independent project. It is not affiliated with or endorsed by
 Statistics Norway or any other source it uses.

@@ -7,11 +7,11 @@ milestones matters more than the dates.
 | --- | --- | --- | --- |
 | M0 Foundation | Repository, CI, development tooling, decision records and the first specification | Q4 2026 | In progress |
 | M1 MCP server | SSB source with table search, metadata and data with provenance, published on PyPI and in the MCP Registry | Q4 2026 | Specification in draft |
-| M2 Evidence gate | Calculation engine, evidence gate, agent and the first evaluation set | Q1 2027 | Planned |
+| M2 Evidence gate | Calculation engine, evidence gate, agent and the first evaluation set | Q1 2027 | Specifications in draft |
 | M3 Search and tracing | Hybrid table search, tracing and model routing | Q1 2027 | Planned |
 | M4 Public demo | Demo site and a public results page | Q2 2027 | Planned |
 
-The current work is in the [plan for M1](plans/2026-10-13-m1.md).
+The current work is in the [plan for M1 and M2](plans/2026-10-13-m1-m2.md).
 
 ## Later
 
