@@ -12,6 +12,9 @@ A record is proposed in a pull request, and the maintainer accepts it. See
 | [0004](0004-evidence-gate.md) | Evidence gate and deterministic calculation | Accepted |
 | [0005](0005-licensing.md) | Licensing and ownership | Accepted |
 | [0006](0006-commit-identity-and-personal-data.md) | Commit identity and personal data | Accepted |
+| [0007](0007-ssb-pxwebapi-v2.md) | StatBank through PxWebApi 2 | Proposed |
+| [0008](0008-http-client.md) | HTTP client, recorded fixtures and the response cache | Proposed |
+| [0009](0009-exact-decimals.md) | Exact decimals from the source to the answer | Proposed |
 
 A new record takes the next number and has the sections Context, Decision,
 Alternatives considered and Consequences.

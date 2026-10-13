@@ -1,0 +1,71 @@
+# 0007. StatBank through PxWebApi 2
+
+- Status: Proposed
+- Date: 2026-10-13
+
+## Context
+
+Spec 0001 left open which PxWebApi version SSB runs, which selection expressions it
+supports, which rate limits apply and how missing values appear. The answers below
+come from SSB's API guide, the PxWebApi user guide and requests to the live API on
+2026-10-13.
+
+- PxWebApi 2 is SSB's production API. SSB launched it in autumn 2025 and keeps
+  version 1 for a transition period
+  ([SSB](https://www.ssb.no/en/api/pxwebapi)). The base URL is
+  `https://data.ssb.no/api/pxwebapi/v2`, and `/config` reported API version 2.3.2
+  and software version 2.5.0.
+- GET URLs are limited to about 2,100 characters. A longer URL returned an HTML
+  error page with no JSON body. POST takes the same selection in the body and has
+  no such limit ([user guide](https://pxtools.github.io/PxWebApi/documentation/user-guide/)).
+- Selections support `*`, `?`, `top`, `bottom`, `range`, `from` and `to`. In a GET
+  URL an expression that contains a comma must be wrapped in square brackets, or
+  the comma splits it.
+- `/config` allows 800,000 cells per request and publishes no call limit. The API
+  guide states 30 calls per minute, and the responses carried a header with 40 per
+  60 seconds.
+- In JSON-stat 2 data a missing value is `null`, and a `status` object maps its
+  index to SSB's symbol: `.` not applicable, `..` not available, `:` confidential.
+  The explanation of a symbol arrives as free text in the `note` list of the data
+  response.
+- SSB's API guide states that the API uses CC BY 4.0
+  ([SSB](https://www.ssb.no/en/api/pxwebapiv2)).
+- Metadata is updated at 05:00 and 11:30, when tables are unavailable, and new
+  figures are published at 08:00. The guide gives no time zone, and this record
+  assumes Norwegian time.
+
+## Decision
+
+1. The SSB client uses PxWebApi 2 at `https://data.ssb.no/api/pxwebapi/v2`, in
+   Norwegian or English.
+2. Data requests use GET while the URL stays under 1,800 characters, with
+   expressions that contain commas wrapped in brackets. Longer requests use POST. A
+   GET URL can be opened by a reader, so short requests stay readable in the
+   provenance record.
+3. The client sends at most 30 requests per minute, reads the rate limit headers
+   and backs off on HTTP 429.
+4. The project keeps its own limit of 5,000 cells per `query_table` call, far below
+   SSB's limit, so a single answer cannot pull a whole table by accident.
+5. Symbols are kept as delivered. The client attaches the matching note to each
+   symbol when the note starts with the symbol followed by ` = `, and keeps every
+   note in the result.
+6. Scheduled jobs, such as the nightly smoke test and fixture recording, avoid
+   04:55 to 08:15 and 11:25 to 11:45 Norwegian time.
+
+## Alternatives considered
+
+- PxWebApi 1. It still works, but SSB recommends moving to version 2 and will
+  retire version 1.
+- POST for every request. Simpler, but the provenance record would never contain
+  a link that a reader can open.
+- Reading rate limits from `/config`. It publishes none today.
+
+## Consequences
+
+- Spec 0001 is corrected in four places: the API version, the URL limit, the rate
+  limit source and the licence question.
+- No live response with `.` or `:` has been found yet. Tests for those symbols use
+  a recorded response once one is found, and are marked as expected failures until
+  then.
+- SSB runs PxWebApi 2.5.0 while 2.7.0 is released, so the client tolerates
+  unknown fields and logs the versions that `/config` reports.

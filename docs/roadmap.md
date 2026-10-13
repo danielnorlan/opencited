@@ -11,6 +11,8 @@ milestones matters more than the dates.
 | M3 Search and tracing | Hybrid table search, tracing and model routing | Q1 2027 | Planned |
 | M4 Public demo | Demo site and a public results page | Q2 2027 | Planned |
 
+The current work is in the [plan for M1](plans/2026-10-13-m1.md).
+
 ## Later
 
 - A benchmark of 500 or more questions, including unanswerable and adversarial
