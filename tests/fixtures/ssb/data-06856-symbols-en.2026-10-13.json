@@ -1,0 +1,26 @@
+{
+  "name": "data-06856-symbols-en",
+  "reason": "cells with the symbol '..' and the note that explains it",
+  "recorded_at": "2026-10-13T21:39:50Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/06856/data?lang=en&valueCodes%5BRegionSamisk%5D=1849%2C1850%2C1853&valueCodes%5BContentsCode%5D=%2A&valueCodes%5BTid%5D=2008%2C2009%2C2010&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "data-06856-symbols-en.2026-10-13.body",
+    "body_sha256": "c27ad70e86f023011bebcf2f922ab1e64161d98c0bbe81264df9b73c34eb39ba",
+    "original_body_sha256": "623d4bd6b7c245bf70b1c3030bc1190d3b6614f22f9d1094c5300791cc730baa",
+    "removed": [
+      "extension.contact"
+    ]
+  }
+}

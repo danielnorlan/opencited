@@ -1,0 +1,2 @@
+# Recorded response bodies must keep their exact bytes on every platform.
+tests/fixtures/**/*.body -text

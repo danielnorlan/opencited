@@ -1,6 +1,6 @@
 # 0007. StatBank through PxWebApi 2
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-10-13
 
 ## Context
@@ -35,6 +35,11 @@ come from SSB's API guide, the PxWebApi user guide and requests to the live API 
   or as a dot from 05:00 to 08:00, and the guide asks users to avoid 07:55 to 08:15
   unless they need that period. The guide gives no time zone, and this record
   assumes Norwegian time (Europe/Oslo).
+
+The fixtures recorded on 2026-10-13 in `tests/fixtures/ssb/` confirm these findings,
+apart from the expressions `?`, `bottom`, `range`, `from` and `to`, which they do not
+use. A URL of about 3,300 characters was answered with HTTP 404 and an HTML page,
+and a table that does not exist with HTTP 404 and a JSON error.
 
 ## Decision
 

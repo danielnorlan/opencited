@@ -1,0 +1,24 @@
+{
+  "name": "search-population-en",
+  "reason": "table search in English",
+  "recorded_at": "2026-10-13T21:39:30Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables?query=population&lang=en&pageSize=10",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "search-population-en.2026-10-13.body",
+    "body_sha256": "e577c7b59a17919efcfe9d3a725b260153d1c302258181b3e170fe2d68f324ff",
+    "original_body_sha256": "e577c7b59a17919efcfe9d3a725b260153d1c302258181b3e170fe2d68f324ff",
+    "removed": []
+  }
+}

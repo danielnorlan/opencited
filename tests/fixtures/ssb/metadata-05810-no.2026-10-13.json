@@ -1,0 +1,26 @@
+{
+  "name": "metadata-05810-no",
+  "reason": "dimensions, codes, labels, units and notes",
+  "recorded_at": "2026-10-13T21:39:44Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/05810/metadata?lang=no",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "metadata-05810-no.2026-10-13.body",
+    "body_sha256": "6381dfa10bf36fa653cce240c51d4a76b8c322f69f24dd7e41988ceb5fc938dc",
+    "original_body_sha256": "1f8e4be3a8163c9c19f73f37a0da32c9e07b2ec8f43d4274039353c9b0da6d98",
+    "removed": [
+      "extension.contact"
+    ]
+  }
+}

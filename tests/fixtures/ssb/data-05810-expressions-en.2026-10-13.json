@@ -1,0 +1,26 @@
+{
+  "name": "data-05810-expressions-en",
+  "reason": "selection expressions '*' and 'top'",
+  "recorded_at": "2026-10-13T21:40:03Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/05810/data?lang=en&valueCodes%5BKjonn%5D=%2A&valueCodes%5BAlder%5D=%2A&valueCodes%5BContentsCode%5D=Personer&valueCodes%5BTid%5D=top%283%29&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "data-05810-expressions-en.2026-10-13.body",
+    "body_sha256": "cfa333d30df566430a6bdb49b6a1c0bfb3bc4c3b67bbe2787a07a922425f8e73",
+    "original_body_sha256": "b310c257d8efa842fe4f8bb642fbd6f87147d6d581ff5d6c653de89c7d931a07",
+    "removed": [
+      "extension.contact"
+    ]
+  }
+}

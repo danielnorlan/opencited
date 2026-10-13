@@ -19,7 +19,9 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Information Analysis",
   "Typing :: Typed",
 ]
-dependencies = []
+dependencies = [
+  "httpx2>=2.13,<3",
+]
 
 [project.urls]
 Repository = "https://github.com/danielnorlan/opencited"

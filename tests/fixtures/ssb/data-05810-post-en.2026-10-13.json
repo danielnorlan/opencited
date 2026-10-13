@@ -1,0 +1,26 @@
+{
+  "name": "data-05810-post-en",
+  "reason": "a data request sent as POST",
+  "recorded_at": "2026-10-13T21:40:05Z",
+  "request": {
+    "method": "POST",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/05810/data?lang=en&outputFormat=json-stat2",
+    "body": "{\"selection\":[{\"variableCode\":\"Kjonn\",\"valueCodes\":[\"1\",\"2\"]},{\"variableCode\":\"Alder\",\"valueCodes\":[\"999B\"]},{\"variableCode\":\"ContentsCode\",\"valueCodes\":[\"Personer\"]},{\"variableCode\":\"Tid\",\"valueCodes\":[\"2024\",\"2025\",\"2026\"]}]}"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "data-05810-post-en.2026-10-13.body",
+    "body_sha256": "ead22327954364532d2b488c69582cecf4c78a0aee71a198f848304026d02df7",
+    "original_body_sha256": "669bcd47a66bb5bc3547c1b974c5134f15491aa9c0dd4e03af9c5b22e2fae844",
+    "removed": [
+      "extension.contact"
+    ]
+  }
+}
