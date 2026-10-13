@@ -1,0 +1,25 @@
+{
+  "name": "error-data-05810-missing-variable-en",
+  "reason": "a selection without a dimension that the table requires",
+  "recorded_at": "2026-10-13T22:21:48Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/05810/data?lang=en&valueCodes%5BTid%5D=2026&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 400,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "error-data-05810-missing-variable-en.2026-10-13.body",
+    "body_sha256": "57594b0a8c0f2fc0d7cb60538fa5a9e7d9c40dd20960b55b25f8a406d6979a6f",
+    "original_body_sha256": "57594b0a8c0f2fc0d7cb60538fa5a9e7d9c40dd20960b55b25f8a406d6979a6f",
+    "removed": [],
+    "removed_fields": []
+  }
+}

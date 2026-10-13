@@ -1,9 +1,8 @@
 # Recorded SSB responses
 
 These files are responses from the API of Statistics Norway (SSB), recorded with
-`scripts/record_ssb_fixtures.py`. The contract tests of the API client, step 2 of
-the [plan](../../../docs/plans/2026-10-13-m1-m2.md), will replay them, so those
-tests make no network calls.
+`scripts/record_ssb_fixtures.py`. The contract tests in `tests/sources/` replay them
+through `opencited.http.replay`, so those tests make no network calls.
 
 Each recording has two files. `NAME.DATE.json` holds the request, the response
 status, the response headers kept from an allow list and the SHA-256 of the original

@@ -1,0 +1,25 @@
+{
+  "name": "error-data-99999-en",
+  "reason": "data from a table that does not exist, answered with HTTP 400",
+  "recorded_at": "2026-10-13T22:21:56Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/99999/data?lang=en&valueCodes%5BTid%5D=2026&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 400,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "error-data-99999-en.2026-10-13.body",
+    "body_sha256": "e0d14246560d482fa53a46f9dada6f809f76e6cf4f0e518c7ae71c1ac7f4bf2e",
+    "original_body_sha256": "e0d14246560d482fa53a46f9dada6f809f76e6cf4f0e518c7ae71c1ac7f4bf2e",
+    "removed": [],
+    "removed_fields": []
+  }
+}

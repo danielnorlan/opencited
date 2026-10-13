@@ -14,6 +14,9 @@ Notable changes to OpenCited are recorded here. The format follows
   0012.
 - `scripts/record_ssb_fixtures.py` and the first responses recorded from SSB's API, in
   `tests/fixtures/ssb/`.
+- The StatBank client in `opencited.sources.ssb`, which searches tables, reads their
+  metadata and fetches data into typed models with exact decimals, and a replay
+  transport that serves recorded responses to tests.
 - Checks for commits, branch names and personal data, run in the git hooks and in CI
   ([ADR 0006](docs/adr/0006-commit-identity-and-personal-data.md)).
 - `scripts/pull_request.py`, which opens pull requests, squash-merges them once CI

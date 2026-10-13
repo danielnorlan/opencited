@@ -1,6 +1,6 @@
 # 0008. HTTP client, recorded fixtures and the response cache
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-10-13
 
 ## Context
