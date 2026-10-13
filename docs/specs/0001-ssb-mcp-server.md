@@ -2,7 +2,7 @@
 
 | Field | Value |
 | --- | --- |
-| Status | Draft |
+| Status | Approved |
 | Milestone | M1 |
 | Owner | Daniel Norlan |
 | Created | 2026-10-13 |
@@ -20,9 +20,10 @@ it was retrieved.
   provenance for every number. This specification creates it at the source.
 - Community MCP servers for SSB exist. This one differs by attaching a provenance
   record to every data result.
-- SSB serves StatBank through PxWebApi. Tables have five-digit IDs. GET requests
-  are limited to about 2,500 characters, and longer queries use POST
-  ([SSB](https://ssb.no/en/api/pxwebapi/pxwebapi-2.0-beta)).
+- SSB serves StatBank through PxWebApi 2 at `https://data.ssb.no/api/pxwebapi/v2`.
+  Tables have five-digit IDs. GET URLs are limited to about 2,100 characters, and
+  longer queries use POST ([SSB](https://www.ssb.no/en/api/pxwebapiv2),
+  [user guide](https://pxtools.github.io/PxWebApi/documentation/user-guide/)).
 
 ## Users
 
@@ -77,8 +78,8 @@ Each `query_table` result has one record:
 
 1. A selection above 5,000 cells is rejected before any data request. The error
    states the cell count and how to narrow the selection.
-2. Requests stay within the rate limits that the API publishes in its
-   configuration endpoint.
+2. Requests stay within the 30 requests per minute that SSB's API guide states,
+   and the client backs off when the API answers with HTTP 429.
 3. Metadata and data responses are cached. A cached response keeps its original
    `retrieved_at` and `response_sha256`, and the result says that it came from the
    cache.
@@ -130,15 +131,19 @@ Each `query_table` result has one record:
 - Authentication. The server exposes public data only.
 - Other sources.
 
-## Open questions for task 1
+## Questions answered for task 1
 
-1. Which PxWebApi version SSB runs in production, and which selection expressions it
-   supports. SSB's documentation describes version 2 as a beta with planned downtime
-   on weekday mornings and at weekends, while a third-party client uses a version 2
-   address without the beta suffix. The answer goes into a new ADR.
-2. The rate limits published by the configuration endpoint.
-3. How symbols and their explanations appear in data and metadata responses.
-4. Whether CC BY 4.0 covers data from the API, to be confirmed with SSB in writing.
+[ADR 0007](../adr/0007-ssb-pxwebapi-v2.md) records the answers, checked on
+2026-10-13.
+
+1. SSB runs PxWebApi 2 in production. Selections support `*`, `?`, `top`,
+   `bottom`, `range`, `from` and `to`.
+2. The configuration endpoint publishes no call limit. SSB's API guide states 30
+   requests per minute.
+3. A missing value is `null`, with its symbol in the `status` object of the data
+   response, and the explanation is a free-text note in the same response.
+4. SSB's API guide states that the API uses CC BY 4.0. A written confirmation
+   from SSB is still worth asking for.
 
 ## Tasks
 

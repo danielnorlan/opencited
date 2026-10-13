@@ -18,14 +18,14 @@ of these hold:
 
 | Source | Publisher | Licence | Status |
 | --- | --- | --- | --- |
-| [StatBank](https://www.ssb.no/en/statbank) | Statistics Norway (SSB) | [CC BY 4.0](https://www.ssb.no/en/diverse/lisens), to be confirmed for API data | Specification in draft (M1) |
+| [StatBank](https://www.ssb.no/en/statbank) | Statistics Norway (SSB) | [CC BY 4.0](https://www.ssb.no/en/diverse/lisens), stated for the API in the [API guide](https://www.ssb.no/en/api/pxwebapiv2) | In progress (M1) |
 | Other statistics offices that use PxWebApi | Various | To be reviewed | Candidate |
 | Eurostat, OECD and others through SDMX | Various | To be reviewed | Candidate |
 | Health guidance | Approved health authorities | To be reviewed | Candidate, risk review first |
 
 ## Attribution
 
-Statistics Norway publishes its statistics under CC BY 4.0. Whether that covers
-data taken through its API is an open question in
-[spec 0001](specs/0001-ssb-mcp-server.md). Results will name the source and link to
-the table each value came from.
+Statistics Norway publishes its statistics under CC BY 4.0, and its API guide states
+that the API uses the same licence ([SSB](https://www.ssb.no/en/api/pxwebapiv2)).
+`NOTICE` and the README credit SSB. Results will name the source and link to the
+table each value came from.
