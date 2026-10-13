@@ -32,15 +32,17 @@ calculation engine computes their expected answers.
 
 ### Questions
 
-1. The questions are a JSONL file with a set version. Each question has an ID, a
-   language, the question text, a category and the expected outcome.
+1. The questions are a JSONL file, `evals/questions/v1.jsonl` for the first set,
+   with a set version. Each question has an ID, a language (`no` or `en`), the
+   question text, a category and the expected outcome.
 2. The categories are lookup, change, share, sum, ranking, false premise,
    unanswerable and out of scope.
-3. For a question with an answer, the expected outcome is a reference plan for the
-   calculation engine ([spec 0002](0002-snapshots-and-calculation.md)), the tables and
-   selections it reads, and the number of decimals that the answer must show at
-   least. A ranking question also expects a label. For an unanswerable or out of
-   scope question, the expected outcome is a refusal.
+3. For a question with an answer, false premises included, the expected outcome is
+   a reference plan for the calculation engine
+   ([spec 0002](0002-snapshots-and-calculation.md)), the tables and selections it
+   reads, and the number of decimals that the answer must show at least. A ranking
+   question also expects a label. For an unanswerable or out of scope question, the
+   expected outcome is a refusal.
 4. Expected numbers are never written by hand. A run executes each reference plan on
    data fetched during the same run, so a revision at SSB changes the expected
    answer and the agent's data together.
@@ -55,7 +57,8 @@ calculation engine computes their expected answers.
 2. A question with an answer is correct when the agent releases an answer, the answer
    passes the gate again when the scorer checks it, and it contains each expected
    number at the required decimals or more under the gate's rounding rule. A ranking
-   answer must also name the expected label.
+   answer must also contain the expected label as the snapshot gives it in the
+   language of the question, compared without regard to case.
 3. A question that should be refused is correct when the agent refuses. The reason is
    recorded.
 4. The report gives counts and rates of correct answers by category and language,
@@ -68,22 +71,28 @@ calculation engine computes their expected answers.
 1. The suite runs as an Inspect task with the agent inside the agent bridge, so the
    model under evaluation is set with Inspect's model option.
 2. Each question has the agent's limits ([spec 0004](0004-agent.md)) and Inspect's
-   limits on tokens, time and cost. The cost limit per question times the number of
-   questions stays within the budget of the run.
+   limits on tokens, time and cost. Inspect's limits are set above the agent's, so
+   the agent stops first and refuses with a reason. The cost limit per question
+   times the number of questions stays within the budget of the run, so a run needs
+   model prices.
 3. Each run records the question set version, the commit, the model and the
    endpoint without the key, the model settings and prices, the date, the snapshot
-   IDs and the result of every question.
-4. Inspect logs stay out of git. The report of every published run is committed under
-   `evals/results/`.
-5. The run command refuses to start during the maintenance windows of SSB listed in
-   [ADR 0007](../adr/0007-ssb-pxwebapi-v2.md).
+   IDs and the result of every question. The model is pinned by the name that the
+   endpoint reports in its responses.
+4. The Inspect task lives in `evals/` ([ADR 0012](../adr/0012-inspect-evaluations.md)).
+   Inspect logs stay out of git, and the report of every published run is committed
+   under `evals/results/`.
+5. A run sends no new question during the periods that
+   [ADR 0007](../adr/0007-ssb-pxwebapi-v2.md) keeps scheduled jobs away from, in
+   Norwegian time, and the report lists the questions it did not run.
 
 ## Verification
 
 1. Unit tests for the scorer with example answers built from recorded fixture
    values, each with the verdict it must get. Answers from published runs join them.
-2. Every reference plan runs in CI against recorded fixtures, and the question file
-   is checked against its schema.
+2. Every reference plan runs in CI against recorded fixtures, so the fixtures cover
+   every table and selection that the plans read. The question file is checked
+   against its schema.
 3. The suite with a model runs only against a real endpoint, outside the default
    test run.
 

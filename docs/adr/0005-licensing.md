@@ -14,9 +14,9 @@ wide adoption, credit to the author and the option to offer a hosted service.
 - Evaluation datasets and published results: Creative Commons Attribution 4.0
   (CC BY 4.0), so anyone who reuses them must credit the project.
 - Source data keeps its own licence and is attributed wherever it appears.
-  Statistics Norway publishes its statistics under CC BY 4.0. Whether that covers
-  data taken through its API is an open question in
-  [spec 0001](../specs/0001-ssb-mcp-server.md).
+  Statistics Norway publishes its statistics under CC BY 4.0, and its API guide
+  states that the API uses the same licence
+  ([ADR 0007](0007-ssb-pxwebapi-v2.md)).
 - Pull requests from outside contributors are not accepted for now. All copyright
   stays with the maintainer, which keeps relicensing and a commercial offering
   possible.

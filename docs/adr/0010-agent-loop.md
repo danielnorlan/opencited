@@ -17,8 +17,9 @@ The architecture page planned the agent on LangGraph. The facts below were check
 - OpenRouter, DeepSeek and Ollama document tool calling on chat completions endpoints
   that are compatible with the OpenAI API. Support differs from model to model.
 - The `openai` Python SDK 3.29.0 depends on `httpx2` and accepts an `httpx2` client.
-- Inspect AI runs an agent written against that SDK inside an evaluation through its
-  agent bridge ([ADR 0012](0012-inspect-evaluations.md)).
+- Inspect AI ran a plain completion from that SDK inside an evaluation through its
+  agent bridge ([ADR 0012](0012-inspect-evaluations.md)). Tool calls through the
+  bridge are not tested yet.
 
 ## Decision
 
@@ -43,8 +44,9 @@ The architecture page planned the agent on LangGraph. The facts below were check
 
 ## Consequences
 
-- Source clients, the MCP client and the model client share one HTTP stack.
+- Source clients, the MCP client and the model client share one HTTP stack in the
+  package's own dependencies.
 - The loop, the parsing of tool calls, the retries and the budget accounting are
   project code with their own tests.
-- Any endpoint with tool calling on this API shape works. Each evaluation run records
-  the endpoint and the model, since results depend on both.
+- Any endpoint with tool calling on this API shape should work. Each evaluation run
+  records the endpoint and the model, since results depend on both.

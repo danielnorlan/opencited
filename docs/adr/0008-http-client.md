@@ -22,14 +22,26 @@ POST requests ([ADR 0007](0007-ssb-pxwebapi-v2.md)).
    timeouts and a user agent that names the project and its version.
 2. Tests replay recorded responses through `httpx2.MockTransport`. A small handler
    maps the method, the URL and the body of a request to a recorded file. A request
-   without a recording fails the test.
+   without a recording fails the test. A test setting points the server at a
+   directory of recorded fixtures, so the end-to-end test over stdio replays them
+   inside the server process.
 3. `scripts/record_ssb_fixtures.py` records fixtures from the live API. Each file
    holds the request, the response status and headers and the raw body, and its
    name carries the recording date. Cookies and authorisation headers are never
    stored.
-4. The cache is a small SQLite store of our own, keyed by the method, the URL and a
-   hash of the body. An entry keeps the raw bytes, the retrieval time and the
-   SHA-256, so a cached result repeats the original provenance.
+4. SSB's responses name the statistician responsible for the table, with a phone
+   number and an email address, in `extension.contact`. The recorder cuts that
+   member out of the body by its byte range, so every other byte stays as SSB sent
+   it, and stores the SHA-256 of the original body in the fixture file. A recorded
+   raw response, as spec 0001 uses the term, is the stored body, and a replayed
+   response carries its hash. The personal data check runs on every fixture.
+5. The cache is a small SQLite store of our own in the user's cache directory,
+   keyed by the method, the URL and a hash of the body. An entry keeps the raw
+   bytes, the retrieval time and the SHA-256, so a cached result repeats the
+   original provenance. An entry is served until the next 08:15 Norwegian time
+   after its retrieval, since SSB publishes new figures at 08:00.
+6. The cache and the snapshot directory hold whole bodies, contact details
+   included, and lie outside the repository by default.
 
 ## Alternatives considered
 
@@ -41,7 +53,8 @@ POST requests ([ADR 0007](0007-ssb-pxwebapi-v2.md)).
 
 ## Consequences
 
-- One HTTP stack in the dependency tree.
+- One HTTP stack in the package's own dependencies. The `evals` group adds `httpx`
+  through Inspect AI ([ADR 0012](0012-inspect-evaluations.md)).
 - The replay handler is project code and needs its own tests.
 - If `respx` or `pytest-httpx` gain `httpx2` support, the handler can be replaced
   without changing the fixtures.

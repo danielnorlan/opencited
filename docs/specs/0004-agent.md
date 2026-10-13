@@ -50,7 +50,8 @@ When the agent cannot back an answer, it refuses and says why.
    reads.
 2. Every tool result gets an evidence ID: `E1`, `E2` and so on for source results,
    and `C1`, `C2` and so on for calculations. The model uses these IDs in calculation
-   plans and in citation markers.
+   plans and in citation markers. The agent replaces the evidence IDs in a plan with
+   snapshot IDs before the engine runs it.
 3. Values in tool results reach the model both as decimal strings and formatted for
    the language of the answer.
 4. Text from tool results, such as titles and notes, reaches the model as data inside
@@ -82,7 +83,7 @@ When the agent cannot back an answer, it refuses and says why.
    holds the same usage and, after a blocked answer, the last gate report.
 3. `opencited ask "<question>"` prints the answer with numbered sources, and
    `--json` prints the full answer as JSON. The answer uses the language of the
-   question unless `--language` sets it.
+   question unless `--language no` or `--language en` sets it.
 
 ## Verification
 

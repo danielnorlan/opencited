@@ -21,8 +21,8 @@ calculation.
 - [ADR 0009](../adr/0009-exact-decimals.md) keeps values as decimals from the source
   to the answer.
 - [ADR 0011](../adr/0011-snapshots-and-exact-arithmetic.md) stores snapshots as
-  write-once Parquet files, lets DuckDB select and sum, and computes division,
-  means and rounding on exact rational numbers.
+  write-once Parquet files, lets DuckDB select and rank cells, and computes all
+  arithmetic on exact rational numbers.
 - The provenance record from [spec 0001](0001-ssb-mcp-server.md) has a
   `response_sha256`, which identifies a snapshot.
 
@@ -37,26 +37,33 @@ calculation.
 
 ### Snapshots
 
-1. When a snapshot directory is configured, the MCP server writes a snapshot for
-   every `query_table` result it returns, including results from the cache. The
-   agent always configures one.
+1. When a snapshot directory is set, with `--snapshot-dir` or
+   `OPENCITED_SNAPSHOT_DIR`, the MCP server writes a snapshot for every `query_table`
+   result it returns, including results from the cache. No directory is set by
+   default. The agent always sets one, in the user's data directory.
 2. A snapshot holds the raw response body, the provenance record and the
    observations. Its ID is the `response_sha256` of the provenance record.
 3. The observations are a Parquet file with one column per dimension code, the value
    as written in the response, the value as `DECIMAL(38, s)` where `s` is the largest
    scale among the values, the symbol for a missing value, and the unit of the
-   content.
+   content. The snapshot also stores the label of every code, in the language of
+   the request.
 4. Units come from the table metadata that the server read for the same request. The
    snapshot stores the SHA-256 of that metadata response.
 5. A snapshot is written to a temporary directory and renamed into place when it is
-   complete. A written snapshot never changes, and writing the same response again
-   leaves it as it is.
+   complete. A written snapshot never changes. A later response with the same body
+   has the same snapshot ID, and the snapshot keeps the provenance of its first
+   retrieval, while each tool result keeps its own retrieval time.
 6. Reading a snapshot checks that the SHA-256 of the stored body equals its ID.
+7. When a value does not fit `DECIMAL(38, s)` at the common scale, the snapshot is
+   not written, and `calculate` reports that the result has no snapshot.
 
 ### Calculation plans
 
 A plan is a list of steps. Each step has a name, an operation and inputs, which are
-snapshot cells or the results of earlier steps.
+snapshot cells or the results of earlier steps. Snapshots are named by their ID,
+and the agent turns the evidence IDs that the model writes into snapshot IDs
+([spec 0004](0004-agent.md)).
 
 | Operation | Inputs | Result |
 | --- | --- | --- |
@@ -67,7 +74,7 @@ snapshot cells or the results of earlier steps.
 | `mean` | A snapshot, a selection and a number of decimals | The mean of the selected cells, rounded |
 | `change_percent` | An old and a new result, and a number of decimals | (new − old) / old × 100, rounded |
 | `share_percent` | A part and a total, and a number of decimals | part / total × 100, rounded |
-| `rank` | A snapshot, a selection, the dimension to rank by and the order | The cells with the highest or lowest value, with their codes and labels, ties included |
+| `rank` | A snapshot, a selection, the dimension to rank by, the order and a count from 1 to 10 | The cells with the highest or lowest values, as many as the count, with their codes and labels; cells tied with the last one are included |
 
 1. Plans are Pydantic models in strict mode, and the `calculate` tool publishes
    their JSON schema.
@@ -77,15 +84,23 @@ snapshot cells or the results of earlier steps.
 3. A step fails when it reads a missing value, divides by zero, gives a result with
    more than 38 significant digits, or combines values with different units in
    `sum`, `add` or `subtract`.
-4. A step that states a number of decimals rounds once, with ties away from zero.
-   Later steps use the rounded value. The step also keeps its exact result as a
-   fraction.
-5. The engine opens an in-memory DuckDB database, loads the snapshots that the plan
+4. All arithmetic, sums included, runs on exact rational numbers in Python over the
+   cells that DuckDB selects. A step that states a number of decimals rounds once,
+   with ties away from zero. Later steps use the rounded value, and the step also
+   keeps its exact result as a fraction.
+5. `sum`, `add`, `subtract` and `mean` keep the unit of their inputs, and `subtract`
+   of two per cent values gives percentage points. `change_percent` and
+   `share_percent` give per cent. `multiply` and `divide` give the product or
+   quotient of the input units, and `divide` of two values with the same unit gives
+   a ratio. A unit counts as per cent when its base is on a list in the code, such
+   as `prosent` and `per cent`.
+6. A `rank` selection fixes every dimension apart from the one it ranks by.
+7. The engine opens an in-memory DuckDB database, loads the snapshots that the plan
    names, turns off external access and locks the configuration. Only then does it
    run the SQL that it generates. The model never writes SQL.
-6. Generated SQL binds codes and values as parameters. Values are bound as text and
+8. Generated SQL binds codes and values as parameters. Values are bound as text and
    cast to an explicit `DECIMAL(38, s)`.
-7. A result column of a floating-point type is an error.
+9. A result column of a floating-point type is an error.
 
 ### Calculation results
 
@@ -132,6 +147,7 @@ snapshot cells or the results of earlier steps.
   tables, for example to divide one by another.
 - Forecasts, trends, seasonal adjustment and price adjustment.
 - Removing old snapshots.
+- Constants in plans. Values are reported in the units of the table.
 
 ## Tasks
 

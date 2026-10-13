@@ -31,7 +31,7 @@ flowchart LR
    it gets back carries a provenance record: source, licence, table, API request,
    retrieval time and a hash of the raw response.
 3. Calculations run as typed plans over stored snapshots, with exact arithmetic.
-   DuckDB selects and sums the values, and every step is shown. The language
+   DuckDB selects the values, and every step is shown. The language
    model never states a number from its own knowledge.
 4. Before an answer is released, an evidence gate matches every number in it to a
    source value or a calculation result. An answer that fails is retried or refused

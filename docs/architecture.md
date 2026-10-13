@@ -22,7 +22,7 @@ flowchart LR
 | Component | Responsibility | Status |
 | --- | --- | --- |
 | MCP server | Table search, metadata and data from each source, with a provenance record on every data result | Specification in draft ([spec 0001](specs/0001-ssb-mcp-server.md)) |
-| Calculation engine | Runs typed calculation plans over stored snapshots: DuckDB selects and sums, and division and rounding use exact rational numbers | Specification in draft ([spec 0002](specs/0002-snapshots-and-calculation.md)) |
+| Calculation engine | Runs typed calculation plans over stored snapshots: DuckDB selects the cells, and the arithmetic uses exact rational numbers | Specification in draft ([spec 0002](specs/0002-snapshots-and-calculation.md)) |
 | Evidence gate | Matches every number in an answer to source data or a calculation result, and blocks the answer otherwise | Specification in draft ([spec 0003](specs/0003-evidence-gate.md)) |
 | Agent | Plans, calls tools and drafts the answer, in a loop of its own over a chat completions API | Specification in draft ([spec 0004](specs/0004-agent.md)) |
 | Evaluation suite | Versioned questions with computed answers, run with Inspect AI | Specification in draft ([spec 0005](specs/0005-evaluation-suite.md)) |
@@ -32,23 +32,25 @@ flowchart LR
 
 ## Package layout
 
-One Python package, `opencited`, with one subpackage per layer. A layer imports only
-from the layers below it, so the MCP server, the agent and the evaluation suite can
-share the source clients without depending on each other.
+One Python package, `opencited`, with one subpackage per layer. A module imports only
+from the modules above it in the table, so the source clients and the snapshots
+stay free of the server, the agent and the evaluations. `ProvenanceRecord` lives in
+`opencited.provenance` and `QueryResult` in `opencited.sources`. The Inspect task
+lives outside the package, in `evals/`.
 
 | Module | Contents | Milestone |
 | --- | --- | --- |
-| `opencited.values` | Decimal parsing and formatting, and the rule that values never become `float` | M1 |
+| `opencited.values` | Decimal parsing and the rule that values never become `float` (M1), and formatting in Norwegian and English (M2) | M1 |
 | `opencited.provenance` | The provenance record, response hashing and retrieval times | M1 |
 | `opencited.http` | The HTTP client, the rate limiter and the response cache | M1 |
 | `opencited.sources` | The interface every source implements, and the registry of sources | M1 |
 | `opencited.sources.ssb` | The StatBank client: search, metadata, data, selections and JSON-stat parsing | M1 |
-| `opencited.mcp` | The MCP server, its three tools and the command line entry point | M1 |
 | `opencited.snapshots` | Write-once snapshots of raw responses, with the parsed values in Parquet | M2 |
+| `opencited.mcp` | The MCP server, its three tools and the command line entry point | M1 |
 | `opencited.calc` | Typed calculation plans, the SQL they generate and exact rational arithmetic | M2 |
 | `opencited.gate` | Number extraction from answer text and matching against values and results | M2 |
 | `opencited.agent` | The loop that calls the model and the tools, checks answers and retries | M2 |
-| `opencited.evals` | Inspect AI tasks and the deterministic scorer | M2 |
+| `opencited.evals` | The deterministic scorer and the runner for reference plans | M2 |
 
 ## Source layer and MCP server (M1)
 
@@ -92,12 +94,14 @@ code uses.
 | Invalid table ID, unknown dimension or value code | Validation error with the allowed values | Tool error, so the model can correct the call |
 | Selection above the cell limit | Error with the cell count and how to narrow the selection | Tool error |
 | Source unavailable, timeout or HTTP 5xx | Error that names the source and says nothing was returned | Tool error |
-| Rate limit reached | The client waits within a budget, then reports the limit | Tool error |
+| Rate limit reached | The client waits up to 10 seconds for a free slot, then reports the limit | Tool error |
+| Data requested from 05:00 to 08:15 Norwegian time | Error that names SSB's revision period | Tool error |
 | Malformed protocol request | Handled by the MCP SDK | Protocol error |
 
 ### Caching and rate limits
 
-Responses are cached in SQLite, keyed by the method, the URL and a hash of the body.
+Responses are cached in SQLite in the user's cache directory, keyed by the method,
+the URL and a hash of the body, until the next 08:15 Norwegian time.
 An entry stores the raw bytes, the retrieval time and the hash, so a cached result
 repeats the original provenance and says that it came from the cache. A request
 waits for a slot in a client-side rate limiter before it is sent, and a response
@@ -105,8 +109,8 @@ with HTTP 429 makes the client back off ([ADR 0008](adr/0008-http-client.md)).
 
 ### Transports
 
-`opencited mcp` serves the tools over stdio. An option serves them over Streamable
-HTTP on `127.0.0.1`. The server uses the official MCP Python SDK, which answers
+`opencited mcp` serves the tools over stdio. `opencited mcp --http` serves them over
+Streamable HTTP on `127.0.0.1`, port 8765 unless `--port` sets another. The server uses the official MCP Python SDK, which answers
 clients of the 2026-07-28 revision and of earlier revisions
 ([ADR 0003](adr/0003-mcp-2026-07-28.md)).
 
@@ -116,11 +120,11 @@ clients of the 2026-07-28 revision and of earlier revisions
 | --- | --- | --- |
 | Unit and property tests | Validation, selection expansion, cell counting, value parsing and formatting | None |
 | Contract tests | Every client method against responses recorded from the live API | None, recorded fixtures |
-| End-to-end tests | Every tool through an MCP client, in memory, over stdio and over HTTP | Local only |
+| End-to-end tests | Every tool through an MCP client, over stdio and over HTTP, and in memory for quick tests | Local only |
 | Live smoke test | The same calls against the real API, every night | The source API |
 
-Fixtures are recorded by a script that writes the request and the raw response to a
-file named with the recording date. A test transport replays them, so no fixture is
+Fixtures are recorded by a script that writes the request and the raw response, with
+SSB's contact details removed, to a file named with the recording date. A test transport replays them, so no fixture is
 written by hand.
 
 ## Provenance
@@ -132,14 +136,15 @@ this record. [Spec 0001](specs/0001-ssb-mcp-server.md) defines it.
 
 ## Calculation and the evidence gate (M2)
 
-The agent never states a number that it did not receive from a tool. The MCP server
-stores every data result as a snapshot that never changes. The agent writes a typed
-calculation plan over these snapshots: DuckDB selects and sums the values, and
-division, means and rounding use exact rational numbers, because DuckDB returns
-floating point for division and means of decimals
+The agent never states a number that it did not receive from a tool. With a snapshot
+directory set, the MCP server stores every data result as a snapshot that never
+changes. The agent writes a typed calculation plan over these snapshots: DuckDB
+selects the cells, and all arithmetic uses exact rational numbers, because DuckDB
+returns floating point for division and means of decimals and does not catch every
+overflow
 ([ADR 0011](adr/0011-snapshots-and-exact-arithmetic.md)). Before an answer is
 released, the gate reads every number in the text and matches it to a value in the
-results that the sentence cites ([spec 0003](specs/0003-evidence-gate.md)). The
+results that its block cites ([spec 0003](specs/0003-evidence-gate.md)). The
 evaluation suite runs the agent through Inspect AI and scores its answers against
 answers computed by the same engine ([spec 0005](specs/0005-evaluation-suite.md)).
 
@@ -151,5 +156,7 @@ answers computed by the same engine ([spec 0005](specs/0005-evaluation-suite.md)
   [Rule of Two](https://ai.meta.com/blog/practical-ai-agent-security/) for agents.
 - The language model never states a number from its own knowledge. Numbers come
   from tools and from the calculation engine ([ADR 0004](adr/0004-evidence-gate.md)).
-- The HTTP transport binds to `127.0.0.1` by default and checks the `Origin` header,
-  as the MCP specification requires.
+- The HTTP transport binds to `127.0.0.1` by default and answers a request with an
+  invalid `Origin` header with HTTP 403, as the
+  [MCP specification](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http)
+  requires.

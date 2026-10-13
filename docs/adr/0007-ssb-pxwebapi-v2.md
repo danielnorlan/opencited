@@ -31,31 +31,41 @@ come from SSB's API guide, the PxWebApi user guide and requests to the live API 
 - SSB's API guide states that the API uses CC BY 4.0
   ([SSB](https://www.ssb.no/en/api/pxwebapiv2)).
 - Metadata is updated at 05:00 and 11:30, when tables are unavailable, and new
-  figures are published at 08:00. The guide gives no time zone, and this record
-  assumes Norwegian time.
+  figures are published at 08:00. Figures that are revised at 08:00 are shown as 0
+  or as a dot from 05:00 to 08:00, and the guide asks users to avoid 07:55 to 08:15
+  unless they need that period. The guide gives no time zone, and this record
+  assumes Norwegian time (Europe/Oslo).
 
 ## Decision
 
 1. The SSB client uses PxWebApi 2 at `https://data.ssb.no/api/pxwebapi/v2`, in
    Norwegian or English.
-2. Data requests use GET while the URL stays under 1,800 characters, with
-   expressions that contain commas wrapped in brackets. Longer requests use POST. A
-   GET URL can be opened by a reader, so short requests stay readable in the
+2. Data requests use GET while the full encoded URL stays under 1,800 characters,
+   with expressions that contain commas wrapped in brackets. Longer requests use
+   POST. A GET URL can be opened by a reader, so short requests stay readable in the
    provenance record.
-3. The client sends at most 30 requests per minute, reads the rate limit headers
-   and backs off on HTTP 429.
+3. The client sends at most 30 requests per minute, or fewer when the rate limit
+   headers of a response state a lower limit, and backs off on HTTP 429. A tool
+   call waits at most 10 seconds for a free slot and then returns an error that
+   says the limit was reached.
 4. The project keeps its own limit of 5,000 cells per `query_table` call, far below
    SSB's limit, so a single answer cannot pull a whole table by accident.
 5. Symbols are kept as delivered. The client attaches the matching note to each
    symbol when the note starts with the symbol followed by ` = `, and keeps every
    note in the result.
 6. Scheduled jobs, such as the nightly smoke test and fixture recording, avoid
-   04:55 to 08:15 and 11:25 to 11:45 Norwegian time.
+   04:55 to 08:15 and 11:25 to 11:45 Norwegian time. These periods are derived from
+   the guide: they start five minutes before a metadata update and cover the
+   revision period, the publication at 08:00 and fifteen minutes after the update
+   at 11:30.
+7. From 05:00 to 08:15 Norwegian time, `query_table` returns an error that names
+   SSB's revision period instead of data, and the client caches no data response
+   retrieved in that period. Search and metadata are not blocked.
 
 ## Alternatives considered
 
-- PxWebApi 1. It still works, but SSB recommends moving to version 2 and will
-  retire version 1.
+- PxWebApi 1. It still works, but SSB recommends version 2 and keeps version 1
+  only for a transition period.
 - POST for every request. Simpler, but the provenance record would never contain
   a link that a reader can open.
 - Reading rate limits from `/config`. It publishes none today.
@@ -63,9 +73,11 @@ come from SSB's API guide, the PxWebApi user guide and requests to the live API 
 ## Consequences
 
 - Spec 0001 is corrected in four places: the API version, the URL limit, the rate
-  limit source and the licence question.
-- No live response with `.` or `:` has been found yet. Tests for those symbols use
-  a recorded response once one is found, and are marked as expected failures until
-  then.
+  limit source and the licence question. A requirement for the revision period
+  follows in a later change to the specification.
+- The server returns no data for about three hours every morning.
+- Table 06856 has cells with `..`. No response with `.` or `:` has been found yet,
+  so unit tests cover the symbol table for all three symbols, and contract tests
+  for `.` and `:` follow when a recording contains them.
 - SSB runs PxWebApi 2.5.0 while 2.7.0 is released, so the client tolerates
   unknown fields and logs the versions that `/config` reports.

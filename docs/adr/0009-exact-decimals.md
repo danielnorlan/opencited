@@ -14,9 +14,10 @@ way can break that rule without an error:
 - The JSON schema that Pydantic generates for a `Decimal` field in validation mode
   allows numbers as well as strings, which tells an MCP client that a float is
   acceptable.
-- DuckDB keeps `DECIMAL` exact for addition, subtraction and multiplication up to 38
-  digits, returns `DOUBLE` for division, and binds a Python `Decimal` with more than
-  38 digits as `DOUBLE` without an error
+- In tests with DuckDB 1.5.6, `DECIMAL` addition and subtraction were exact,
+  multiplication lost digits or failed for values near 38 digits, and division
+  returned `DOUBLE`. A Python `Decimal` with more than 38 digits was bound as
+  `DOUBLE` without an error. A bare `DECIMAL` type means `DECIMAL(18,3)`
   ([DuckDB](https://duckdb.org/docs/current/sql/data_types/numeric)).
 
 ## Decision
