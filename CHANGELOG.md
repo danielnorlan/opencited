@@ -21,8 +21,8 @@ Notable changes to OpenCited are recorded here. The format follows
   replaces a missing value, with SSB's explanation where SSB gives one. Decimals are
   written in fixed point in JSON and never read from a binary number.
 - Queries check their selection against the table's metadata, count its cells and
-  refuse more than 5,000 before any data request, and fetch no data while SSB shows
-  figures under revision.
+  refuse more than 5,000 before any data request, and fetch no data from 05:00 to
+  08:15 Norwegian time, when SSB shows figures under revision.
 - Checks for commits, branch names and personal data, run in the git hooks and in CI
   ([ADR 0006](docs/adr/0006-commit-identity-and-personal-data.md)).
 - `scripts/pull_request.py`, which opens pull requests, squash-merges them once CI

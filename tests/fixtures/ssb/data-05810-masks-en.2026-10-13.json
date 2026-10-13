@@ -1,0 +1,33 @@
+{
+  "name": "data-05810-masks-en",
+  "reason": "masks with '?'",
+  "recorded_at": "2026-10-13T23:04:47Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/05810/data?lang=en&valueCodes%5BKjonn%5D=0&valueCodes%5BAlder%5D=0%3F-%3F%3F&valueCodes%5BContentsCode%5D=Personer&valueCodes%5BTid%5D=202%3F&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "data-05810-masks-en.2026-10-13.body",
+    "body_sha256": "02b8bda5b3983d59c6b37b0435c08e5d95c0a12aacefa8eb0e1a2e8f690e834e",
+    "original_body_sha256": "b54488d8c09943e2ad4f25cf733e627a03e001922b216d0385a8d2c17a3c828b",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

@@ -182,6 +182,64 @@ RECORDINGS: tuple[Recording, ...] = (
         reason="selection expressions '*' and 'top'",
     ),
     Recording(
+        "data-05810-offset-en",
+        "GET",
+        "/tables/05810/data",
+        data_params(
+            "en", {"Kjonn": "0", "Alder": "999B", "ContentsCode": "Personer", "Tid": "[top(2,1)]"}
+        ),
+        reason="top with an offset on the time dimension, in brackets since it has a comma",
+    ),
+    Recording(
+        "data-05810-bottom-en",
+        "GET",
+        "/tables/05810/data",
+        data_params(
+            "en", {"Kjonn": "0", "Alder": "bottom(2)", "ContentsCode": "Personer", "Tid": "2026"}
+        ),
+        reason="bottom on a dimension that is not time",
+    ),
+    Recording(
+        "data-05810-masks-en",
+        "GET",
+        "/tables/05810/data",
+        data_params(
+            "en", {"Kjonn": "0", "Alder": "0?-??", "ContentsCode": "Personer", "Tid": "202?"}
+        ),
+        reason="masks with '?'",
+    ),
+    Recording(
+        "data-05810-range-en",
+        "GET",
+        "/tables/05810/data",
+        data_params(
+            "en",
+            {
+                "Kjonn": "0",
+                "Alder": "999B",
+                "ContentsCode": "Personer",
+                "Tid": "[range(2020,2022)],from(2025)",
+            },
+        ),
+        reason="range in brackets combined with from",
+    ),
+    Recording(
+        "data-05810-eliminated-en",
+        "GET",
+        "/tables/05810/data",
+        data_params("en", {"ContentsCode": "Personer", "Tid": "2026"}),
+        reason="dimensions that can be eliminated, left out",
+    ),
+    Recording(
+        "data-05810-order-en",
+        "GET",
+        "/tables/05810/data",
+        data_params(
+            "en", {"Kjonn": "1,2", "Alder": "999B", "ContentsCode": "Personer", "Tid": "2026"}
+        ),
+        reason="codes in another order than the metadata",
+    ),
+    Recording(
         "data-05810-post-en",
         "POST",
         "/tables/05810/data",

@@ -28,7 +28,8 @@ class RateLimitedError(SourceUnavailableError):
 
 
 class RejectedRequestError(SourceError):
-    """The source rejected the request, for example an unknown dimension or code."""
+    """The source rejected the request. A query checks its selection first, so this comes
+    from requests that skip that check, or from rules the client does not know."""
 
 
 class InvalidResponseError(SourceError):
@@ -48,6 +49,9 @@ class TooManyCellsError(InvalidSelectionError):
         super().__init__(message)
         self.cells = cells
         self.limit = limit
+
+    def __reduce__(self) -> tuple[type[TooManyCellsError], tuple[str, int, int]]:
+        return (TooManyCellsError, (str(self), self.cells, self.limit))
 
 
 class RevisionPeriodError(SourceUnavailableError):

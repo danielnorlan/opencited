@@ -1,0 +1,33 @@
+{
+  "name": "data-05810-offset-en",
+  "reason": "top with an offset on the time dimension, in brackets since it has a comma",
+  "recorded_at": "2026-10-13T23:04:41Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/05810/data?lang=en&valueCodes%5BKjonn%5D=0&valueCodes%5BAlder%5D=999B&valueCodes%5BContentsCode%5D=Personer&valueCodes%5BTid%5D=%5Btop%282%2C1%29%5D&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "data-05810-offset-en.2026-10-13.body",
+    "body_sha256": "ddbfaecd26e57ac9d293df84f16e499615bb8ed7497bb652346cc5773e8d2e5e",
+    "original_body_sha256": "fd7bc75f410e4f6d517bf0901b2338455f75e5937bf395488fe169fc314ebefa",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}
