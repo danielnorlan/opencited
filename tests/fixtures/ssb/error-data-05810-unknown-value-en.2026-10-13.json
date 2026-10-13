@@ -1,0 +1,25 @@
+{
+  "name": "error-data-05810-unknown-value-en",
+  "reason": "a code that the table does not have",
+  "recorded_at": "2026-10-13T22:21:51Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/05810/data?lang=en&valueCodes%5BKjonn%5D=0&valueCodes%5BAlder%5D=999B&valueCodes%5BContentsCode%5D=Personer&valueCodes%5BTid%5D=1800&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 400,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "error-data-05810-unknown-value-en.2026-10-13.body",
+    "body_sha256": "9ca3fa3388655da23aab356746bf5ca7f66a7175e12b1d793865409702404c2a",
+    "original_body_sha256": "9ca3fa3388655da23aab356746bf5ca7f66a7175e12b1d793865409702404c2a",
+    "removed": [],
+    "removed_fields": []
+  }
+}

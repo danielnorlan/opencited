@@ -15,15 +15,28 @@ TIMEOUT = httpx2.Timeout(30.0, connect=10.0)
 
 @dataclass(frozen=True)
 class Exchange:
-    """One request and the response to it, as the client sent and received them."""
+    """One request and the response to it, as the client sent and received them.
+
+    ``headers`` holds the response headers with lower-case names, in the order received.
+    """
 
     method: str
     url: str
     body: bytes | None
     status: int
-    content_type: str
+    headers: tuple[tuple[str, str], ...]
     content: bytes
     retrieved_at: datetime
+
+    def header(self, name: str) -> str | None:
+        """Return the first response header with this name, or None."""
+        wanted = name.lower()
+        return next((value for key, value in self.headers if key == wanted), None)
+
+    @property
+    def content_type(self) -> str:
+        """Return the content type of the response, or an empty string."""
+        return self.header("content-type") or ""
 
 
 def make_client(
@@ -48,7 +61,7 @@ async def send(client: httpx2.AsyncClient, request: httpx2.Request) -> Exchange:
         url=str(request.url),
         body=request.content or None,
         status=response.status_code,
-        content_type=response.headers.get("content-type", ""),
+        headers=tuple((key.lower(), value) for key, value in response.headers.items()),
         content=response.content,
         retrieved_at=retrieved_at,
     )

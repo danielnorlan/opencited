@@ -1,7 +1,9 @@
-"""How the SSB client maps HTTP statuses and transport failures to its errors.
+"""How the SSB client maps statuses and transport failures that no recording shows.
 
-The responses here are written by the tests and are not SSB's content. Responses that
-SSB sent are covered by the contract tests, which replay recordings.
+SSB's own error answers, for an unknown table and for rejected selections, are covered
+by the contract tests, which replay recordings. The responses here are written by the
+tests and stand for no source: rate limits, server errors, redirects, broken bodies and
+failed connections, which cannot be recorded on demand.
 """
 
 from __future__ import annotations
@@ -16,13 +18,13 @@ from opencited.http import make_client
 from opencited.sources import (
     InvalidResponseError,
     RateLimitedError,
-    RejectedRequestError,
     SourceError,
     SourceUnavailableError,
 )
 from opencited.sources.ssb import BASE_URL, SsbClient
 
 JSON = {"content-type": "application/json"}
+HTML = {"content-type": "text/html"}
 
 
 def config_with(handler: Callable[[httpx2.Request], httpx2.Response]) -> None:
@@ -33,34 +35,54 @@ def config_with(handler: Callable[[httpx2.Request], httpx2.Response]) -> None:
     asyncio.run(call())
 
 
+def answer(
+    status: int, headers: dict[str, str], body: bytes
+) -> Callable[[httpx2.Request], httpx2.Response]:
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(status, headers=headers, content=body)
+
+    return handler
+
+
 @pytest.mark.parametrize(
-    ("status", "body", "error", "message"),
+    ("status", "headers", "body", "error", "message"),
     [
-        (429, b"{}", RateLimitedError, "rate limit"),
-        (500, b"{}", SourceUnavailableError, "HTTP 500"),
-        (503, b"{}", SourceUnavailableError, "HTTP 503"),
-        (400, b'{"title":"Invented title"}', RejectedRequestError, "Invented title"),
-        (400, b"[]", RejectedRequestError, "no reason given"),
-        (200, b"{", InvalidResponseError, "not valid JSON"),
-        (200, b"[]", InvalidResponseError, "not an object"),
+        (429, JSON, b"{}", RateLimitedError, "rate limit"),
+        (429, HTML, b"<html/>", RateLimitedError, "rate limit"),
+        (429, JSON, b"", RateLimitedError, "rate limit"),
+        (500, JSON, b"{}", SourceUnavailableError, "HTTP 500"),
+        (503, JSON, b"", SourceUnavailableError, "HTTP 503"),
+        (502, HTML, b"Bad Gateway", SourceUnavailableError, "HTTP 502"),
+        (301, JSON, b"{}", SourceUnavailableError, "HTTP 301"),
+        (101, JSON, b"{}", SourceUnavailableError, "HTTP 101"),
+        (200, HTML, b"<html/>", SourceUnavailableError, "no JSON body"),
+        (200, JSON, b"{", InvalidResponseError, "not valid JSON"),
+        (200, JSON, b"[1E+999999999999999999999]", InvalidResponseError, "not valid JSON"),
+        (200, JSON, b"[]", InvalidResponseError, "must be an object"),
     ],
 )
 def test_statuses_and_bodies_map_to_errors(
-    status: int, body: bytes, error: type[SourceError], message: str
+    status: int, headers: dict[str, str], body: bytes, error: type[SourceError], message: str
 ) -> None:
-    def handler(request: httpx2.Request) -> httpx2.Response:
-        return httpx2.Response(status, headers=JSON, content=body)
-
     with pytest.raises(error, match=message):
-        config_with(handler)
+        config_with(answer(status, headers, body))
 
 
-def test_an_answer_without_json_is_unavailable() -> None:
-    def handler(request: httpx2.Request) -> httpx2.Response:
-        return httpx2.Response(200, headers={"content-type": "text/html"}, content=b"<html/>")
+@pytest.mark.parametrize(
+    ("header", "seconds"), [("30", 30), ("Wed, 21 Oct 2026 07:28:00 GMT", None), ("1.5", None)]
+)
+def test_a_rate_limit_carries_the_wait_that_the_source_asks_for(
+    header: str, seconds: int | None
+) -> None:
+    with pytest.raises(RateLimitedError) as caught:
+        config_with(answer(429, {**JSON, "Retry-After": header}, b"{}"))
+    assert caught.value.retry_after == seconds
 
-    with pytest.raises(SourceUnavailableError, match="no JSON body"):
-        config_with(handler)
+
+def test_a_body_that_cannot_be_decoded_is_invalid() -> None:
+    broken = b"these bytes are not gzip"
+    with pytest.raises(InvalidResponseError, match="could not be decoded"):
+        config_with(answer(200, {**JSON, "Content-Encoding": "gzip"}, broken))
 
 
 @pytest.mark.parametrize(

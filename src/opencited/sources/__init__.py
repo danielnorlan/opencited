@@ -9,11 +9,14 @@ from opencited.sources.errors import (
     TableNotFoundError,
 )
 from opencited.sources.models import (
+    LANGUAGES,
     DataResult,
     Dimension,
     Language,
     Observation,
     Retrieved,
+    SearchResult,
+    TableId,
     TableMetadata,
     TableSummary,
     Unit,
@@ -21,6 +24,7 @@ from opencited.sources.models import (
 )
 
 __all__ = [
+    "LANGUAGES",
     "DataResult",
     "Dimension",
     "InvalidResponseError",
@@ -29,8 +33,10 @@ __all__ = [
     "RateLimitedError",
     "RejectedRequestError",
     "Retrieved",
+    "SearchResult",
     "SourceError",
     "SourceUnavailableError",
+    "TableId",
     "TableMetadata",
     "TableNotFoundError",
     "TableSummary",

@@ -1,0 +1,25 @@
+{
+  "name": "error-data-05810-unknown-variable-en",
+  "reason": "a dimension that the table does not have",
+  "recorded_at": "2026-10-13T22:21:53Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/05810/data?lang=en&valueCodes%5BFylke%5D=03&valueCodes%5BContentsCode%5D=Personer&valueCodes%5BTid%5D=2026&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 400,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "error-data-05810-unknown-variable-en.2026-10-13.body",
+    "body_sha256": "ab61c3d05a0f67cdf0d4142228b7e1b7163a4eec47e5fc28d23dcdd5a0223fed",
+    "original_body_sha256": "ab61c3d05a0f67cdf0d4142228b7e1b7163a4eec47e5fc28d23dcdd5a0223fed",
+    "removed": [],
+    "removed_fields": []
+  }
+}

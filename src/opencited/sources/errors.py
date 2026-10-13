@@ -12,11 +12,19 @@ class TableNotFoundError(SourceError):
 
 
 class SourceUnavailableError(SourceError):
-    """The source could not be reached, did not answer in time, or answered without data."""
+    """The source could not be reached, timed out, failed, or answered without JSON."""
 
 
 class RateLimitedError(SourceUnavailableError):
-    """The source refused the request because the client sent too many."""
+    """The source refused the request because the client sent too many.
+
+    ``retry_after`` holds the seconds that the source asked the client to wait, when it
+    said so.
+    """
+
+    def __init__(self, message: str, retry_after: int | None = None) -> None:
+        super().__init__(message)
+        self.retry_after = retry_after
 
 
 class RejectedRequestError(SourceError):
@@ -24,4 +32,4 @@ class RejectedRequestError(SourceError):
 
 
 class InvalidResponseError(SourceError):
-    """The source answered with JSON in a shape that the client does not understand."""
+    """The source answered with a body that is not valid JSON, or not in a known shape."""

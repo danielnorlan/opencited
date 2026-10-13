@@ -1,7 +1,9 @@
 """Typed results of statistics sources.
 
 Values are ``Decimal`` or missing, never ``float`` (ADR 0009). Every model is frozen and
-strict, so a result cannot change after it is built and no value is coerced.
+strict and holds only tuples, so a result cannot change after it is built and no value
+is coerced. ``Retrieved`` is an internal dataclass that pairs a result with the exchange
+it came from.
 """
 
 from __future__ import annotations
@@ -9,13 +11,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, StringConstraints
 
 from opencited.http import Exchange
 
 type Language = Literal["no", "en"]
+LANGUAGES: tuple[Language, ...] = ("no", "en")
+type TableId = Annotated[str, StringConstraints(pattern=r"^[0-9]{5}$")]
 
 
 class Frozen(BaseModel):
@@ -27,7 +31,7 @@ class Frozen(BaseModel):
 class TableSummary(Frozen):
     """One table found by a search."""
 
-    table_id: str
+    table_id: TableId
     title: str
     first_period: str
     last_period: str
@@ -36,16 +40,25 @@ class TableSummary(Frozen):
     variables: tuple[str, ...]
 
 
+class SearchResult(Frozen):
+    """The tables that a search returned, and how many tables matched in all."""
+
+    total: int
+    tables: tuple[TableSummary, ...]
+
+
 class Value(Frozen):
-    """A code of a dimension and its label in the language of the request."""
+    """A code of a dimension, its label in the language of the request, and its notes."""
 
     code: str
     label: str
+    notes: tuple[str, ...]
 
 
 class Unit(Frozen):
-    """The unit of a content, and the number of decimals that the source publishes."""
+    """The unit of one content, and the number of decimals that the source publishes."""
 
+    code: str
     base: str
     decimals: int
 
@@ -56,21 +69,30 @@ class Dimension(Frozen):
     code: str
     label: str
     values: tuple[Value, ...]
+    notes: tuple[str, ...]
     time: bool
     contents: bool
     eliminable: bool
 
 
-class TableMetadata(Frozen):
-    """The description of a table: its dimensions, units and notes."""
+class Described(Frozen):
+    """What metadata and data results share: the table and its dimensions."""
 
-    table_id: str
+    table_id: TableId
     title: str
     updated: datetime
     source: str
     dimensions: tuple[Dimension, ...]
-    units: dict[str, Unit]
+    units: tuple[Unit, ...]
     notes: tuple[str, ...]
+
+    def unit(self, code: str) -> Unit | None:
+        """Return the unit of a content code, or None when the source gives none."""
+        return next((unit for unit in self.units if unit.code == code), None)
+
+
+class TableMetadata(Described):
+    """The description of a table: its dimensions, units and notes."""
 
 
 class Observation(Frozen):
@@ -81,17 +103,10 @@ class Observation(Frozen):
     symbol: str | None
 
 
-class DataResult(Frozen):
+class DataResult(Described):
     """The cells of a selection, with the dimensions that the selection covers."""
 
-    table_id: str
-    title: str
-    updated: datetime
-    source: str
-    dimensions: tuple[Dimension, ...]
-    units: dict[str, Unit]
     observations: tuple[Observation, ...]
-    notes: tuple[str, ...]
 
 
 @dataclass(frozen=True)

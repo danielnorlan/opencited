@@ -204,6 +204,40 @@ RECORDINGS: tuple[Recording, ...] = (
         reason="a GET URL longer than SSB accepts, answered with an HTML page",
         expected_status=404,
     ),
+    Recording(
+        "error-data-05810-missing-variable-en",
+        "GET",
+        "/tables/05810/data",
+        data_params("en", {"Tid": "2026"}),
+        reason="a selection without a dimension that the table requires",
+        expected_status=400,
+    ),
+    Recording(
+        "error-data-05810-unknown-value-en",
+        "GET",
+        "/tables/05810/data",
+        data_params(
+            "en", {"Kjonn": "0", "Alder": "999B", "ContentsCode": "Personer", "Tid": "1800"}
+        ),
+        reason="a code that the table does not have",
+        expected_status=400,
+    ),
+    Recording(
+        "error-data-05810-unknown-variable-en",
+        "GET",
+        "/tables/05810/data",
+        data_params("en", {"Fylke": "03", "ContentsCode": "Personer", "Tid": "2026"}),
+        reason="a dimension that the table does not have",
+        expected_status=400,
+    ),
+    Recording(
+        "error-data-99999-en",
+        "GET",
+        "/tables/99999/data",
+        data_params("en", {"Tid": "2026"}),
+        reason="data from a table that does not exist, answered with HTTP 400",
+        expected_status=400,
+    ),
 )
 
 
