@@ -17,6 +17,9 @@ Notable changes to OpenCited are recorded here. The format follows
 - The StatBank client in `opencited.sources.ssb`, which searches tables, reads their
   metadata and fetches data into typed models with exact decimals, and a replay
   transport that serves recorded responses to tests.
+- Query results with a provenance record for every result, and every symbol that
+  replaces a missing value, with SSB's explanation where SSB gives one. Decimals are
+  written in fixed point in JSON and never read from a binary number.
 - Checks for commits, branch names and personal data, run in the git hooks and in CI
   ([ADR 0006](docs/adr/0006-commit-identity-and-personal-data.md)).
 - `scripts/pull_request.py`, which opens pull requests, squash-merges them once CI

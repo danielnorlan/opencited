@@ -1,6 +1,6 @@
 # 0009. Exact decimals from the source to the answer
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-10-13
 
 ## Context
@@ -19,6 +19,9 @@ way can break that rule without an error:
   returned `DOUBLE`. A Python `Decimal` with more than 38 digits was bound as
   `DOUBLE` without an error. A bare `DECIMAL` type means `DECIMAL(18,3)`
   ([DuckDB](https://duckdb.org/docs/current/sql/data_types/numeric)).
+- Python's `str` writes some decimals in exponent form: `0.0000000` becomes `0E-7`.
+  The fixed-point form keeps the digits and the scale as written. A property-based
+  test found this on 2026-10-14.
 
 ## Decision
 
@@ -27,8 +30,8 @@ way can break that rule without an error:
    for the provenance record.
 2. Inside the package values are `Decimal`. Validated models never parse JSON
    numbers themselves.
-3. At the MCP boundary values are decimal strings, and the published output schema
-   declares them as strings with a decimal pattern.
+3. At the MCP boundary values are decimal strings in fixed point, and the published
+   output schema declares them as strings with a decimal pattern.
 4. In M2 the calculation engine casts every value to an explicit `DECIMAL` type,
    makes division and rounding explicit steps of the plan, and rejects any result
    column of a floating-point type.

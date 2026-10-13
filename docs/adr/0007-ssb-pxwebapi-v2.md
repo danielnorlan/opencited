@@ -43,7 +43,14 @@ errors: a URL of about 3,300 characters got HTTP 404 with an HTML page, and a ta
 that does not exist got HTTP 404 with a JSON error. The URL limit of about 2,100
 characters, POST without that limit, brackets around expressions with commas, the
 other expressions, the symbols `.` and `:`, the 30 calls a minute and the update
-times rest on SSB's documentation, which the recordings do not cover.
+times rest on SSB's documentation, which the recordings do not cover. A recording of
+the same cells in Norwegian shows that the note for `..` starts the same way in both
+languages.
+
+The provenance record links each table to its page in StatBank. On 2026-10-14 SSB's
+population pages in Norwegian and English linked tables as
+`https://www.ssb.no/statbank/table/<id>` and `https://www.ssb.no/en/statbank/table/<id>`,
+and a test marked `live` checks that such pages answer.
 
 ## Decision
 

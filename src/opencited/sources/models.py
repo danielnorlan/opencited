@@ -9,23 +9,17 @@ it came from.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
-from decimal import Decimal
-from typing import Annotated, Literal
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, StringConstraints
+from pydantic import AwareDatetime
 
 from opencited.http import Exchange
+from opencited.model import Frozen, TableId
+from opencited.provenance import ProvenanceRecord
+from opencited.values import ExactDecimal
 
 type Language = Literal["no", "en"]
 LANGUAGES: tuple[Language, ...] = ("no", "en")
-type TableId = Annotated[str, StringConstraints(pattern=r"^[0-9]{5}$")]
-
-
-class Frozen(BaseModel):
-    """A strict model that cannot change after it is built."""
-
-    model_config = ConfigDict(frozen=True, strict=True, extra="forbid")
 
 
 class TableSummary(Frozen):
@@ -35,7 +29,7 @@ class TableSummary(Frozen):
     title: str
     first_period: str
     last_period: str
-    updated: datetime
+    updated: AwareDatetime
     time_unit: str | None
     variables: tuple[str, ...]
 
@@ -80,7 +74,7 @@ class Described(Frozen):
 
     table_id: TableId
     title: str
-    updated: datetime
+    updated: AwareDatetime
     source: str
     dimensions: tuple[Dimension, ...]
     units: tuple[Unit, ...]
@@ -99,7 +93,7 @@ class Observation(Frozen):
     """One cell: a code for each dimension, and a value or the symbol that replaces it."""
 
     codes: tuple[str, ...]
-    value: Decimal | None
+    value: ExactDecimal | None
     symbol: str | None
 
 
@@ -109,9 +103,31 @@ class DataResult(Described):
     observations: tuple[Observation, ...]
 
 
+class Symbol(Frozen):
+    """A symbol that replaces missing values, and the source's explanation when it gives one."""
+
+    symbol: str
+    explanation: str | None
+
+
+class QueryResult(DataResult):
+    """The cells of a selection with what a reader needs to check them.
+
+    ``symbols`` lists every symbol that the cells use, with the source's explanation
+    where it gives one. ``cached`` is true for a result from the cache, which repeats
+    the provenance of the first retrieval. The cache is planned for step 5 of the plan,
+    so until then every result is fetched and ``cached`` is false.
+    """
+
+    symbols: tuple[Symbol, ...]
+    provenance: ProvenanceRecord
+    cached: bool
+
+
 @dataclass(frozen=True)
 class Retrieved[T]:
     """A result and the exchange it came from, which the provenance record describes."""
 
     value: T
     exchange: Exchange
+    cached: bool = False
