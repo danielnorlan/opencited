@@ -1,0 +1,25 @@
+{
+  "name": "error-metadata-99999-en",
+  "reason": "a table that does not exist",
+  "recorded_at": "2026-10-13T21:56:11Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/99999/metadata?lang=en",
+    "body": null
+  },
+  "response": {
+    "status": 404,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "error-metadata-99999-en.2026-10-13.body",
+    "body_sha256": "e0d14246560d482fa53a46f9dada6f809f76e6cf4f0e518c7ae71c1ac7f4bf2e",
+    "original_body_sha256": "e0d14246560d482fa53a46f9dada6f809f76e6cf4f0e518c7ae71c1ac7f4bf2e",
+    "removed": [],
+    "removed_fields": []
+  }
+}

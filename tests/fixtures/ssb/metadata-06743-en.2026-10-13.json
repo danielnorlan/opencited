@@ -1,0 +1,33 @@
+{
+  "name": "metadata-06743-en",
+  "reason": "dimensions, codes, labels, units and notes",
+  "recorded_at": "2026-10-13T21:55:46Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/06743/metadata?lang=en",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "metadata-06743-en.2026-10-13.body",
+    "body_sha256": "0b0fe15a875bf02d20835a52ec77be5e38c3cb4e7026c25255933d448462f079",
+    "original_body_sha256": "ed288c19825d8c7362bf5614919edec3eacdd8bd6815dd5dd6a5cf6d2e721176",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

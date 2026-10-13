@@ -1,0 +1,25 @@
+{
+  "name": "config",
+  "reason": "API version, languages and limits",
+  "recorded_at": "2026-10-13T21:55:31Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/config",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "config.2026-10-13.body",
+    "body_sha256": "c5a4e1ab536828c4e83973968a17fadb1bf80cfde976504a50bc88318d2b0cac",
+    "original_body_sha256": "c5a4e1ab536828c4e83973968a17fadb1bf80cfde976504a50bc88318d2b0cac",
+    "removed": [],
+    "removed_fields": []
+  }
+}

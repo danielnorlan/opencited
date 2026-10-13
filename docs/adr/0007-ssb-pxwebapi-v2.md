@@ -1,6 +1,6 @@
 # 0007. StatBank through PxWebApi 2
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-10-13
 
 ## Context
@@ -35,6 +35,15 @@ come from SSB's API guide, the PxWebApi user guide and requests to the live API 
   or as a dot from 05:00 to 08:00, and the guide asks users to avoid 07:55 to 08:15
   unless they need that period. The guide gives no time zone, and this record
   assumes Norwegian time (Europe/Oslo).
+
+The fixtures recorded on 2026-10-13 in `tests/fixtures/ssb/` confirm the API and
+software versions, the cell limit, the missing call limit in `/config`, the rate
+limit headers, the symbol `..` with its note, the expressions `*` and `top`, and two
+errors: a URL of about 3,300 characters got HTTP 404 with an HTML page, and a table
+that does not exist got HTTP 404 with a JSON error. The URL limit of about 2,100
+characters, POST without that limit, brackets around expressions with commas, the
+other expressions, the symbols `.` and `:`, the 30 calls a minute and the update
+times rest on SSB's documentation, which the recordings do not cover.
 
 ## Decision
 

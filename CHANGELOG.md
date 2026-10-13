@@ -12,6 +12,8 @@ Notable changes to OpenCited are recorded here. The format follows
   and specification 0001.
 - The plan for M1 and M2, specifications 0002 to 0005 and decision records 0007 to
   0012.
+- `scripts/record_ssb_fixtures.py` and the first responses recorded from SSB's API, in
+  `tests/fixtures/ssb/`.
 - Checks for commits, branch names and personal data, run in the git hooks and in CI
   ([ADR 0006](docs/adr/0006-commit-identity-and-personal-data.md)).
 - `scripts/pull_request.py`, which opens pull requests, squash-merges them once CI

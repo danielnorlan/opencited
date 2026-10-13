@@ -12,9 +12,13 @@ repos:
       - id: check-merge-conflict
       - id: check-toml
       - id: check-yaml
+      # Recorded response bodies keep the bytes that the source sent, and their
+      # hashes are checked in the tests.
       - id: end-of-file-fixer
+        exclude: ^tests/fixtures/.*\.body$
       - id: trailing-whitespace
         args: [--markdown-linebreak-ext=md]
+        exclude: ^tests/fixtures/.*\.body$
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.17.0
