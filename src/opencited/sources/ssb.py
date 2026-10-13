@@ -11,11 +11,13 @@ from __future__ import annotations
 import itertools
 import math
 import re
-from collections.abc import Mapping, Sequence
-from datetime import datetime
+from collections.abc import Callable, Mapping, Sequence
+from datetime import UTC, datetime
+from datetime import time as clock
 from decimal import Decimal
 from http import HTTPStatus
 from typing import cast
+from zoneinfo import ZoneInfo
 
 import httpx2
 
@@ -26,9 +28,11 @@ from opencited.sources.errors import (
     InvalidResponseError,
     RateLimitedError,
     RejectedRequestError,
+    RevisionPeriodError,
     SourceError,
     SourceUnavailableError,
     TableNotFoundError,
+    TooManyCellsError,
 )
 from opencited.sources.models import (
     LANGUAGES,
@@ -45,6 +49,7 @@ from opencited.sources.models import (
     Unit,
     Value,
 )
+from opencited.sources.pxweb import cell_count, resolve
 from opencited.values import load_json
 
 BASE_URL = "https://data.ssb.no/api/pxwebapi/v2"
@@ -65,6 +70,12 @@ MAX_SEARCH_LIMIT = 50
 # The title of SSB's error document when a table does not exist. A metadata request
 # gets it with HTTP 404 and a data request with HTTP 400.
 NO_SUCH_TABLE = "Non-existent table"
+# The project's own limit on the cells of one query, far below SSB's (ADR 0007).
+MAX_CELLS = 5000
+# From 05:00 to 08:00 SSB shows figures that are revised at 08:00 as 0 or a dot, and
+# the guide asks users to avoid the minutes around the publication (ADR 0007).
+REVISION_PERIOD = (clock(5, 0), clock(8, 15))
+OSLO = ZoneInfo("Europe/Oslo")
 # Whole numbers that describe structure, such as sizes and positions, stay far below
 # this. A larger one would make ``int`` slow and cannot describe a real table.
 MAX_WHOLE_DIGITS = 18
@@ -149,12 +160,19 @@ class SsbClient:
     """A client for StatBank. It shares the HTTP client that it is given."""
 
     def __init__(
-        self, http: httpx2.AsyncClient, *, max_get_url_length: int = MAX_GET_URL_LENGTH
+        self,
+        http: httpx2.AsyncClient,
+        *,
+        max_get_url_length: int = MAX_GET_URL_LENGTH,
+        max_cells: int = MAX_CELLS,
+        now: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         if not str(http.base_url).startswith("https://"):
             raise ValueError("the HTTP client needs SSB's base URL, BASE_URL")
         self._http = http
         self._max_get_url_length = max_get_url_length
+        self._max_cells = max_cells
+        self._now = now
 
     async def config(self) -> ApiConfig:
         """Return what the API reports about itself."""
@@ -206,9 +224,29 @@ class SsbClient:
         selection: Mapping[str, Sequence[str]],
         language: Language = "no",
     ) -> QueryResult:
-        """Return the cells of a selection with their provenance record and symbols."""
+        """Return the cells of a selection with their provenance record and symbols.
+
+        Before the data request, the selection is checked against the table's metadata
+        and its cells are counted, and no data is requested in SSB's revision period.
+        """
+        check_table_id(table_id)
+        check_language(language)
+        check_selection(selection)
+        if in_revision_period(self._now()):
+            raise RevisionPeriodError(
+                "From 05:00 to 08:15 Norwegian time SSB shows figures under revision as 0 or "
+                "as a dot, so no data is fetched. Try again after 08:15."
+            )
+        metadata = await self.metadata(table_id, language)
+        cells = cell_count(resolve(metadata, selection))
+        if cells > self._max_cells:
+            raise too_many_cells(metadata, selection, cells, self._max_cells)
         retrieved = await self.data(table_id, selection, language)
         result = retrieved.value
+        if len(result.observations) != cells:
+            raise InvalidResponseError(
+                f"SSB returned {len(result.observations)} cells for a selection of {cells}"
+            )
         provenance = record_of(
             retrieved.exchange,
             source_id=SOURCE_ID,
@@ -259,6 +297,31 @@ class SsbClient:
         except ValueError as error:
             raise InvalidResponseError("SSB's answer is not valid JSON") from error
         return document, exchange
+
+
+def in_revision_period(moment: datetime) -> bool:
+    """Return whether a moment falls in SSB's revision period, in Norwegian time."""
+    start, end = REVISION_PERIOD
+    return start <= moment.astimezone(OSLO).time() < end
+
+
+def too_many_cells(
+    metadata: TableMetadata, selection: Mapping[str, Sequence[str]], cells: int, limit: int
+) -> TooManyCellsError:
+    """Return the error for a selection above the cell limit, with how to narrow it."""
+    eliminable = [
+        dimension.code
+        for dimension in metadata.dimensions
+        if dimension.eliminable and dimension.code in selection
+    ]
+    advice = "Select fewer codes, for example fewer periods with top(n)"
+    if eliminable:
+        advice += f", or leave out {', '.join(eliminable)}, which can be left out"
+    return TooManyCellsError(
+        f"The selection covers {cells:,} cells, more than the limit of {limit:,}. {advice}.",
+        cells,
+        limit,
+    )
 
 
 def client_error(exchange: Exchange, table_id: str | None) -> SourceError:
