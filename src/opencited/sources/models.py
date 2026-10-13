@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from pydantic import AwareDatetime
+from pydantic import AwareDatetime, Field
 
 from opencited.http import Exchange
 from opencited.model import Frozen, TableId
@@ -27,6 +27,7 @@ class TableSummary(Frozen):
 
     table_id: TableId
     title: str
+    url: str = Field(description="The table's page in StatBank.")
     first_period: str
     last_period: str
     updated: AwareDatetime
@@ -64,9 +65,11 @@ class Dimension(Frozen):
     label: str
     values: tuple[Value, ...]
     notes: tuple[str, ...]
-    time: bool
-    contents: bool
-    eliminable: bool
+    time: bool = Field(description="Whether the dimension holds time periods.")
+    contents: bool = Field(
+        description="Whether the dimension holds the contents, which have units."
+    )
+    eliminable: bool = Field(description="Whether a selection may leave the dimension out.")
 
 
 class Described(Frozen):
@@ -74,6 +77,7 @@ class Described(Frozen):
 
     table_id: TableId
     title: str
+    url: str = Field(description="The table's page in StatBank.")
     updated: AwareDatetime
     source: str
     dimensions: tuple[Dimension, ...]
@@ -92,9 +96,15 @@ class TableMetadata(Described):
 class Observation(Frozen):
     """One cell: a code for each dimension, and a value or the symbol that replaces it."""
 
-    codes: tuple[str, ...]
-    value: ExactDecimal | None
-    symbol: str | None
+    codes: tuple[str, ...] = Field(
+        description="One code per dimension, in the order of the dimensions."
+    )
+    value: ExactDecimal | None = Field(
+        description="The value as a decimal string, or null when a symbol replaces it."
+    )
+    symbol: str | None = Field(
+        description="The source's symbol for a missing value, explained in symbols."
+    )
 
 
 class DataResult(Described):

@@ -38,8 +38,10 @@ flowchart LR
    with a reason.
 5. An open evaluation suite measures how often the answers are right.
 
-The MCP server will also work on its own, so MCP clients such as Claude Code can
-query the sources and get provenance with every value.
+The MCP server also works on its own, so MCP clients such as Claude Code can
+query the sources and get provenance with every value. Until the package is on
+PyPI, run it from a clone with `uv run opencited mcp` for stdio, or
+`uv run opencited mcp --http` for Streamable HTTP at `http://127.0.0.1:8765/mcp`.
 
 ## Sources
 

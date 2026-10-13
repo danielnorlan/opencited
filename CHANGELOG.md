@@ -23,6 +23,10 @@ Notable changes to OpenCited are recorded here. The format follows
 - Queries check their selection against the table's metadata, count its cells and
   refuse more than 5,000 before any data request, and fetch no data from 05:00 to
   08:15 Norwegian time, when SSB shows figures under revision.
+- The MCP server, with the tools `search_tables`, `get_table_metadata` and
+  `query_table`, and the command `opencited mcp`, which serves them over stdio or,
+  with `--http`, over Streamable HTTP on a loopback address. Search and metadata
+  results link to the table in StatBank.
 - Checks for commits, branch names and personal data, run in the git hooks and in CI
   ([ADR 0006](docs/adr/0006-commit-identity-and-personal-data.md)).
 - `scripts/pull_request.py`, which opens pull requests, squash-merges them once CI

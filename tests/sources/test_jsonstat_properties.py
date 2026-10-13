@@ -91,7 +91,7 @@ def codes_of(position: int, dimensions: list[tuple[str, list[str]]]) -> tuple[st
 @given(datasets())
 def test_every_cell_gets_its_codes_value_and_symbol(dataset: Dataset) -> None:
     dimensions, values, symbols, _ = dataset
-    result = parse_data(load_json(as_json(dataset)), "00000")
+    result = parse_data(load_json(as_json(dataset)), "00000", "en")
     assert [cell.codes for cell in result.observations] == [
         codes_of(position, dimensions) for position in range(len(values))
     ]

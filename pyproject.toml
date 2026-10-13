@@ -21,9 +21,13 @@ classifiers = [
 ]
 dependencies = [
   "httpx2>=2.13,<3",
+  "mcp>=2.3,<2.4",
   "pydantic>=2.14,<3",
   "tzdata>=2026.5",
 ]
+
+[project.scripts]
+opencited = "opencited.cli:main"
 
 [project.urls]
 Repository = "https://github.com/danielnorlan/opencited"

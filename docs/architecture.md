@@ -48,7 +48,8 @@ lives outside the package, in `evals/`.
 | `opencited.sources.pxweb` | PxWebApi 2 selections: codes and expressions expanded on the metadata, and cell counts | M1 |
 | `opencited.sources.ssb` | The StatBank client: search, metadata, data, queries with provenance, and JSON-stat parsing | M1 |
 | `opencited.snapshots` | Write-once snapshots of raw responses, with the parsed values in Parquet | M2 |
-| `opencited.mcp` | The MCP server, its three tools and the command line entry point | M1 |
+| `opencited.mcp` | The MCP server and its three tools | M1 |
+| `opencited.cli` | The command line: `opencited mcp` | M1 |
 | `opencited.calc` | Typed calculation plans, the SQL they generate and exact rational arithmetic | M2 |
 | `opencited.gate` | Number extraction from answer text and matching against values and results | M2 |
 | `opencited.agent` | The loop that calls the model and the tools, checks answers and retries | M2 |
@@ -112,9 +113,20 @@ with HTTP 429 makes the client back off ([ADR 0008](adr/0008-http-client.md)).
 ### Transports
 
 `opencited mcp` serves the tools over stdio. `opencited mcp --http` serves them over
-Streamable HTTP on `127.0.0.1`, port 8765 unless `--port` sets another. The server uses the official MCP Python SDK, which answers
-clients of the 2026-07-28 revision and of earlier revisions
-([ADR 0003](adr/0003-mcp-2026-07-28.md)).
+Streamable HTTP at `/mcp` on `127.0.0.1`, port 8765 unless `--port` sets another.
+`--host` accepts loopback addresses only. Over HTTP the server refuses a request whose
+`Host` header names another host (HTTP 421) or whose `Origin` header names a page
+that is not local (HTTP 403), which blocks DNS rebinding. The server uses the official
+MCP Python SDK, which answers clients of the 2026-07-28 revision and of earlier
+revisions ([ADR 0003](adr/0003-mcp-2026-07-28.md)).
+
+The tools are listed in a fixed order: `search_tables`, `get_table_metadata` and
+`query_table`. Each declares an input schema, an output schema generated from the
+result models, and annotations that mark it as read-only. Invalid arguments and the
+errors of the source come back as tool errors whose text gives the reason.
+
+When the variable `OPENCITED_SSB_FIXTURES` names a directory of recordings, the
+server replays them instead of calling SSB. The end-to-end tests use it.
 
 ### Testing
 
