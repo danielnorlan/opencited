@@ -19,7 +19,9 @@ from typing import cast
 
 import httpx2
 
+from opencited.frozen import Frozen
 from opencited.http import Exchange, send
+from opencited.provenance import record_of
 from opencited.sources.errors import (
     InvalidResponseError,
     RateLimitedError,
@@ -32,11 +34,12 @@ from opencited.sources.models import (
     LANGUAGES,
     DataResult,
     Dimension,
-    Frozen,
     Language,
     Observation,
+    QueryResult,
     Retrieved,
     SearchResult,
+    Symbol,
     TableMetadata,
     TableSummary,
     Unit,
@@ -45,6 +48,14 @@ from opencited.sources.models import (
 from opencited.values import load_json
 
 BASE_URL = "https://data.ssb.no/api/pxwebapi/v2"
+SOURCE_ID = "ssb"
+PUBLISHER = "Statistics Norway (SSB)"
+LICENCE = "CC-BY-4.0"
+# The links that SSB's own statistics pages use for a table in StatBank.
+TABLE_PAGES: dict[Language, str] = {
+    "no": "https://www.ssb.no/statbank/table/{}",
+    "en": "https://www.ssb.no/en/statbank/table/{}",
+}
 # A GET URL of about 3,300 characters got an HTML error page from SSB, and its guide
 # gives about 2,100 as the limit. Below 1,800 a request stays a link that a reader can
 # open from the provenance record (ADR 0007).
@@ -189,6 +200,34 @@ class SsbClient:
         document, exchange = await self._fetch(request, table_id)
         return Retrieved(parse_data(document, table_id), exchange)
 
+    async def query(
+        self,
+        table_id: str,
+        selection: Mapping[str, Sequence[str]],
+        language: Language = "no",
+    ) -> QueryResult:
+        """Return the cells of a selection with their provenance record and symbols."""
+        retrieved = await self.data(table_id, selection, language)
+        result = retrieved.value
+        provenance = record_of(
+            retrieved.exchange,
+            source_id=SOURCE_ID,
+            publisher=PUBLISHER,
+            license=LICENCE,
+            table_id=table_id,
+            table_title=result.title,
+            table_url=TABLE_PAGES[language].format(table_id),
+            table_updated=result.updated,
+        )
+        return QueryResult.model_validate(
+            {
+                **dict(result),
+                "symbols": explained_symbols(result.observations, result.notes),
+                "provenance": provenance,
+                "cached": False,
+            }
+        )
+
     async def _fetch(
         self, request: httpx2.Request, table_id: str | None = None
     ) -> tuple[object, Exchange]:
@@ -230,6 +269,25 @@ def client_error(exchange: Exchange, table_id: str | None) -> SourceError:
     if title == NO_SUCH_TABLE:
         return TableNotFoundError(f"SSB has no table {table_id}" if table_id else title)
     return RejectedRequestError(f"SSB rejected the request: {title or 'no reason given'}")
+
+
+def explained_symbols(
+    observations: Sequence[Observation], notes: Sequence[str]
+) -> tuple[Symbol, ...]:
+    """Return each symbol that the cells use, with SSB's explanation where it gives one.
+
+    SSB explains a symbol in a note that starts with the symbol and " = " (ADR 0007).
+    Symbols appear in the order of the cells. A symbol without such a note is left out,
+    and the cells still carry it.
+    """
+    used = dict.fromkeys(cell.symbol for cell in observations if cell.symbol is not None)
+    explained: list[Symbol] = []
+    for symbol in used:
+        prefix = f"{symbol} = "
+        note = next((note for note in notes if note.startswith(prefix)), None)
+        if note is not None:
+            explained.append(Symbol(symbol=symbol, explanation=note.removeprefix(prefix)))
+    return tuple(explained)
 
 
 def retry_after(exchange: Exchange) -> int | None:

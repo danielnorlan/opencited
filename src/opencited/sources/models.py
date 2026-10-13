@@ -13,19 +13,15 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, StringConstraints
+from pydantic import StringConstraints
 
+from opencited.frozen import Frozen
 from opencited.http import Exchange
+from opencited.provenance import ProvenanceRecord
 
 type Language = Literal["no", "en"]
 LANGUAGES: tuple[Language, ...] = ("no", "en")
 type TableId = Annotated[str, StringConstraints(pattern=r"^[0-9]{5}$")]
-
-
-class Frozen(BaseModel):
-    """A strict model that cannot change after it is built."""
-
-    model_config = ConfigDict(frozen=True, strict=True, extra="forbid")
 
 
 class TableSummary(Frozen):
@@ -107,6 +103,26 @@ class DataResult(Described):
     """The cells of a selection, with the dimensions that the selection covers."""
 
     observations: tuple[Observation, ...]
+
+
+class Symbol(Frozen):
+    """A symbol that replaces missing values, and the source's explanation of it."""
+
+    symbol: str
+    explanation: str
+
+
+class QueryResult(DataResult):
+    """The cells of a selection with what a reader needs to check them.
+
+    ``symbols`` explains each symbol that the cells use, where the source explains it.
+    ``cached`` says whether the result came from the cache, which repeats the original
+    provenance.
+    """
+
+    symbols: tuple[Symbol, ...]
+    provenance: ProvenanceRecord
+    cached: bool
 
 
 @dataclass(frozen=True)

@@ -41,8 +41,9 @@ lives outside the package, in `evals/`.
 | Module | Contents | Milestone |
 | --- | --- | --- |
 | `opencited.values` | Decimal parsing and the rule that values never become `float` (M1), and formatting in Norwegian and English (M2) | M1 |
-| `opencited.provenance` | The provenance record, response hashing and retrieval times | M1 |
+| `opencited.frozen` | The strict, frozen base of every model | M1 |
 | `opencited.http` | The HTTP client, the rate limiter and the response cache | M1 |
+| `opencited.provenance` | The provenance record, built from the exchange that a result came from | M1 |
 | `opencited.sources` | The interface every source implements, and the registry of sources | M1 |
 | `opencited.sources.ssb` | The StatBank client: search, metadata, data, selections and JSON-stat parsing | M1 |
 | `opencited.snapshots` | Write-once snapshots of raw responses, with the parsed values in Parquet | M2 |
