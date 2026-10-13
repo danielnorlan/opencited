@@ -1,7 +1,7 @@
 {
   "name": "data-05810-post-en",
   "reason": "a data request sent as POST",
-  "recorded_at": "2026-10-13T21:40:05Z",
+  "recorded_at": "2026-10-13T21:56:08Z",
   "request": {
     "method": "POST",
     "url": "https://data.ssb.no/api/pxwebapi/v2/tables/05810/data?lang=en&outputFormat=json-stat2",
@@ -21,6 +21,13 @@
     "original_body_sha256": "669bcd47a66bb5bc3547c1b974c5134f15491aa9c0dd4e03af9c5b22e2fae844",
     "removed": [
       "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
     ]
   }
 }

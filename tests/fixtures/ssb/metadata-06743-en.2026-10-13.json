@@ -1,7 +1,7 @@
 {
   "name": "metadata-06743-en",
   "reason": "dimensions, codes, labels, units and notes",
-  "recorded_at": "2026-10-13T21:39:41Z",
+  "recorded_at": "2026-10-13T21:55:46Z",
   "request": {
     "method": "GET",
     "url": "https://data.ssb.no/api/pxwebapi/v2/tables/06743/metadata?lang=en",
@@ -21,6 +21,13 @@
     "original_body_sha256": "ed288c19825d8c7362bf5614919edec3eacdd8bd6815dd5dd6a5cf6d2e721176",
     "removed": [
       "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
     ]
   }
 }

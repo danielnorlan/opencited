@@ -1,17 +1,19 @@
 # Recorded SSB responses
 
 These files are responses from the API of Statistics Norway (SSB), recorded with
-`scripts/record_ssb_fixtures.py`. The contract tests replay them, so the tests make
-no network calls.
+`scripts/record_ssb_fixtures.py`. The contract tests of the API client, step 2 of
+the [plan](../../../docs/plans/2026-10-13-m1-m2.md), will replay them, so those
+tests make no network calls.
 
 Each recording has two files. `NAME.DATE.json` holds the request, the response
 status, the response headers kept from an allow list and the SHA-256 of the original
-and the stored body. `NAME.DATE.body` holds the body as SSB sent it, apart from the
-contact details of SSB staff, which the recorder removes
-([ADR 0008](../../../docs/adr/0008-http-client.md)). The date is the day of the
+and the stored body. `NAME.DATE.body` holds the body after content decoding, apart
+from the contact details of SSB staff, which the recorder removes
+([ADR 0008](../../../docs/adr/0008-http-client.md)). The date is the UTC date of the
 recording.
 
-To record again, run `uv run python scripts/record_ssb_fixtures.py`. The script
+To record again, run `uv run python scripts/record_ssb_fixtures.py`, with
+`--replace` on a day that already has recordings. The script
 refuses to run in the periods that
 [ADR 0007](../../../docs/adr/0007-ssb-pxwebapi-v2.md) keeps scheduled jobs away
 from.

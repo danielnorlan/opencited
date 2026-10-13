@@ -1,7 +1,7 @@
 {
   "name": "metadata-05810-en",
   "reason": "dimensions, codes, labels, units and notes",
-  "recorded_at": "2026-10-13T21:39:47Z",
+  "recorded_at": "2026-10-13T21:55:52Z",
   "request": {
     "method": "GET",
     "url": "https://data.ssb.no/api/pxwebapi/v2/tables/05810/metadata?lang=en",
@@ -21,6 +21,13 @@
     "original_body_sha256": "38d35ffb281be0ea92865b497a6f25699406401f9e21479e1eb7c127a56cf551",
     "removed": [
       "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
     ]
   }
 }

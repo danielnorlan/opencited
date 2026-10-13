@@ -36,10 +36,14 @@ come from SSB's API guide, the PxWebApi user guide and requests to the live API 
   unless they need that period. The guide gives no time zone, and this record
   assumes Norwegian time (Europe/Oslo).
 
-The fixtures recorded on 2026-10-13 in `tests/fixtures/ssb/` confirm these findings,
-apart from the expressions `?`, `bottom`, `range`, `from` and `to`, which they do not
-use. A URL of about 3,300 characters was answered with HTTP 404 and an HTML page,
-and a table that does not exist with HTTP 404 and a JSON error.
+The fixtures recorded on 2026-10-13 in `tests/fixtures/ssb/` confirm the API and
+software versions, the cell limit, the missing call limit in `/config`, the rate
+limit headers, the symbol `..` with its note, the expressions `*` and `top`, and two
+errors: a URL of about 3,300 characters got HTTP 404 with an HTML page, and a table
+that does not exist got HTTP 404 with a JSON error. The URL limit of about 2,100
+characters, POST without that limit, brackets around expressions with commas, the
+other expressions, the symbols `.` and `:`, the 30 calls a minute and the update
+times rest on SSB's documentation, which the recordings do not cover.
 
 ## Decision
 

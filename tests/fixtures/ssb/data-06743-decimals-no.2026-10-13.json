@@ -1,7 +1,7 @@
 {
   "name": "data-06743-decimals-no",
   "reason": "values with one decimal, and zeros",
-  "recorded_at": "2026-10-13T21:39:53Z",
+  "recorded_at": "2026-10-13T21:55:57Z",
   "request": {
     "method": "GET",
     "url": "https://data.ssb.no/api/pxwebapi/v2/tables/06743/data?lang=no&valueCodes%5BFiskeslagSamiske%5D=80a&valueCodes%5BSamiskeElver%5D=18%2C18000000127%2C18144000000&valueCodes%5BContentsCode%5D=Fangst%2CGjennomsnitt&valueCodes%5BTid%5D=2015%2C2016&outputFormat=json-stat2",
@@ -21,6 +21,13 @@
     "original_body_sha256": "e43c03576cff6015aa4bc3ba3f2d0df4c2267360e28fbe63fa9db241ccd98167",
     "removed": [
       "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
     ]
   }
 }

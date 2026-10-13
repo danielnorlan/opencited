@@ -154,12 +154,10 @@ wheels = [
 name = "opencited"
 version = "0.1.0.dev0"
 source = { editable = "." }
-dependencies = [
-    { name = "httpx2" },
-]
 
 [package.dev-dependencies]
 dev = [
+    { name = "httpx2" },
     { name = "pre-commit" },
     { name = "pyright", extra = ["nodejs"] },
     { name = "pytest" },
@@ -167,10 +165,10 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "httpx2", specifier = ">=2.13,<3" }]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "httpx2", specifier = ">=2.13,<3" },
     { name = "pre-commit", specifier = ">=4.7.0" },
     { name = "pyright", extras = ["nodejs"], specifier = ">=1.1.414" },
     { name = "pytest", specifier = ">=9.1.1" },

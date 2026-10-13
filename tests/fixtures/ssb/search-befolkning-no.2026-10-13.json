@@ -1,7 +1,7 @@
 {
   "name": "search-befolkning-no",
   "reason": "table search in Norwegian",
-  "recorded_at": "2026-10-13T21:39:28Z",
+  "recorded_at": "2026-10-13T21:55:33Z",
   "request": {
     "method": "GET",
     "url": "https://data.ssb.no/api/pxwebapi/v2/tables?query=befolkning&lang=no&pageSize=10",
@@ -19,6 +19,7 @@
     "body_file": "search-befolkning-no.2026-10-13.body",
     "body_sha256": "20eaad5ed7854c2ee4870885d1619fb41955fba9befbc19cce3cab2542b6665c",
     "original_body_sha256": "20eaad5ed7854c2ee4870885d1619fb41955fba9befbc19cce3cab2542b6665c",
-    "removed": []
+    "removed": [],
+    "removed_fields": []
   }
 }

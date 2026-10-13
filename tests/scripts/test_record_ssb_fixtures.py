@@ -1,7 +1,8 @@
 """Tests for the SSB fixture recorder and for the fixtures it recorded. None calls SSB.
 
-The removal tests insert a contact entry with invented values into a recorded body,
-so they can check that the recorder gives back the recorded bytes exactly.
+The removal tests insert contact entries with invented values into recorded bodies, so
+they can check that the recorder gives back the recorded bytes exactly, and that it
+refuses bodies it cannot clean.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
+import httpx2
 import pytest
 import record_ssb_fixtures as recorder
 
@@ -23,6 +25,7 @@ CONTACT = (
     '[{"name":"Kari Nordmann","organization":"Statistics Norway","phone":"00 00 00 00",'
     '"mail":"kari@example.com","raw":"Kari Nordmann, Statistics Norway# 00 00 00 00#kari@example.com"}]'
 )
+FIELDS = ("mail", "name", "organization", "phone", "raw")
 
 
 def load(path: Path) -> dict[str, object]:
@@ -37,17 +40,57 @@ def body_of(path: Path) -> bytes:
     return (FIXTURES / str(response_of(path)["body_file"])).read_bytes()
 
 
+def latest_by_name() -> dict[str, Path]:
+    """Return the newest fixture of each recording, since file names sort by date."""
+    latest: dict[str, Path] = {}
+    for path in ENVELOPES:
+        latest[str(load(path)["name"])] = path
+    return latest
+
+
+LATEST = latest_by_name()
+
+
 def metadata_body() -> str:
-    return (
-        FIXTURES / str(response_of(ENVELOPES_BY_NAME["metadata-05810-en"])["body_file"])
-    ).read_text(encoding="utf-8")
+    return body_of(LATEST["metadata-05810-en"]).decode("utf-8")
 
 
-ENVELOPES_BY_NAME = {str(load(path)["name"]): path for path in ENVELOPES}
+def extension_bounds(text: str) -> tuple[int, int]:
+    """Return where the top-level ``extension`` object of a body opens and closes."""
+    span = recorder.member_span(text, 0, ("extension",))
+    assert span is not None
+    _, value_start, value_end = span
+    return value_start, value_end - 1
+
+
+def with_member(text: str, member: str, *, at: str) -> str:
+    """Return a body with ``member`` added first, last or in the middle of ``extension``."""
+    opening, closing = extension_bounds(text)
+    if at == "first":
+        return f"{text[: opening + 1]}{member},{text[opening + 1 :]}"
+    if at == "last":
+        return f"{text[:closing]},{member}{text[closing:]}"
+    first = recorder.member_span(text, opening, ("px",))
+    assert first is not None
+    return f"{text[: first[2]]},{member}{text[first[2] :]}"
+
+
+# The recorded fixtures.
 
 
 def test_every_recording_has_a_fixture() -> None:
-    assert {recording.name for recording in recorder.RECORDINGS} <= set(ENVELOPES_BY_NAME)
+    assert {recording.name for recording in recorder.RECORDINGS} <= set(LATEST)
+
+
+@pytest.mark.parametrize("recording", recorder.RECORDINGS, ids=lambda recording: recording.name)
+def test_fixture_request_matches_the_recording(recording: recorder.Recording) -> None:
+    with httpx2.Client(base_url=recorder.BASE_URL) as client:
+        request = recorder.build(client, recording)
+    described = cast("dict[str, object]", load(LATEST[recording.name])["request"])
+    assert described["method"] == request.method
+    assert described["url"] == str(request.url)
+    assert described["body"] == (request.content.decode() if request.content else None)
+    assert response_of(LATEST[recording.name])["status"] == recording.expected_status
 
 
 def test_every_body_file_has_a_description() -> None:
@@ -57,14 +100,16 @@ def test_every_body_file_has_a_description() -> None:
 
 @pytest.mark.parametrize("path", ENVELOPES, ids=lambda path: path.stem)
 def test_stored_body_matches_its_hash(path: Path) -> None:
-    assert hashlib.sha256(body_of(path)).hexdigest() == response_of(path)["body_sha256"]
+    response = response_of(path)
+    digest = hashlib.sha256(body_of(path)).hexdigest()
+    assert digest == response["body_sha256"]
+    assert (digest == response["original_body_sha256"]) is (not response["removed"])
 
 
 @pytest.mark.parametrize("path", ENVELOPES, ids=lambda path: path.stem)
 def test_fixture_keeps_only_allowed_headers(path: Path) -> None:
     headers = cast("dict[str, str]", response_of(path)["headers"])
     assert set(headers) <= recorder.KEPT_HEADERS
-    assert "set-cookie" not in headers
 
 
 @pytest.mark.parametrize("path", ENVELOPES, ids=lambda path: path.stem)
@@ -78,83 +123,186 @@ def test_file_name_carries_the_recording_date(path: Path) -> None:
 
 @pytest.mark.parametrize("path", ENVELOPES, ids=lambda path: path.stem)
 def test_no_stored_body_holds_contact_details(path: Path) -> None:
-    body = body_of(path)
-    assert recorder.remove_contact(body) == (body, False)
+    content_type = cast("dict[str, str]", response_of(path)["headers"]).get("content-type", "")
+    _, removed = recorder.remove_contact(body_of(path), json_expected="json" in content_type)
+    assert removed == ()
 
 
-def test_data_and_metadata_had_contact_details_removed() -> None:
-    removed = {name for name, path in ENVELOPES_BY_NAME.items() if response_of(path)["removed"]}
-    assert {
-        name for name in ENVELOPES_BY_NAME if name.startswith(("data-", "metadata-"))
-    } == removed
+def test_contact_details_were_removed_from_data_and_metadata() -> None:
+    removed = {name for name, path in LATEST.items() if response_of(path)["removed"]}
+    assert removed == {name for name in LATEST if name.startswith(("data-", "metadata-"))}
+    for name in removed:
+        assert response_of(LATEST[name])["removed_fields"] == list(FIELDS)
 
 
-def top_level_extension(text: str) -> tuple[int, int]:
-    """Return where the top-level ``extension`` object of a recorded body opens and closes."""
-    span = recorder.member_span(text, 0, ("extension",))
-    assert span is not None
-    _, value_start, value_end = span
-    return value_start, value_end - 1
+# Removing the contact member.
 
 
-def test_removal_gives_back_the_recorded_bytes_when_contact_comes_first() -> None:
+@pytest.mark.parametrize("at", ["first", "middle", "last"])
+def test_removal_gives_back_the_recorded_bytes(at: str) -> None:
     recorded = metadata_body()
-    opening, _ = top_level_extension(recorded)
-    with_contact = f'{recorded[: opening + 1]}"contact":{CONTACT},{recorded[opening + 1 :]}'
-    assert recorder.remove_contact(with_contact.encode()) == (recorded.encode(), True)
+    body = with_member(recorded, f'"contact":{CONTACT}', at=at).encode()
+    assert recorder.remove_contact(body) == (recorded.encode(), FIELDS)
 
 
-def test_removal_gives_back_the_recorded_bytes_when_contact_comes_last() -> None:
-    recorded = metadata_body()
-    _, closing = top_level_extension(recorded)
-    with_contact = f'{recorded[:closing]},"contact":{CONTACT}{recorded[closing:]}'
-    assert recorder.remove_contact(with_contact.encode()) == (recorded.encode(), True)
+@pytest.mark.parametrize("spacing", ["", " ", "\n  "])
+def test_removal_of_the_only_member(spacing: str) -> None:
+    body = f'{{"label":"x","extension":{{{spacing}"contact":{CONTACT}{spacing}}}}}'
+    stored, removed = recorder.remove_contact(body.encode())
+    assert removed == FIELDS
+    assert stored.decode() == f'{{"label":"x","extension":{{{spacing}{spacing}}}}}'
 
 
-def test_removal_leaves_nested_extensions_alone() -> None:
-    recorded = metadata_body()
-    nested = recorded.index('"extension":{') + len('"extension":{')
-    assert nested < top_level_extension(recorded)[0]
-    with_contact = f'{recorded[:nested]}"contact":{CONTACT},{recorded[nested:]}'
-    assert recorder.remove_contact(with_contact.encode()) == (with_contact.encode(), False)
-
-
-def test_removal_handles_indented_json() -> None:
+def test_removal_keeps_the_indentation_of_indented_json() -> None:
+    kept = {"label": "x", "extension": {"px": {"decimals": 0}}}
     document = {"label": "x", "extension": {"px": {"decimals": 0}, "contact": json.loads(CONTACT)}}
     stored, removed = recorder.remove_contact(json.dumps(document, indent=2).encode())
-    assert removed
-    assert json.loads(stored) == {"label": "x", "extension": {"px": {"decimals": 0}}}
+    assert removed == FIELDS
+    assert stored.decode() == json.dumps(kept, indent=2)
 
 
-def test_removal_refuses_when_a_personal_value_appears_elsewhere() -> None:
-    document = {"note": ["Ask Kari Nordmann"], "extension": {"contact": json.loads(CONTACT)}}
-    with pytest.raises(ValueError, match="still appear"):
-        recorder.remove_contact(json.dumps(document).encode())
+def test_removal_of_several_entries_with_raw_unicode_and_escapes() -> None:
+    contact = (
+        '[{"name":"Åse \\"Bjørn\\" Ødegård","mail":"ase@example.com"},'
+        '{"name":"Ola Nordmann","phone":"11 11 11 11"}]'
+    )
+    recorded = metadata_body()
+    body = with_member(recorded, f'"contact":{contact}', at="first").encode()
+    assert recorder.remove_contact(body) == (recorded.encode(), ("mail", "name", "phone"))
+
+
+def test_removal_of_a_contact_object() -> None:
+    recorded = metadata_body()
+    member = '"contact":{"name":"Kari Nordmann","mail":"kari@example.com"}'
+    body = with_member(recorded, member, at="last").encode()
+    assert recorder.remove_contact(body) == (recorded.encode(), ("mail", "name"))
+
+
+def test_removal_keeps_a_byte_order_mark() -> None:
+    recorded = metadata_body()
+    body = recorder.BOM + with_member(recorded, f'"contact":{CONTACT}', at="first").encode()
+    assert recorder.remove_contact(body) == (recorder.BOM + recorded.encode(), FIELDS)
+
+
+def test_numbers_are_located_as_text() -> None:
+    huge = "9" * 5000
+    body = f'{{"value":[{huge}],"extension":{{"contact":{CONTACT}}}}}'
+    stored, removed = recorder.remove_contact(body.encode())
+    assert removed == FIELDS
+    assert stored.decode() == f'{{"value":[{huge}],"extension":{{}}}}'
 
 
 @pytest.mark.parametrize(
-    "body",
-    [b'{"apiVersion":"2.3.2"}', b"<!DOCTYPE html><html></html>", b"\xff\xfe", b"[1, 2]"],
-)
-def test_bodies_without_contact_details_stay_as_they_are(body: bytes) -> None:
-    assert recorder.remove_contact(body) == (body, False)
-
-
-@pytest.mark.parametrize(
-    ("utc", "avoided"),
+    ("body", "reason"),
     [
-        ((2, 54), False),
-        ((2, 55), True),
-        ((6, 14), True),
-        ((6, 15), False),
-        ((9, 25), True),
-        ((9, 45), False),
-        ((21, 0), False),
+        (b"\xff\xfe", "not UTF-8"),
+        (b'{"value": [1, 2', "not valid JSON"),
+        (b'{"extension":{"px":{}},"extension":{"contact":[]}}', "duplicate keys"),
+        (b'{"extension":null,"extension":{"contact":[]}}', "duplicate keys"),
+        (b'{"link":{"extension":{"contact":[]}}}', "contact field outside"),
+        (b'{"note":["Write to post@example.com"]}', "email address"),
     ],
 )
-def test_avoided_periods_follow_norwegian_time(utc: tuple[int, int], avoided: bool) -> None:
-    # 14 October 2026 is in summer time, two hours ahead of UTC.
-    moment = datetime(2026, 10, 14, *utc, tzinfo=UTC)
+def test_removal_refuses_bodies_it_cannot_check(body: bytes, reason: str) -> None:
+    with pytest.raises(recorder.UnsafeBodyError, match=reason):
+        recorder.remove_contact(body)
+
+
+@pytest.mark.parametrize(
+    "note",
+    ["Ask Kari Nordmann", "ASK KARI NORDMANN", 'Ask \\"Kari Nordmann\\"', "Call 00 00 00 00"],
+)
+def test_removal_refuses_when_a_personal_value_appears_elsewhere(note: str) -> None:
+    body = f'{{"note":["{note}"],"extension":{{"contact":{CONTACT}}}}}'
+    with pytest.raises(recorder.UnsafeBodyError, match="still appear"):
+        recorder.remove_contact(body.encode())
+
+
+def test_removal_refuses_when_other_content_would_change(monkeypatch: pytest.MonkeyPatch) -> None:
+    def careless_cut(text: str, key_start: int, value_end: int) -> str:
+        return text[:key_start] + text[value_end:]
+
+    monkeypatch.setattr(recorder, "cut_member", careless_cut)
+    body = f'{{"extension":{{"px":{{}},"contact":{CONTACT}}}}}'
+    with pytest.raises(recorder.UnsafeBodyError, match="changed other content"):
+        recorder.remove_contact(body.encode())
+
+
+@pytest.mark.parametrize("body", [b'{"apiVersion":"2.3.2"}', b"[1, 2]", b'{"extension":{"px":{}}}'])
+def test_json_without_contact_details_stays_as_it_is(body: bytes) -> None:
+    assert recorder.remove_contact(body) == (body, ())
+
+
+def test_a_page_that_is_not_json_stays_as_it_is_when_allowed() -> None:
+    page = b"<!DOCTYPE html><html><title>404</title></html>"
+    assert recorder.remove_contact(page, json_expected=False) == (page, ())
+    with pytest.raises(recorder.UnsafeBodyError, match="email"):
+        recorder.remove_contact(b"<p>post@example.com</p>", json_expected=False)
+
+
+# Recording one response.
+
+
+def answer(status: int, body: bytes) -> httpx2.MockTransport:
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        headers = {
+            "Content-Type": "application/json",
+            "Set-Cookie": "X-Identity=1; Path=/",
+            "X-RateLimit-Limit": "40",
+        }
+        return httpx2.Response(status, headers=headers, content=body, request=request)
+
+    return httpx2.MockTransport(handler)
+
+
+def test_record_writes_a_clean_fixture(tmp_path: Path) -> None:
+    recorded = metadata_body()
+    body = with_member(recorded, f'"contact":{CONTACT}', at="first").encode()
+    with httpx2.Client(base_url=recorder.BASE_URL, transport=answer(200, body)) as client:
+        path = recorder.record(client, recorder.RECORDINGS[3], tmp_path, replace=False)
+    response = response_of(path)
+    assert response["headers"] == {"content-type": "application/json", "x-ratelimit-limit": "40"}
+    assert response["removed_fields"] == list(FIELDS)
+    assert response["original_body_sha256"] == hashlib.sha256(body).hexdigest()
+    assert (tmp_path / str(response["body_file"])).read_bytes() == recorded.encode()
+
+
+def test_record_refuses_an_unexpected_status(tmp_path: Path) -> None:
+    with (
+        httpx2.Client(base_url=recorder.BASE_URL, transport=answer(429, b"{}")) as client,
+        pytest.raises(recorder.RecordingError, match="429"),
+    ):
+        recorder.record(client, recorder.RECORDINGS[0], tmp_path, replace=False)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_record_keeps_earlier_recordings_unless_told_to_replace(tmp_path: Path) -> None:
+    with httpx2.Client(base_url=recorder.BASE_URL, transport=answer(200, b"{}")) as client:
+        recorder.record(client, recorder.RECORDINGS[0], tmp_path, replace=False)
+        with pytest.raises(FileExistsError):
+            recorder.record(client, recorder.RECORDINGS[0], tmp_path, replace=False)
+        recorder.record(client, recorder.RECORDINGS[0], tmp_path, replace=True)
+
+
+# Times and the command line.
+
+
+@pytest.mark.parametrize(
+    ("moment", "avoided"),
+    [
+        # 14 October 2026 is in summer time, two hours ahead of UTC.
+        (datetime(2026, 10, 14, 2, 54, tzinfo=UTC), False),
+        (datetime(2026, 10, 14, 2, 55, tzinfo=UTC), True),
+        (datetime(2026, 10, 14, 6, 14, tzinfo=UTC), True),
+        (datetime(2026, 10, 14, 6, 15, tzinfo=UTC), False),
+        (datetime(2026, 10, 14, 9, 25, tzinfo=UTC), True),
+        (datetime(2026, 10, 14, 9, 45, tzinfo=UTC), False),
+        # 14 January 2027 is in winter time, one hour ahead of UTC.
+        (datetime(2027, 1, 14, 2, 55, tzinfo=UTC), False),
+        (datetime(2027, 1, 14, 3, 55, tzinfo=UTC), True),
+    ],
+)
+def test_avoided_periods_follow_norwegian_time(moment: datetime, avoided: bool) -> None:
     assert recorder.in_avoided_period(moment) is avoided
 
 
@@ -169,3 +317,14 @@ def test_data_params_put_the_codes_between_language_and_format() -> None:
 def test_unknown_recording_names_are_rejected(capsys: pytest.CaptureFixture[str]) -> None:
     assert recorder.main(["--only", "no-such-recording"]) == 2
     assert "no-such-recording" in capsys.readouterr().err
+
+
+def test_main_refuses_to_run_in_an_avoided_period(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    def always(moment: datetime) -> bool:
+        return True
+
+    monkeypatch.setattr(recorder, "in_avoided_period", always)
+    assert recorder.main(["--out", str(tmp_path / "fixtures")]) == 1
+    assert not (tmp_path / "fixtures").exists()

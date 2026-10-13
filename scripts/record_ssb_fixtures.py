@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """Record responses from Statistics Norway's API as test fixtures.
 
-Usage: uv run python scripts/record_ssb_fixtures.py [--out DIR] [--only NAME ...]
+Usage: uv run python scripts/record_ssb_fixtures.py [--out DIR] [--only NAME ...] [--replace]
 
-Each recording becomes two files: NAME.DATE.json holds the request, the response
-status, the kept headers and two hashes, and NAME.DATE.body holds the response body.
-The body keeps every byte that SSB sent apart from the contact details of SSB staff,
-which are cut out, and the JSON file records the SHA-256 of both the original and the
-stored body (ADR 0008). Headers come from an allow list, so cookies never reach a
+Each recording becomes two files, named with the UTC date of the recording:
+NAME.DATE.json holds the request, the response status, the kept headers and two
+hashes, and NAME.DATE.body holds the response body after content decoding. The body
+keeps every character apart from the contact details of SSB staff, which are cut out,
+and the JSON file records the SHA-256 of the original and of the stored body
+(ADR 0008). The recorder refuses a body when it cannot show that no contact details
+or email addresses remain. Headers come from an allow list, so cookies never reach a
 fixture. The script waits between requests to stay within SSB's rate limit, and it
 refuses to run in the periods that ADR 0007 keeps scheduled jobs away from.
 """
@@ -17,12 +19,14 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sys
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from datetime import time as clock
-from importlib.metadata import version
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import cast
 from zoneinfo import ZoneInfo
@@ -50,11 +54,24 @@ KEPT_HEADERS = frozenset(
     }
 )
 CONTACT_PATH = ("extension", "contact")
-# The fields of a contact entry that identify a person. The organisation, "Statistics
-# Norway", appears elsewhere in every response.
-PERSONAL_FIELDS = ("name", "phone", "mail", "raw")
-DECODER = json.JSONDecoder()
+# Strings in a contact entry that also appear elsewhere in every response and say
+# nothing about a person.
+ORGANISATIONS = frozenset({"statistics norway", "statistisk sentralbyrå"})
+# Shorter strings from a contact entry would match ordinary words by chance.
+MIN_PERSONAL_LENGTH = 4
+EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+")
+BOM = b"\xef\xbb\xbf"
+# Numbers stay text, so locating a member never turns a value into a float.
+DECODER = json.JSONDecoder(parse_float=str, parse_int=str)
 WHITESPACE = " \t\n\r"
+
+
+class UnsafeBodyError(ValueError):
+    """A response body that the recorder cannot show to be free of personal data."""
+
+
+class RecordingError(RuntimeError):
+    """A response that differs from what the recording expects."""
 
 
 @dataclass(frozen=True)
@@ -208,6 +225,7 @@ def member_span(text: str, start: int, path: tuple[str, ...]) -> tuple[int, int,
 
     ``start`` is the index of the opening brace of the object to search. The member
     starts at its key, so cutting from there to the end of the value removes both.
+    The text must be valid JSON without duplicate keys, which ``parsed`` checks.
     """
     if text[start] != "{":
         return None
@@ -239,62 +257,122 @@ def cut_member(text: str, key_start: int, value_end: int) -> str:
     return text[:key_start] + text[value_end:]
 
 
+def unique_members(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    """Build a JSON object, refusing duplicate keys, which would hide a second member."""
+    keys = [key for key, _ in pairs]
+    if len(set(keys)) != len(keys):
+        raise UnsafeBodyError("the body has duplicate keys")
+    return dict(pairs)
+
+
 def parsed(text: str) -> object:
-    """Parse JSON with numbers kept as text, so a comparison never goes through float."""
-    return json.loads(text, parse_float=str, parse_int=str)
+    """Parse JSON with numbers kept as text and duplicate keys refused."""
+    return json.loads(text, parse_float=str, parse_int=str, object_pairs_hook=unique_members)
 
 
-def personal_strings(contact: object) -> list[str]:
-    """Return the values of the personal fields in a parsed list of contact entries."""
-    if not isinstance(contact, list):
-        return []
-    found: list[str] = []
-    for entry in cast("list[object]", contact):
-        if isinstance(entry, dict):
-            fields = cast("dict[str, object]", entry)
-            found.extend(
-                value
-                for key in PERSONAL_FIELDS
-                if isinstance(value := fields.get(key), str) and value
-            )
-    return found
+def keys_and_strings(value: object) -> Iterator[str]:
+    """Yield every key and every string inside a parsed JSON value."""
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, list):
+        for item in cast("list[object]", value):
+            yield from keys_and_strings(item)
+    elif isinstance(value, dict):
+        for key, item in cast("dict[str, object]", value).items():
+            yield key
+            yield from keys_and_strings(item)
 
 
-def without_contact(document: dict[str, object]) -> dict[str, object]:
-    """Return a parsed response without ``extension.contact``."""
-    extension = document.get(CONTACT_PATH[0])
-    if not isinstance(extension, dict):
-        raise ValueError("the response has no extension object")
-    members = cast("dict[str, object]", extension)
-    trimmed = {key: value for key, value in members.items() if key != CONTACT_PATH[1]}
-    return {**document, CONTACT_PATH[0]: trimmed}
+def contact_keys(contact: object) -> tuple[str, ...]:
+    """Return the field names of a removed contact value, for the fixture's record."""
+    entries = cast("list[object]", contact) if isinstance(contact, list) else [contact]
+    names = {
+        key
+        for entry in entries
+        if isinstance(entry, dict)
+        for key in cast("dict[str, object]", entry)
+    }
+    return tuple(sorted(names))
 
 
-def remove_contact(body: bytes) -> tuple[bytes, bool]:
-    """Return the body without ``extension.contact``, and whether it held one.
+def personal_strings(contact: object) -> set[str]:
+    """Return the strings of a contact value that could identify a person, case-folded."""
+    keys = set(contact_keys(contact))
+    return {
+        text.casefold()
+        for text in keys_and_strings(contact)
+        if text not in keys
+        and text.casefold() not in ORGANISATIONS
+        and len(text) >= MIN_PERSONAL_LENGTH
+    }
 
-    Every other byte stays as it was. The result is checked by parsing both versions:
-    they must differ only by the removed member, and no string from the contact may
-    remain anywhere in the body.
+
+def without_member(document: dict[str, object], path: tuple[str, ...]) -> dict[str, object]:
+    """Return a parsed JSON object without the member at ``path``."""
+    head, rest = path[0], path[1:]
+    if not rest:
+        return {key: value for key, value in document.items() if key != head}
+    child = document.get(head)
+    if not isinstance(child, dict):
+        raise UnsafeBodyError(f"the body has no object at {head!r}")
+    return {**document, head: without_member(cast("dict[str, object]", child), rest)}
+
+
+def check_clean(document: object, personal: set[str]) -> None:
+    """Refuse a parsed body that still holds a contact field, an email or a personal string."""
+    for text in keys_and_strings(document):
+        folded = text.casefold()
+        if folded == "contact":
+            raise UnsafeBodyError("the body has a contact field outside extension.contact")
+        if EMAIL.search(text):
+            raise UnsafeBodyError("the body holds an email address")
+        if any(value in folded for value in personal):
+            raise UnsafeBodyError("contact details still appear in the body")
+
+
+def remove_contact(body: bytes, *, json_expected: bool = True) -> tuple[bytes, tuple[str, ...]]:
+    """Return the body without ``extension.contact``, and the field names it removed.
+
+    Every other character stays as it was, and a byte order mark is kept. The result
+    is checked by parsing it: it must equal the original without the member, and no
+    contact field, email address or string from the contact may remain. A body that
+    is not JSON is kept as it is when ``json_expected`` is false and it holds no
+    email address. Anything that cannot be checked raises ``UnsafeBodyError``.
     """
+    prefix = BOM if body.startswith(BOM) else b""
     try:
-        text = body.decode("utf-8")
-        original = parsed(text)
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        return body, False
-    if not isinstance(original, dict):
-        return body, False
-    span = member_span(text, skip_whitespace(text, 0), CONTACT_PATH)
+        text = body[len(prefix) :].decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise UnsafeBodyError("the body is not UTF-8") from error
+    try:
+        document = parsed(text)
+    except (json.JSONDecodeError, RecursionError) as error:
+        if json_expected:
+            raise UnsafeBodyError("the body is not valid JSON") from error
+        if EMAIL.search(text):
+            raise UnsafeBodyError("the body holds an email address") from error
+        return body, ()
+    span = None
+    if isinstance(document, dict):
+        try:
+            span = member_span(text, skip_whitespace(text, 0), CONTACT_PATH)
+        except (ValueError, RecursionError) as error:
+            raise UnsafeBodyError("the contact field could not be located") from error
     if span is None:
-        return body, False
+        check_clean(cast("object", document), set())
+        return body, ()
     key_start, value_start, value_end = span
     contact = parsed(text[value_start:value_end])
     stored = cut_member(text, key_start, value_end)
-    if parsed(stored) != without_contact(cast("dict[str, object]", original)):
-        raise ValueError("removing the contact details changed other content")
-    if any(value in stored for value in personal_strings(contact)):
-        raise ValueError("contact details still appear in the body")
-    return stored.encode("utf-8"), True
+    expected = without_member(cast("dict[str, object]", document), CONTACT_PATH)
+    try:
+        unchanged = parsed(stored) == expected
+    except json.JSONDecodeError as error:
+        raise UnsafeBodyError("removing the contact details changed other content") from error
+    if not unchanged:
+        raise UnsafeBodyError("removing the contact details changed other content")
+    check_clean(expected, personal_strings(contact))
+    return prefix + stored.encode("utf-8"), contact_keys(contact)
 
 
 def sha256(data: bytes) -> str:
@@ -304,7 +382,18 @@ def sha256(data: bytes) -> str:
 
 def kept_headers(headers: httpx2.Headers) -> dict[str, str]:
     """Return the response headers that a fixture may keep, with lower-case names."""
-    return {name: value for name, value in sorted(headers.items()) if name.lower() in KEPT_HEADERS}
+    return {
+        name.lower(): value
+        for name, value in sorted(headers.items())
+        if name.lower() in KEPT_HEADERS
+    }
+
+
+def build(client: httpx2.Client, recording: Recording) -> httpx2.Request:
+    """Return the request for a recording, built the way the client will build it."""
+    return client.build_request(
+        recording.method, recording.path, params=list(recording.params), json=recording.body
+    )
 
 
 def envelope(
@@ -312,7 +401,7 @@ def envelope(
     request: httpx2.Request,
     response: httpx2.Response,
     stored: bytes,
-    removed: bool,
+    removed_keys: tuple[str, ...],
     recorded_at: datetime,
     body_file: str,
 ) -> dict[str, object]:
@@ -332,39 +421,64 @@ def envelope(
             "body_file": body_file,
             "body_sha256": sha256(stored),
             "original_body_sha256": sha256(response.content),
-            "removed": ["extension.contact"] if removed else [],
+            "removed": ["extension.contact"] if removed_keys else [],
+            "removed_fields": list(removed_keys),
         },
     }
 
 
-def record(client: httpx2.Client, recording: Recording, out: Path) -> Path:
-    """Send one request and write its two fixture files. Return the JSON file."""
-    request = client.build_request(
-        recording.method, recording.path, params=list(recording.params), json=recording.body
-    )
-    response = client.send(request)
-    if response.status_code != recording.expected_status:
-        raise RuntimeError(
-            f"{recording.name}: expected HTTP {recording.expected_status}, got {response.status_code}"
-        )
+def record(client: httpx2.Client, recording: Recording, out: Path, *, replace: bool) -> Path:
+    """Send one request and write its two fixture files. Return the JSON file.
+
+    Nothing is written unless the response has the expected status and its body
+    passes ``remove_contact``. The body file is written before the JSON file that
+    describes it.
+    """
     recorded_at = datetime.now(UTC)
     stem = f"{recording.name}.{recorded_at.date().isoformat()}"
-    stored, removed = remove_contact(response.content)
-    (out / f"{stem}.body").write_bytes(stored)
-    document = envelope(recording, request, response, stored, removed, recorded_at, f"{stem}.body")
-    path = out / f"{stem}.json"
-    path.write_text(json.dumps(document, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    return path
+    body_path, json_path = out / f"{stem}.body", out / f"{stem}.json"
+    if not replace and (body_path.exists() or json_path.exists()):
+        raise FileExistsError(f"{json_path.name} exists; use --replace to record it again")
+    request = build(client, recording)
+    response = client.send(request)
+    if response.status_code != recording.expected_status:
+        raise RecordingError(
+            f"expected HTTP {recording.expected_status}, got {response.status_code}"
+        )
+    json_expected = "json" in response.headers.get("content-type", "")
+    stored, removed_keys = remove_contact(response.content, json_expected=json_expected)
+    document = envelope(
+        recording, request, response, stored, removed_keys, recorded_at, body_path.name
+    )
+    body_path.write_bytes(stored)
+    json_path.write_text(
+        json.dumps(document, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+    return json_path
+
+
+def user_agent() -> str:
+    """Return the user agent, which names the project and its version."""
+    try:
+        release = version("opencited")
+    except PackageNotFoundError:
+        release = "unknown"
+    return f"opencited/{release} fixture recorder (+https://github.com/danielnorlan/opencited)"
 
 
 def parse_arguments(arguments: list[str]) -> argparse.Namespace:
+    """Parse the command line."""
     parser = argparse.ArgumentParser(description="Record SSB API responses as fixtures.")
     parser.add_argument("--out", type=Path, default=OUT, help="directory for the fixtures")
     parser.add_argument("--only", nargs="+", metavar="NAME", help="record only these recordings")
+    parser.add_argument(
+        "--replace", action="store_true", help="replace recordings made on the same day"
+    )
     return parser.parse_args(arguments)
 
 
 def main(arguments: list[str] | None = None) -> int:
+    """Record the selected recordings. Return 0, 1 when a recording fails, or 2 for bad input."""
     options = parse_arguments(sys.argv[1:] if arguments is None else arguments)
     unknown = set(options.only or ()) - {r.name for r in RECORDINGS}
     if unknown:
@@ -376,17 +490,20 @@ def main(arguments: list[str] | None = None) -> int:
     selected = [r for r in RECORDINGS if not options.only or r.name in options.only]
     out: Path = options.out
     out.mkdir(parents=True, exist_ok=True)
-    agent = (
-        f"opencited/{version('opencited')} fixture recorder"
-        " (+https://github.com/danielnorlan/opencited)"
-    )
     with httpx2.Client(
-        base_url=BASE_URL, headers={"User-Agent": agent}, timeout=30.0, follow_redirects=False
+        base_url=BASE_URL,
+        headers={"User-Agent": user_agent()},
+        timeout=30.0,
+        follow_redirects=False,
     ) as client:
         for number, recording in enumerate(selected):
             if number:
                 time.sleep(PAUSE_SECONDS)
-            path = record(client, recording, out)
+            try:
+                path = record(client, recording, out, replace=options.replace)
+            except (UnsafeBodyError, RecordingError, FileExistsError, httpx2.HTTPError) as error:
+                print(f"{recording.name}: {error}", file=sys.stderr)
+                return 1
             print(f"recorded {path}")
     return 0
 

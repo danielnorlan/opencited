@@ -1,7 +1,7 @@
 {
   "name": "data-05810-en",
   "reason": "the same cells in both languages",
-  "recorded_at": "2026-10-13T21:40:00Z",
+  "recorded_at": "2026-10-13T21:56:02Z",
   "request": {
     "method": "GET",
     "url": "https://data.ssb.no/api/pxwebapi/v2/tables/05810/data?lang=en&valueCodes%5BKjonn%5D=0&valueCodes%5BAlder%5D=999B&valueCodes%5BContentsCode%5D=Personer&valueCodes%5BTid%5D=2025%2C2026&outputFormat=json-stat2",
@@ -21,6 +21,13 @@
     "original_body_sha256": "9f34abbc1e4233386d943e44cf4492351e8ce58ac7a628901f12820181d247d2",
     "removed": [
       "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
     ]
   }
 }

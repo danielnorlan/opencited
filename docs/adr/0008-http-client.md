@@ -25,14 +25,17 @@ POST requests ([ADR 0007](0007-ssb-pxwebapi-v2.md)).
    without a recording fails the test. A test setting points the server at a
    directory of recorded fixtures, so the end-to-end test over stdio replays them
    inside the server process.
-3. `scripts/record_ssb_fixtures.py` records fixtures from the live API. Each file
-   holds the request, the response status and headers and the raw body, and its
-   name carries the recording date. Cookies and authorisation headers are never
+3. `scripts/record_ssb_fixtures.py` records fixtures from the live API. Each
+   recording is a JSON file with the request, the response status and the headers
+   from an allow list, and a file with the body after content decoding. Both names
+   carry the UTC date of the recording. Cookies and authorisation headers are never
    stored.
 4. SSB's responses name the statistician responsible for the table, with a phone
    number and an email address, in `extension.contact`. The recorder cuts that
-   member out of the body by its byte range, so every other byte stays as SSB sent
-   it, and stores the SHA-256 of the original body in the fixture file. A recorded
+   member out of the body, so every other character stays as SSB sent it, and
+   stores the SHA-256 of the original body in the fixture file. It refuses a body
+   when it cannot show that no contact field, email address or string from the
+   contact remains. A recorded
    raw response, as spec 0001 uses the term, is the stored body, and a replayed
    response carries its hash. The personal data check runs on every fixture.
 5. The cache is a small SQLite store of our own in the user's cache directory,
