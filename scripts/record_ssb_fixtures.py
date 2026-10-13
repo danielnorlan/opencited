@@ -135,6 +135,16 @@ RECORDINGS: tuple[Recording, ...] = (
         reason="cells with the symbol '..' and the note that explains it",
     ),
     Recording(
+        "data-06856-symbols-no",
+        "GET",
+        "/tables/06856/data",
+        data_params(
+            "no",
+            {"RegionSamisk": "1849,1850,1853", "ContentsCode": "*", "Tid": "2008,2009,2010"},
+        ),
+        reason="the same cells with the note in Norwegian",
+    ),
+    Recording(
         "data-06743-decimals-no",
         "GET",
         "/tables/06743/data",

@@ -59,15 +59,16 @@ ignore = ["E501"]
 
 [tool.pyright]
 include = ["src", "tests", "scripts"]
-extraPaths = ["scripts"]
+extraPaths = ["scripts", "tests"]
 pythonVersion = "3.13"
 typeCheckingMode = "strict"
 
 [tool.pytest.ini_options]
 minversion = "9.0"
 testpaths = ["tests"]
-# The development scripts import each other, and their tests import them.
-pythonpath = ["scripts"]
+# The development scripts import each other and their tests import them, and tests
+# share the readers of recorded responses in tests/recorded.py.
+pythonpath = ["scripts", "tests"]
 addopts = ["-ra", "--strict-markers", "--strict-config", "--import-mode=importlib", "-m", "not live"]
 markers = ["live: calls external services; excluded by default, run with `pytest -m live`"]
 xfail_strict = true

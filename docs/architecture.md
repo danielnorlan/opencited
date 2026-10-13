@@ -40,8 +40,8 @@ lives outside the package, in `evals/`.
 
 | Module | Contents | Milestone |
 | --- | --- | --- |
-| `opencited.values` | Decimal parsing and the rule that values never become `float` (M1), and formatting in Norwegian and English (M2) | M1 |
-| `opencited.frozen` | The strict, frozen base of every model | M1 |
+| `opencited.values` | Decimal parsing, the decimal type that JSON writes in fixed point and never reads from a float (M1), and formatting in Norwegian and English (M2) | M1 |
+| `opencited.model` | The strict, frozen base of every model, and the field types they share | M1 |
 | `opencited.http` | The HTTP client, the rate limiter and the response cache | M1 |
 | `opencited.provenance` | The provenance record, built from the exchange that a result came from | M1 |
 | `opencited.sources` | The interface every source implements, and the registry of sources | M1 |

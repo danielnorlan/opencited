@@ -2,16 +2,18 @@
 
 [Spec 0001](../../docs/specs/0001-ssb-mcp-server.md) defines the fields. The record
 is built from the exchange that produced a result, so the request, the retrieval time
-and the hash of the raw body are the ones that the client sent and received.
+and the hash of the response body, after content decoding, are the ones that the client
+sent and received.
 """
 
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime
 
-from opencited.frozen import Frozen
+from pydantic import AwareDatetime
+
 from opencited.http import Exchange
+from opencited.model import Frozen, Sha256Hex, TableId, UtcDatetime
 
 
 class RequestRecord(Frozen):
@@ -31,17 +33,17 @@ class ProvenanceRecord(Frozen):
     source_id: str
     publisher: str
     license: str
-    table_id: str
+    table_id: TableId
     table_title: str
     table_url: str
-    table_updated: datetime
+    table_updated: AwareDatetime
     request: RequestRecord
-    retrieved_at: datetime
-    response_sha256: str
+    retrieved_at: UtcDatetime
+    response_sha256: Sha256Hex
 
 
 def sha256_hex(content: bytes) -> str:
-    """Return the hexadecimal SHA-256 of a raw response body."""
+    """Return the hexadecimal SHA-256 of a response body after content decoding."""
     return hashlib.sha256(content).hexdigest()
 
 
@@ -54,7 +56,7 @@ def record_of(
     table_id: str,
     table_title: str,
     table_url: str,
-    table_updated: datetime,
+    table_updated: AwareDatetime,
 ) -> ProvenanceRecord:
     """Return the provenance record of a result that came from ``exchange``."""
     return ProvenanceRecord(

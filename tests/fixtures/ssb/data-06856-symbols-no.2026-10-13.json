@@ -1,0 +1,33 @@
+{
+  "name": "data-06856-symbols-no",
+  "reason": "the same cells with the note in Norwegian",
+  "recorded_at": "2026-10-13T22:41:20Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/06856/data?lang=no&valueCodes%5BRegionSamisk%5D=1849%2C1850%2C1853&valueCodes%5BContentsCode%5D=%2A&valueCodes%5BTid%5D=2008%2C2009%2C2010&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "data-06856-symbols-no.2026-10-13.body",
+    "body_sha256": "a7871507b21fb8fa12dc58cca69de67023746dd8b0e97e4bc79ed0e217ea5f2d",
+    "original_body_sha256": "a4b8891f41582f6ef6f416eba17b99854476fa9d46a2e60e1b1a5ce3d892b009",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

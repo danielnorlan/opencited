@@ -1,5 +1,6 @@
 """Statistics sources: the results they return and the errors they raise."""
 
+from opencited.model import TableId
 from opencited.sources.errors import (
     InvalidResponseError,
     RateLimitedError,
@@ -18,7 +19,6 @@ from opencited.sources.models import (
     Retrieved,
     SearchResult,
     Symbol,
-    TableId,
     TableMetadata,
     TableSummary,
     Unit,

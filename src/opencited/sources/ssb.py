@@ -19,8 +19,8 @@ from typing import cast
 
 import httpx2
 
-from opencited.frozen import Frozen
 from opencited.http import Exchange, send
+from opencited.model import Frozen
 from opencited.provenance import record_of
 from opencited.sources.errors import (
     InvalidResponseError,
@@ -224,7 +224,7 @@ class SsbClient:
                 **dict(result),
                 "symbols": explained_symbols(result.observations, result.notes),
                 "provenance": provenance,
-                "cached": False,
+                "cached": retrieved.cached,
             }
         )
 
@@ -274,20 +274,20 @@ def client_error(exchange: Exchange, table_id: str | None) -> SourceError:
 def explained_symbols(
     observations: Sequence[Observation], notes: Sequence[str]
 ) -> tuple[Symbol, ...]:
-    """Return each symbol that the cells use, with SSB's explanation where it gives one.
+    """Return every symbol that the cells use, with SSB's explanation where it gives one.
 
     SSB explains a symbol in a note that starts with the symbol and " = " (ADR 0007).
-    Symbols appear in the order of the cells. A symbol without such a note is left out,
-    and the cells still carry it.
+    Symbols appear in the order in which the cells first use them, and a symbol without
+    such a note has no explanation. When several notes explain a symbol, the first wins.
     """
     used = dict.fromkeys(cell.symbol for cell in observations if cell.symbol is not None)
-    explained: list[Symbol] = []
+    symbols: list[Symbol] = []
     for symbol in used:
         prefix = f"{symbol} = "
         note = next((note for note in notes if note.startswith(prefix)), None)
-        if note is not None:
-            explained.append(Symbol(symbol=symbol, explanation=note.removeprefix(prefix)))
-    return tuple(explained)
+        explanation = note.removeprefix(prefix) if note is not None else None
+        symbols.append(Symbol(symbol=symbol, explanation=explanation))
+    return tuple(symbols)
 
 
 def retry_after(exchange: Exchange) -> int | None:
