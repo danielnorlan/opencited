@@ -1,0 +1,69 @@
+[project]
+name = "opencited"
+version = "0.1.0.dev0"
+description = "Answers from authoritative public sources, with a citation for every number."
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "Daniel Norlan" }]
+requires-python = ">=3.13"
+keywords = ["mcp", "agents", "statistics", "provenance", "evaluation", "open-data"]
+classifiers = [
+  "Development Status :: 1 - Planning",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Scientific/Engineering :: Information Analysis",
+  "Typing :: Typed",
+]
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/danielnorlan/opencited"
+Issues = "https://github.com/danielnorlan/opencited/issues"
+Changelog = "https://github.com/danielnorlan/opencited/blob/main/CHANGELOG.md"
+
+[dependency-groups]
+dev = [
+  "pre-commit>=4.7.0",
+  "pyright[nodejs]>=1.1.414",
+  "pytest>=9.1.1",
+  "ruff>=0.17.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.13.0,<0.14"]
+build-backend = "uv_build"
+
+[tool.uv]
+required-version = ">=0.13.0"
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["A", "B", "C4", "E", "F", "I", "N", "PT", "PTH", "RET", "RUF", "S", "SIM", "UP", "W"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S603", "S607"]
+"scripts/**" = ["S603", "S607"]
+
+[tool.pyright]
+include = ["src", "tests", "scripts"]
+extraPaths = ["scripts"]
+pythonVersion = "3.13"
+typeCheckingMode = "strict"
+
+[tool.pytest.ini_options]
+minversion = "9.0"
+testpaths = ["tests"]
+# The development scripts import each other, and their tests import them.
+pythonpath = ["scripts"]
+addopts = ["-ra", "--strict-markers", "--strict-config", "--import-mode=importlib", "-m", "not live"]
+markers = ["live: calls external services; excluded by default, run with `pytest -m live`"]
+xfail_strict = true

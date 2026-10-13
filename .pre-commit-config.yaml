@@ -1,0 +1,70 @@
+# Run with `make hooks`, or on every commit after `make setup`, which also installs
+# the commit message check and the check before each push. CI runs the same hooks on
+# all files and checks commits in a workflow of its own.
+default_install_hook_types: [pre-commit, commit-msg, pre-push]
+# Without this, every hook would also run at the commit-msg and pre-push stages.
+default_stages: [pre-commit]
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.0
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.13.0
+    hooks:
+      - id: uv-lock
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+
+  - repo: https://github.com/zizmorcore/zizmor-pre-commit
+    rev: v1.30.1
+    hooks:
+      - id: zizmor
+
+  - repo: https://github.com/python-jsonschema/check-jsonschema
+    rev: 0.38.2
+    hooks:
+      - id: check-github-workflows
+      - id: check-github-workflows-require-timeout
+      - id: check-github-issue-forms
+      - id: check-github-issue-config
+      - id: check-dependabot
+
+  - repo: local
+    hooks:
+      - id: personal-data
+        name: Personal data
+        entry: python scripts/check_personal_data.py
+        language: python
+        types: [text]
+        # These tests feed personal data to the checks on purpose.
+        exclude: ^tests/scripts/test_(check_commit_message|check_personal_data|pull_request)\.py$
+      - id: commit-message
+        name: Commit message and identity
+        entry: python scripts/check_commit_message.py --identity
+        language: python
+        stages: [commit-msg]
+      - id: pushed-commits
+        name: Pushed commits and branch name
+        entry: python scripts/check_commit_message.py --pre-push
+        language: python
+        stages: [pre-push]
+        pass_filenames: false
+        always_run: true

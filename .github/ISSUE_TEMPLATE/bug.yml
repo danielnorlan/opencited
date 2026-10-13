@@ -1,0 +1,27 @@
+name: Bug report
+description: Something does not work as documented.
+labels: ["type: bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: Commands, input and output. Remove secrets and personal data first.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit

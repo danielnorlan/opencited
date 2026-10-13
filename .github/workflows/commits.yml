@@ -1,0 +1,55 @@
+name: Commits
+
+# A workflow of its own because it must also run when a pull request title or
+# description is edited: the title becomes the squash commit on main.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  commits:
+    name: Commits and branch name
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # Dependabot writes its own messages, with upstream release notes and a sign-off,
+      # so the script skips its commits and branches, and this step skips its pull
+      # requests.
+      - name: Check the pull request title, description and branch
+        if: github.event_name == 'pull_request' && github.event.pull_request.user.login != 'dependabot[bot]'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: python3 scripts/check_commit_message.py --title-env PR_TITLE --env PR_BODY --branch "$HEAD_REF"
+      - name: Check the commits in the pull request
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python3 scripts/check_commit_message.py --range "$BASE_SHA..$HEAD_SHA"
+      - name: Check the pushed commits
+        if: github.event_name != 'pull_request'
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            python3 scripts/check_commit_message.py --range "$AFTER"
+          else
+            python3 scripts/check_commit_message.py --range "$BEFORE..$AFTER"
+          fi
