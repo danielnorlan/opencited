@@ -23,6 +23,7 @@ from pydantic import Field, ValidationError
 
 from opencited import __version__
 from opencited.http import make_client
+from opencited.http.cache import ResponseCache
 from opencited.model import TableId
 from opencited.sources import (
     Language,
@@ -101,14 +102,20 @@ async def answer[T](call: Awaitable[T]) -> T:
 
 
 def build_server(
-    *, transport: httpx2.AsyncBaseTransport | None = None, revision_period: bool = True
+    *,
+    transport: httpx2.AsyncBaseTransport | None = None,
+    revision_period: bool = True,
+    cache: ResponseCache | None = None,
 ) -> MCPServer[SsbClient]:
-    """Return the server. ``transport`` and ``revision_period`` serve recorded responses."""
+    """Return the server, which caches SSB's responses in ``cache`` when one is given.
+
+    ``transport`` and ``revision_period`` serve recorded responses.
+    """
 
     @asynccontextmanager
     async def lifespan(server: MCPServer[SsbClient]) -> AsyncGenerator[SsbClient]:
         async with make_client(BASE_URL, transport=transport) as http:
-            client = SsbClient(http, revision_period=revision_period)
+            client = SsbClient(http, revision_period=revision_period, cache=cache)
             async with anyio.create_task_group() as tasks:
                 # In the background, so that a slow answer from SSB does not hold up
                 # the client's handshake.

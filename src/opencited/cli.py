@@ -7,8 +7,12 @@ refuses a request whose ``Origin`` is not a local page, as the MCP specification
 requires, and one whose ``Host`` is not a loopback name, which the SDK adds against
 DNS rebinding.
 
-``--replay DIR`` serves the responses recorded in a directory instead of calling SSB.
-It exists for tests (ADR 0008), and the server warns when it starts with it.
+SSB's metadata and data responses are cached in the user's cache directory, or in
+``--cache-dir``, unless ``--no-cache`` is given (ADR 0008).
+
+``--replay DIR`` serves the responses recorded in a directory instead of calling SSB,
+without a cache. It exists for tests (ADR 0008), and the server warns when it starts
+with it.
 """
 
 from __future__ import annotations
@@ -17,10 +21,13 @@ import argparse
 import logging
 import sys
 from pathlib import Path
+from typing import cast
 
+import platformdirs
 from mcp.server.transport_security import TransportSecuritySettings
 
 from opencited import __version__
+from opencited.http.cache import ResponseCache
 from opencited.http.replay import replay_transport
 from opencited.mcp import build_server
 
@@ -28,6 +35,7 @@ logger = logging.getLogger("opencited.cli")
 
 LOOPBACK = ("127.0.0.1", "localhost", "::1")
 DEFAULT_PORT = 8765
+CACHE_FILE = "responses.sqlite"
 # Requests must name a loopback address in Host, and come from a local page if they
 # carry an Origin. The SDK applies the same settings for a loopback host by default;
 # they are set here so that the server does not depend on that default.
@@ -55,6 +63,11 @@ def directory(text: str) -> Path:
     return path
 
 
+def default_cache_dir() -> Path:
+    """Return the user's cache directory for OpenCited, which differs by system."""
+    return platformdirs.user_cache_path("opencited", appauthor=False)
+
+
 def parse_arguments(arguments: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="opencited", description="Official statistics with provenance, over MCP."
@@ -75,6 +88,14 @@ def parse_arguments(arguments: list[str]) -> argparse.Namespace:
         default=DEFAULT_PORT,
         help=f"port for --http (default: {DEFAULT_PORT})",
     )
+    caching = serve.add_mutually_exclusive_group()
+    caching.add_argument(
+        "--cache-dir",
+        type=Path,
+        metavar="DIR",
+        help="directory of the response cache (default: the user's cache directory)",
+    )
+    caching.add_argument("--no-cache", action="store_true", help="send every request to SSB")
     serve.add_argument(
         "--replay",
         type=directory,
@@ -82,6 +103,14 @@ def parse_arguments(arguments: list[str]) -> argparse.Namespace:
         help="serve the responses recorded in DIR instead of calling SSB (for tests)",
     )
     return parser.parse_args(arguments)
+
+
+def cache_of(options: argparse.Namespace) -> ResponseCache | None:
+    if options.no_cache:
+        return None
+    directory = cast("Path | None", options.cache_dir) or default_cache_dir()
+    logger.info("Caching SSB's responses in %s", directory / CACHE_FILE)
+    return ResponseCache(directory / CACHE_FILE)
 
 
 def main(arguments: list[str] | None = None) -> int:
@@ -92,7 +121,7 @@ def main(arguments: list[str] | None = None) -> int:
     # The HTTP library logs every request at INFO, which buries the server's own log.
     logging.getLogger("httpx2").setLevel(logging.WARNING)
     if options.replay is None:
-        server = build_server()
+        server = build_server(cache=cache_of(options))
     else:
         logger.warning(
             "Serving the responses recorded in %s instead of calling SSB. They are not "

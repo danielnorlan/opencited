@@ -5,8 +5,10 @@ from __future__ import annotations
 import subprocess
 import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
+import platformdirs
 import pytest
 from recorded import FIXTURES
 
@@ -41,8 +43,35 @@ def servers(monkeypatch: pytest.MonkeyPatch) -> list[FakeServer]:
 def test_stdio_is_the_default(servers: list[FakeServer]) -> None:
     assert cli.main(["mcp"]) == 0
     [server] = servers
-    assert server.built == {}
     assert server.runs == [((), {})]
+
+
+def test_the_cache_lies_in_the_user_s_cache_directory_by_default(
+    servers: list[FakeServer],
+) -> None:
+    cli.main(["mcp"])
+    [server] = servers
+    expected = platformdirs.user_cache_path("opencited", appauthor=False) / "responses.sqlite"
+    assert set(server.built) == {"cache"}
+    assert server.built["cache"].path == expected
+
+
+def test_the_cache_can_move(servers: list[FakeServer], tmp_path: Path) -> None:
+    cli.main(["mcp", "--cache-dir", str(tmp_path)])
+    [server] = servers
+    assert server.built["cache"].path == tmp_path / "responses.sqlite"
+
+
+def test_the_cache_can_be_turned_off(servers: list[FakeServer]) -> None:
+    cli.main(["mcp", "--no-cache"])
+    [server] = servers
+    assert server.built == {"cache": None}
+
+
+def test_a_cache_directory_and_no_cache_exclude_each_other(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit) as stopped:
+        cli.parse_arguments(["mcp", "--no-cache", "--cache-dir", str(tmp_path)])
+    assert stopped.value.code == 2
 
 
 def test_http_binds_to_the_loopback_address_with_the_security_settings(
@@ -73,6 +102,7 @@ def test_replay_serves_recordings_without_the_revision_period(
 ) -> None:
     assert cli.main(["mcp", "--replay", str(FIXTURES)]) == 0
     [server] = servers
+    assert set(server.built) == {"transport", "revision_period"}
     assert server.built["transport"] is not None
     assert server.built["revision_period"] is False
     assert "instead of calling SSB" in caplog.text

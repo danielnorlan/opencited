@@ -124,9 +124,8 @@ class QueryResult(DataResult):
     """The cells of a selection with what a reader needs to check them.
 
     ``symbols`` lists every symbol that the cells use, with the source's explanation
-    where it gives one. ``cached`` is true for a result from the cache, which repeats
-    the provenance of the first retrieval. The cache is planned for step 5 of the plan,
-    so until then every result is fetched and ``cached`` is false.
+    where it gives one. ``cached`` is true for a result whose data came from the cache,
+    which repeats the provenance of the first retrieval.
     """
 
     symbols: tuple[Symbol, ...]

@@ -27,6 +27,9 @@ Notable changes to OpenCited are recorded here. The format follows
   `query_table`, and the command `opencited mcp`, which serves them over stdio or,
   with `--http`, over Streamable HTTP on a loopback address. Search and metadata
   results link to the table in StatBank.
+- A response cache in SQLite for metadata and data, served until the next 08:15
+  Norwegian time, and a rate limiter that keeps within 30 requests a minute and backs
+  off after HTTP 429. `opencited mcp` takes `--cache-dir` and `--no-cache`.
 - Checks for commits, branch names and personal data, run in the git hooks and in CI
   ([ADR 0006](docs/adr/0006-commit-identity-and-personal-data.md)).
 - `scripts/pull_request.py`, which opens pull requests, squash-merges them once CI

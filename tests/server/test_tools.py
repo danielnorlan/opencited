@@ -10,6 +10,8 @@ import asyncio
 import json
 import logging
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, cast
 
 import anyio
@@ -21,6 +23,7 @@ from pydantic import BaseModel
 from recorded import FIXTURES, Json, description, raw, recorded, recorded_cells
 
 from opencited.http import make_client
+from opencited.http.cache import ResponseCache
 from opencited.http.replay import replay_transport
 from opencited.mcp import build_server
 from opencited.sources import Language, QueryResult, SearchResult, TableMetadata
@@ -351,3 +354,26 @@ def test_an_answer_that_breaks_a_model_rule_is_reported_as_ssb_s() -> None:
     text = error_text(call("search_tables", arguments, httpx2.MockTransport(handle)))
     assert "SSB's answer does not have the expected form: table_id:" in text
     assert "TableSummary" not in text
+
+
+def test_a_cached_query_says_so_and_repeats_the_provenance(tmp_path: Path) -> None:
+    # The server reads the real clock, and the cache's clock lies before any day the
+    # test runs on, so the entry is fresh whenever it runs. Replaying turns the revision
+    # period off, so the data is stored at any hour.
+    cache = ResponseCache(
+        tmp_path / "responses.sqlite", now=lambda: datetime(2026, 10, 14, tzinfo=UTC)
+    )
+    arguments = {"table_id": "05810", "selection": POPULATION, "language": "en"}
+
+    async def twice(client: Client) -> list[CallToolResult]:
+        return [await client.call_tool("query_table", arguments) for _ in range(2)]
+
+    async def run() -> list[CallToolResult]:
+        server = build_server(transport=REPLAY, revision_period=False, cache=cache)
+        async with Client(server) as client:
+            return await twice(client)
+
+    first, second = (structured(result) for result in asyncio.run(run()))
+    assert first["cached"] is False
+    assert second["cached"] is True
+    assert second["provenance"] == first["provenance"]
