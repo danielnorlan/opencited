@@ -45,7 +45,7 @@ query the sources and get provenance with every value.
 
 | Source | Publisher | Status |
 | --- | --- | --- |
-| StatBank | Statistics Norway (SSB) | First source, specification in draft |
+| StatBank | Statistics Norway (SSB) | First source, in progress (M1) |
 | Other national statistics offices | Various | Candidate |
 | International statistics | Eurostat, OECD and others | Candidate |
 | Health guidance | Approved health authorities | Candidate, risk review first |

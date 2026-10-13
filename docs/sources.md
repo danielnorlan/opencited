@@ -18,7 +18,7 @@ of these hold:
 
 | Source | Publisher | Licence | Status |
 | --- | --- | --- | --- |
-| [StatBank](https://www.ssb.no/en/statbank) | Statistics Norway (SSB) | [CC BY 4.0](https://www.ssb.no/en/diverse/lisens), stated for the API in the [API guide](https://www.ssb.no/en/api/pxwebapiv2) | Specification in draft (M1) |
+| [StatBank](https://www.ssb.no/en/statbank) | Statistics Norway (SSB) | [CC BY 4.0](https://www.ssb.no/en/diverse/lisens), stated for the API in the [API guide](https://www.ssb.no/en/api/pxwebapiv2) | In progress (M1) |
 | Other statistics offices that use PxWebApi | Various | To be reviewed | Candidate |
 | Eurostat, OECD and others through SDMX | Various | To be reviewed | Candidate |
 | Health guidance | Approved health authorities | To be reviewed | Candidate, risk review first |

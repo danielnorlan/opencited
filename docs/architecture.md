@@ -21,11 +21,11 @@ flowchart LR
 
 | Component | Responsibility | Status |
 | --- | --- | --- |
-| MCP server | Table search, metadata and data from each source, with a provenance record on every data result | Specification in draft ([spec 0001](specs/0001-ssb-mcp-server.md)) |
-| Calculation engine | Runs typed calculation plans over stored snapshots: DuckDB selects the cells, and the arithmetic uses exact rational numbers | Specification in draft ([spec 0002](specs/0002-snapshots-and-calculation.md)) |
-| Evidence gate | Matches every number in an answer to source data or a calculation result, and blocks the answer otherwise | Specification in draft ([spec 0003](specs/0003-evidence-gate.md)) |
-| Agent | Plans, calls tools and drafts the answer, in a loop of its own over a chat completions API | Specification in draft ([spec 0004](specs/0004-agent.md)) |
-| Evaluation suite | Versioned questions with computed answers, run with Inspect AI | Specification in draft ([spec 0005](specs/0005-evaluation-suite.md)) |
+| MCP server | Table search, metadata and data from each source, with a provenance record on every data result | In progress ([spec 0001](specs/0001-ssb-mcp-server.md)) |
+| Calculation engine | Runs typed calculation plans over stored snapshots: DuckDB selects the cells, and the arithmetic uses exact rational numbers | Specification approved ([spec 0002](specs/0002-snapshots-and-calculation.md)) |
+| Evidence gate | Matches every number in an answer to source data or a calculation result, and blocks the answer otherwise | Specification approved ([spec 0003](specs/0003-evidence-gate.md)) |
+| Agent | Plans, calls tools and drafts the answer, in a loop of its own over a chat completions API | Specification approved ([spec 0004](specs/0004-agent.md)) |
+| Evaluation suite | Versioned questions with computed answers, run with Inspect AI | Specification approved ([spec 0005](specs/0005-evaluation-suite.md)) |
 | Table search | Hybrid full-text and vector search over table metadata, in PostgreSQL with pgvector | Planned, M3 |
 | Model gateway | Routes requests between local and hosted models within budgets, using LiteLLM | Planned, M3 |
 | Tracing | OpenTelemetry traces, viewed in Langfuse | Planned, M3 |

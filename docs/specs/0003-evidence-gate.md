@@ -2,7 +2,7 @@
 
 | Field | Value |
 | --- | --- |
-| Status | Draft |
+| Status | Approved |
 | Milestone | M2 |
 | Owner | Daniel Norlan |
 | Created | 2026-10-13 |

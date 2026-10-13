@@ -13,8 +13,8 @@ it starts, and later changes are recorded in it.
 
 | Spec | Title | Status |
 | --- | --- | --- |
-| [0001](0001-ssb-mcp-server.md) | SSB source and MCP server with provenance | Draft |
-| [0002](0002-snapshots-and-calculation.md) | Snapshots and the calculation engine | Draft |
-| [0003](0003-evidence-gate.md) | Evidence gate | Draft |
-| [0004](0004-agent.md) | Agent | Draft |
-| [0005](0005-evaluation-suite.md) | Evaluation suite and the first question set | Draft |
+| [0001](0001-ssb-mcp-server.md) | SSB source and MCP server with provenance | Approved |
+| [0002](0002-snapshots-and-calculation.md) | Snapshots and the calculation engine | Approved |
+| [0003](0003-evidence-gate.md) | Evidence gate | Approved |
+| [0004](0004-agent.md) | Agent | Approved |
+| [0005](0005-evaluation-suite.md) | Evaluation suite and the first question set | Approved |
