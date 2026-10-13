@@ -13,6 +13,7 @@ from collections.abc import Callable
 
 import httpx2
 import pytest
+from recorded import raw
 
 from opencited.http import make_client
 from opencited.sources import (
@@ -98,3 +99,17 @@ def test_transport_failures_are_unavailable(failure: Exception, message: str) ->
 
     with pytest.raises(SourceUnavailableError, match=message):
         config_with(handler)
+
+
+def test_a_value_that_a_model_refuses_is_an_invalid_answer() -> None:
+    # A recorded search answer with one table ID cut to four digits.
+    body = raw("search-population-en").replace(b'"id":"05212"', b'"id":"5212"', 1)
+    assert b'"id":"5212"' in body
+
+    async def call() -> None:
+        handler = answer(200, JSON, body)
+        async with make_client(BASE_URL, transport=httpx2.MockTransport(handler)) as http:
+            await SsbClient(http).search("population", "en")
+
+    with pytest.raises(InvalidResponseError, match=r"expected form: table_id: String should"):
+        asyncio.run(call())

@@ -13,12 +13,13 @@ from collections.abc import AsyncGenerator, Awaitable
 from contextlib import asynccontextmanager
 from typing import Annotated
 
+import anyio
 import httpx2
 from mcp.server import MCPServer
 from mcp.server.mcpserver import Context
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
-from pydantic import Field
+from pydantic import Field, ValidationError
 
 from opencited import __version__
 from opencited.http import make_client
@@ -91,6 +92,10 @@ async def answer[T](call: Awaitable[T]) -> T:
     """Await a source call and turn errors that a caller can act on into tool errors."""
     try:
         return await call
+    except ValidationError:
+        # A model that refuses a value here is a fault in this package, which the SDK
+        # reports without the text. ValidationError is a ValueError, so it goes first.
+        raise
     except (SourceError, ValueError) as error:
         raise ToolError(str(error)) from error
 
@@ -104,8 +109,12 @@ def build_server(
     async def lifespan(server: MCPServer[SsbClient]) -> AsyncGenerator[SsbClient]:
         async with make_client(BASE_URL, transport=transport) as http:
             client = SsbClient(http, revision_period=revision_period)
-            await log_versions(client)
-            yield client
+            async with anyio.create_task_group() as tasks:
+                # In the background, so that a slow answer from SSB does not hold up
+                # the client's handshake.
+                tasks.start_soon(log_versions, client)
+                yield client
+                tasks.cancel_scope.cancel()
 
     server = MCPServer(
         name="opencited",
@@ -154,11 +163,17 @@ def build_server(
 
 
 async def log_versions(client: SsbClient) -> None:
-    """Log the versions that SSB's API reports, since its behaviour can change (ADR 0007)."""
+    """Log the versions that SSB's API reports, since its behaviour can change (ADR 0007).
+
+    The server works without them, so no failure here may stop it.
+    """
     try:
         config = await client.config()
     except SourceError as error:
         logger.warning("SSB's configuration could not be read: %s", error)
+        return
+    except Exception:
+        logger.exception("SSB's configuration could not be read")
         return
     logger.info(
         "SSB PxWebApi %s, software %s, %s cells per request",

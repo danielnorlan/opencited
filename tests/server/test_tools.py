@@ -8,21 +8,23 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from collections.abc import Awaitable, Callable
 from typing import Any, cast
 
+import anyio
 import httpx2
 import pytest
 from mcp import Client
 from mcp.types import CallToolResult, TextContent, Tool
 from pydantic import BaseModel
-from recorded import FIXTURES, Json, description, recorded_cells
+from recorded import FIXTURES, Json, description, raw, recorded, recorded_cells
 
 from opencited.http import make_client
 from opencited.http.replay import replay_transport
 from opencited.mcp import build_server
 from opencited.sources import Language, QueryResult, SearchResult, TableMetadata
-from opencited.sources.ssb import BASE_URL, SsbClient
+from opencited.sources.ssb import BASE_URL, MAX_SEARCH_LIMIT, SsbClient
 
 REPLAY = replay_transport(FIXTURES)
 TOOLS = ("search_tables", "get_table_metadata", "query_table")
@@ -37,6 +39,13 @@ SYMBOLS = {
     "ContentsCode": ["*"],
     "Tid": ["2008", "2009", "2010"],
 }
+DECIMALS = {
+    "FiskeslagSamiske": ["80a"],
+    "SamiskeElver": ["18", "18000000127", "18144000000"],
+    "ContentsCode": ["Fangst", "Gjennomsnitt"],
+    "Tid": ["2015", "2016"],
+}
+CONFIG = "/api/pxwebapi/v2/config"
 
 
 class Recorder:
@@ -113,6 +122,12 @@ def test_every_tool_describes_itself_and_its_arguments() -> None:
         assert "ctx" not in properties
 
 
+def test_the_search_limit_is_bounded_as_the_client_bounds_it() -> None:
+    properties = cast("dict[str, Json]", listed()[0].input_schema["properties"])
+    assert properties["limit"]["minimum"] == 1
+    assert properties["limit"]["maximum"] == MAX_SEARCH_LIMIT
+
+
 def test_every_tool_only_reads() -> None:
     for tool in listed():
         assert tool.annotations is not None
@@ -139,9 +154,13 @@ def numbers(schema: object) -> list[object]:
     return []
 
 
+def test_no_output_schema_admits_a_binary_number() -> None:
+    for tool in listed():
+        assert numbers(tool.output_schema) == [], tool.name
+
+
 def test_values_are_decimal_strings_in_the_output_schema() -> None:
     schema = cast("Json", listed()[2].output_schema)
-    assert numbers(schema) == []
     observation = cast("dict[str, Json]", schema["$defs"])["Observation"]
     value = cast("dict[str, Json]", observation["properties"])["value"]
     branches = cast("list[Json]", value["anyOf"])
@@ -182,14 +201,18 @@ def test_metadata_returns_what_the_client_returns(table_id: str) -> None:
 
 
 @pytest.mark.parametrize(
-    ("table_id", "selection", "name"),
-    [("05810", POPULATION, "data-05810-en"), ("06856", SYMBOLS, "data-06856-symbols-en")],
+    ("table_id", "selection", "language", "name"),
+    [
+        ("05810", POPULATION, "en", "data-05810-en"),
+        ("06856", SYMBOLS, "en", "data-06856-symbols-en"),
+        ("06743", DECIMALS, "no", "data-06743-decimals-no"),
+    ],
 )
 def test_queries_return_the_values_as_ssb_wrote_them(
-    table_id: str, selection: dict[str, list[str]], name: str
+    table_id: str, selection: dict[str, list[str]], language: str, name: str
 ) -> None:
     content = structured(
-        call("query_table", {"table_id": table_id, "selection": selection, "language": "en"})
+        call("query_table", {"table_id": table_id, "selection": selection, "language": language})
     )
     result = QueryResult.model_validate_json(json.dumps(content))
     observations = cast("list[Json]", content["observations"])
@@ -259,5 +282,72 @@ def test_invalid_arguments_fail_without_a_request(
     recorder = Recorder()
     text = error_text(call(name, arguments, recorder.transport))
     assert reason in text
-    # The only request is the one for SSB's configuration, sent when the server starts.
-    assert recorder.paths == ["/api/pxwebapi/v2/config"]
+    # The server asks for SSB's configuration when it starts, and for nothing else.
+    assert [path for path in recorder.paths if path != CONFIG] == []
+
+
+def test_the_server_starts_and_reports_errors_while_ssb_is_down() -> None:
+    down = httpx2.MockTransport(lambda request: httpx2.Response(503))
+
+    async def work(client: Client) -> tuple[list[str], CallToolResult]:
+        names = [tool.name for tool in (await client.list_tools()).tools]
+        return names, await client.call_tool("search_tables", {"query": "population"})
+
+    names, result = session(work, down)
+    assert names == list(TOOLS)
+    assert "SSB answered with HTTP 503" in error_text(result)
+
+
+def test_the_server_logs_the_versions_that_ssb_reports(caplog: pytest.LogCaptureFixture) -> None:
+    config = recorded("config")
+    expected = f"SSB PxWebApi {config['apiVersion']}, software {config['appVersion']}"
+
+    async def work(client: Client) -> None:
+        # The versions are read in the background, so the test waits for the log.
+        with anyio.fail_after(5):
+            while not any(expected in record.getMessage() for record in caplog.records):
+                await anyio.sleep(0.01)
+
+    with caplog.at_level(logging.INFO, logger="opencited.mcp"):
+        session(work)
+
+
+def test_a_slow_answer_from_ssb_does_not_hold_up_the_handshake() -> None:
+    async def handle(request: httpx2.Request) -> httpx2.Response:
+        if request.url.path == CONFIG:
+            await anyio.sleep_forever()
+        return REPLAY.handle_request(request)
+
+    async def run() -> list[str]:
+        server = build_server(transport=httpx2.MockTransport(handle), revision_period=False)
+        with anyio.fail_after(5):
+            async with Client(server) as client:
+                return [tool.name for tool in (await client.list_tools()).tools]
+
+    assert asyncio.run(run()) == list(TOOLS)
+
+
+def test_unexpected_errors_reach_the_client_without_their_text() -> None:
+    def handle(request: httpx2.Request) -> httpx2.Response:
+        if request.url.path == CONFIG:
+            return REPLAY.handle_request(request)
+        raise RuntimeError("a detail that stays on the server")
+
+    text = error_text(call("search_tables", {"query": "population"}, httpx2.MockTransport(handle)))
+    assert text == "Error executing tool search_tables"
+
+
+def test_an_answer_that_breaks_a_model_rule_is_reported_as_ssb_s() -> None:
+    # A recorded search answer with one table ID cut to four digits.
+    body = raw("search-population-en").replace(b'"id":"05212"', b'"id":"5212"', 1)
+
+    def handle(request: httpx2.Request) -> httpx2.Response:
+        if request.url.path.endswith("/tables"):
+            headers = {"content-type": "application/json"}
+            return httpx2.Response(200, headers=headers, content=body)
+        return REPLAY.handle_request(request)
+
+    arguments = {"query": "population", "language": "en"}
+    text = error_text(call("search_tables", arguments, httpx2.MockTransport(handle)))
+    assert "SSB's answer does not have the expected form: table_id:" in text
+    assert "TableSummary" not in text

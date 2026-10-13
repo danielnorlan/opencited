@@ -1,19 +1,20 @@
 """The command line: ``opencited mcp`` serves the MCP server.
 
-Without ``--http`` the server speaks MCP over stdio, as clients that start it expect.
-With ``--http`` it serves Streamable HTTP at ``/mcp`` on a loopback address only, and
-refuses requests whose ``Host`` or ``Origin`` is not local, as the MCP specification
-requires. Logs go to standard error, since standard output carries the protocol on stdio.
+Without ``--http`` the server speaks MCP over stdio, as clients that start it expect,
+and logs go to standard error, since standard output carries the protocol. With
+``--http`` it serves Streamable HTTP at ``/mcp`` on a loopback address only. It
+refuses a request whose ``Origin`` is not a local page, as the MCP specification
+requires, and one whose ``Host`` is not a loopback name, which the SDK adds against
+DNS rebinding.
 
-The variable ``OPENCITED_SSB_FIXTURES`` points the server at a directory of recorded
-responses, which it replays instead of calling SSB. Tests use it (ADR 0008).
+``--replay DIR`` serves the responses recorded in a directory instead of calling SSB.
+It exists for tests (ADR 0008), and the server warns when it starts with it.
 """
 
 from __future__ import annotations
 
 import argparse
 import logging
-import os
 import sys
 from pathlib import Path
 
@@ -23,16 +24,35 @@ from opencited import __version__
 from opencited.http.replay import replay_transport
 from opencited.mcp import build_server
 
-FIXTURES = "OPENCITED_SSB_FIXTURES"
+logger = logging.getLogger("opencited.cli")
+
 LOOPBACK = ("127.0.0.1", "localhost", "::1")
 DEFAULT_PORT = 8765
 # Requests must name a loopback address in Host, and come from a local page if they
-# carry an Origin. This blocks DNS rebinding, where a remote page reaches a local server.
+# carry an Origin. The SDK applies the same settings for a loopback host by default;
+# they are set here so that the server does not depend on that default.
 SECURITY = TransportSecuritySettings(
     enable_dns_rebinding_protection=True,
     allowed_hosts=["127.0.0.1:*", "localhost:*", "[::1]:*"],
     allowed_origins=["http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*"],
 )
+
+
+def port_number(text: str) -> int:
+    try:
+        number = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{text!r} is not a port number") from None
+    if not 1 <= number <= 65535:
+        raise argparse.ArgumentTypeError(f"a port is from 1 to 65535, not {number}")
+    return number
+
+
+def directory(text: str) -> Path:
+    path = Path(text)
+    if not path.is_dir():
+        raise argparse.ArgumentTypeError(f"{text!r} is not a directory")
+    return path
 
 
 def parse_arguments(arguments: list[str]) -> argparse.Namespace:
@@ -50,7 +70,16 @@ def parse_arguments(arguments: list[str]) -> argparse.Namespace:
         help="loopback address for --http (default: 127.0.0.1)",
     )
     serve.add_argument(
-        "--port", type=int, default=DEFAULT_PORT, help=f"port for --http (default: {DEFAULT_PORT})"
+        "--port",
+        type=port_number,
+        default=DEFAULT_PORT,
+        help=f"port for --http (default: {DEFAULT_PORT})",
+    )
+    serve.add_argument(
+        "--replay",
+        type=directory,
+        metavar="DIR",
+        help="serve the responses recorded in DIR instead of calling SSB (for tests)",
     )
     return parser.parse_args(arguments)
 
@@ -62,13 +91,17 @@ def main(arguments: list[str] | None = None) -> int:
     )
     # The HTTP library logs every request at INFO, which buries the server's own log.
     logging.getLogger("httpx2").setLevel(logging.WARNING)
-    fixtures = os.environ.get(FIXTURES)
-    if fixtures:
+    if options.replay is None:
+        server = build_server()
+    else:
+        logger.warning(
+            "Serving the responses recorded in %s instead of calling SSB. They are not "
+            "live data, and each provenance record gives the time of the replay.",
+            options.replay,
+        )
         # The recordings were taken outside SSB's revision period, so replaying them is
         # safe at any hour, and the check would only block tests run at those hours.
-        server = build_server(transport=replay_transport(Path(fixtures)), revision_period=False)
-    else:
-        server = build_server()
+        server = build_server(transport=replay_transport(options.replay), revision_period=False)
     if options.http:
         server.run(
             "streamable-http", host=options.host, port=options.port, transport_security=SECURITY

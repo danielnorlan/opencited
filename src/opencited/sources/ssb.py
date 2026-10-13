@@ -21,6 +21,7 @@ from typing import cast
 from zoneinfo import ZoneInfo
 
 import httpx2
+from pydantic import ValidationError
 
 from opencited.http import Exchange, send
 from opencited.model import Frozen
@@ -186,7 +187,7 @@ class SsbClient:
     async def config(self) -> ApiConfig:
         """Return what the API reports about itself."""
         document, _ = await self._fetch(self._http.build_request("GET", "/config"))
-        return parse_config(document)
+        return parsed(lambda: parse_config(document))
 
     async def search(self, query: str, language: Language = "no", limit: int = 10) -> SearchResult:
         """Return the tables that match a free-text query, in SSB's order."""
@@ -197,7 +198,7 @@ class SsbClient:
             raise ValueError(f"the limit is from 1 to {MAX_SEARCH_LIMIT}, not {limit}")
         params: Params = (("query", query), ("lang", language), ("pageSize", str(limit)))
         document, _ = await self._fetch(self._http.build_request("GET", "/tables", params=params))
-        return parse_search(document, language)
+        return parsed(lambda: parse_search(document, language))
 
     async def metadata(self, table_id: str, language: Language = "no") -> TableMetadata:
         """Return the dimensions, units and notes of a table."""
@@ -207,7 +208,7 @@ class SsbClient:
             "GET", f"/tables/{table_id}/metadata", params=(("lang", language),)
         )
         document, _ = await self._fetch(request, table_id)
-        return parse_metadata(document, table_id, language)
+        return parsed(lambda: parse_metadata(document, table_id, language))
 
     async def data(
         self,
@@ -225,7 +226,7 @@ class SsbClient:
         check_selection(selection)
         request = data_request(self._http, table_id, selection, language, self._max_get_url_length)
         document, exchange = await self._fetch(request, table_id)
-        return Retrieved(parse_data(document, table_id, language), exchange)
+        return Retrieved(parsed(lambda: parse_data(document, table_id, language)), exchange)
 
     async def query(
         self,
@@ -424,6 +425,22 @@ def problem_title(exchange: Exchange) -> str | None:
 
 # Parsing. JSON from `load_json` holds every number as a Decimal, so whole numbers that
 # describe structure are converted here and checked.
+
+
+def parsed[T](parse: Callable[[], T]) -> T:
+    """Return what ``parse`` builds from SSB's answer, reporting a refused value as SSB's.
+
+    The models check values such as table IDs, so a value that breaks a rule is an
+    invalid answer from SSB, not a mistake in the caller's request.
+    """
+    try:
+        return parse()
+    except ValidationError as error:
+        first = error.errors()[0]
+        place = ".".join(str(part) for part in first["loc"]) or "a value"
+        raise InvalidResponseError(
+            f"SSB's answer does not have the expected form: {place}: {first['msg']}"
+        ) from error
 
 
 def _obj(value: object, what: str) -> JsonObject:

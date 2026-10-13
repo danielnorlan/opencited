@@ -97,36 +97,52 @@ code uses.
 | Invalid table ID, unknown dimension or value code | Validation error with the allowed values | Tool error, so the model can correct the call |
 | Selection above the cell limit | Error with the cell count and how to narrow the selection | Tool error |
 | Source unavailable, timeout or HTTP 5xx | Error that names the source and says nothing was returned | Tool error |
-| Rate limit reached | The client waits up to 10 seconds for a free slot, then reports the limit | Tool error |
+| Rate limit reached (planned, step 5 of the plan) | The client waits up to 10 seconds for a free slot, then reports the limit | Tool error |
 | Data requested from 05:00 to 08:15 Norwegian time | Error that names SSB's revision period | Tool error |
+| An answer from SSB that breaks the expected form | Error that names the value that does not fit | Tool error |
+| Any other failure inside the server | Logged on the server, without its text sent on | Tool error with no detail |
 | Malformed protocol request | Handled by the MCP SDK | Protocol error |
 
 ### Caching and rate limits
 
-Responses are cached in SQLite in the user's cache directory, keyed by the method,
+This section describes step 5 of the plan, which is not built yet.
+Responses will be cached in SQLite in the user's cache directory, keyed by the method,
 the URL and a hash of the body, until the next 08:15 Norwegian time.
-An entry stores the raw bytes, the retrieval time and the hash, so a cached result
-repeats the original provenance and says that it came from the cache. A request
-waits for a slot in a client-side rate limiter before it is sent, and a response
-with HTTP 429 makes the client back off ([ADR 0008](adr/0008-http-client.md)).
+An entry will store the raw bytes, the retrieval time and the hash, so a cached
+result repeats the original provenance and says that it came from the cache. A
+request will wait for a slot in a client-side rate limiter before it is sent, and a
+response with HTTP 429 will make the client back off
+([ADR 0008](adr/0008-http-client.md)).
 
 ### Transports
 
 `opencited mcp` serves the tools over stdio. `opencited mcp --http` serves them over
 Streamable HTTP at `/mcp` on `127.0.0.1`, port 8765 unless `--port` sets another.
-`--host` accepts loopback addresses only. Over HTTP the server refuses a request whose
-`Host` header names another host (HTTP 421) or whose `Origin` header names a page
-that is not local (HTTP 403), which blocks DNS rebinding. The server uses the official
-MCP Python SDK, which answers clients of the 2026-07-28 revision and of earlier
-revisions ([ADR 0003](adr/0003-mcp-2026-07-28.md)).
+`--host` accepts loopback addresses only. Over HTTP the server refuses a request
+whose `Origin` header names a page that is not local with HTTP 403, as the
+[MCP specification](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http)
+requires against DNS rebinding. The SDK also refuses a `Host` header that does not
+name a loopback address, with HTTP 421. The server uses the official MCP Python SDK,
+which answers clients of the 2026-07-28 revision and of earlier revisions
+([ADR 0003](adr/0003-mcp-2026-07-28.md)).
 
 The tools are listed in a fixed order: `search_tables`, `get_table_metadata` and
 `query_table`. Each declares an input schema, an output schema generated from the
 result models, and annotations that mark it as read-only. Invalid arguments and the
 errors of the source come back as tool errors whose text gives the reason.
 
-When the variable `OPENCITED_SSB_FIXTURES` names a directory of recordings, the
-server replays them instead of calling SSB. The end-to-end tests use it.
+The server reads the versions that SSB's `/config` reports in the background and
+logs them, so a slow answer does not hold up a client's handshake.
+
+`opencited mcp --replay DIR` serves the responses recorded in a directory instead of
+calling SSB. It exists for the end-to-end tests, and the server logs a warning when
+it starts with it, since the results are not live data and each provenance record
+then gives the time of the replay.
+
+A query result can be large. A recorded query on a table with four dimensions takes
+about 73 bytes per cell in the structured content, and the SDK sends the result again
+as indented JSON text, at about 130 bytes per cell, for clients that read only text.
+At the limit of 5,000 cells that comes to about 1 MB.
 
 ### Testing
 
