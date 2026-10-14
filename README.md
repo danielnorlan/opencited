@@ -88,8 +88,10 @@ servers that a project shares.
 `opencited mcp --help` lists the options. `--http` serves Streamable HTTP, on port
 8765 unless `--port` sets another. SSB's metadata and data responses are cached in
 the user's cache directory until the next 08:15 Norwegian time; `--cache-dir` moves
-the cache and `--no-cache` turns it off. From 05:00 to 08:15 Norwegian time,
-`query_table` returns an error instead of data, since SSB revises figures then.
+the cache and `--no-cache` turns it off. `--snapshot-dir` keeps a snapshot of each
+query result, which the server never changes once written; a result with a value
+wider than 38 digits gets none. From 05:00 to 08:15 Norwegian time, `query_table`
+returns an error instead of data, since SSB revises figures then.
 
 ## Sources
 

@@ -22,7 +22,7 @@ flowchart LR
 | Component | Responsibility | Status |
 | --- | --- | --- |
 | MCP server | Table search, metadata and data from each source, with a provenance record on every data result | In progress ([spec 0001](specs/0001-ssb-mcp-server.md)) |
-| Calculation engine | Runs typed calculation plans over stored snapshots: DuckDB selects the cells, and the arithmetic uses exact rational numbers | Specification approved ([spec 0002](specs/0002-snapshots-and-calculation.md)) |
+| Calculation engine | Runs typed calculation plans over stored snapshots: DuckDB selects the cells, and the arithmetic uses exact rational numbers | In progress: snapshots are built ([spec 0002](specs/0002-snapshots-and-calculation.md)) |
 | Evidence gate | Matches every number in an answer to source data or a calculation result, and blocks the answer otherwise | Specification approved ([spec 0003](specs/0003-evidence-gate.md)) |
 | Agent | Plans, calls tools and drafts the answer, in a loop of its own over a chat completions API | Specification approved ([spec 0004](specs/0004-agent.md)) |
 | Evaluation suite | Versioned questions with computed answers, run with Inspect AI | Specification approved ([spec 0005](specs/0005-evaluation-suite.md)) |
@@ -47,7 +47,7 @@ lives outside the package, in `evals/`.
 | `opencited.sources` | The interface every source implements, and the registry of sources | M1 |
 | `opencited.sources.pxweb` | PxWebApi 2 selections: codes and expressions expanded on the metadata, and cell counts | M1 |
 | `opencited.sources.ssb` | The StatBank client: search, metadata, data, queries with provenance, and JSON-stat parsing | M1 |
-| `opencited.snapshots` | Write-once snapshots of raw responses, with the parsed values in Parquet | M2 |
+| `opencited.snapshots` | Write-once snapshots of query results: the raw body, the provenance record, labels and units, and the cells in Parquet | M2 |
 | `opencited.mcp` | The MCP server and its three tools | M1 |
 | `opencited.cli` | The command line: `opencited mcp` | M1 |
 | `opencited.calc` | Typed calculation plans, the SQL they generate and exact rational arithmetic | M2 |
@@ -196,7 +196,7 @@ this record. [Spec 0001](specs/0001-ssb-mcp-server.md) defines it.
 ## Calculation and the evidence gate (M2)
 
 The agent never states a number that it did not receive from a tool. With a snapshot
-directory set, the MCP server stores every data result as a snapshot that never
+directory set, the MCP server stores each data result as a snapshot that it never
 changes. The agent writes a typed calculation plan over these snapshots: DuckDB
 selects the cells, and all arithmetic uses exact rational numbers, because DuckDB
 returns floating point for division and means of decimals and does not catch every
@@ -206,6 +206,30 @@ released, the gate reads every number in the text and matches it to a value in t
 results that its block cites ([spec 0003](specs/0003-evidence-gate.md)). The
 evaluation suite runs the agent through Inspect AI and scores its answers against
 answers computed by the same engine ([spec 0005](specs/0005-evaluation-suite.md)).
+
+### Snapshots
+
+`opencited mcp --snapshot-dir DIR`, or the variable `OPENCITED_SNAPSHOT_DIR`, keeps a
+snapshot of every `query_table` result, including results from the cache. No
+directory is set by default. A snapshot is a directory named by the
+`response_sha256` of the result, which holds:
+
+| File | Contents |
+| --- | --- |
+| `response.json` | The raw response body, whose SHA-256 is the snapshot's ID |
+| `snapshot.json` | The provenance record, the language, the labels of every code, the units from the table's metadata, the SHA-256 of that metadata response and of the Parquet file, and the scale of the values |
+| `observations.parquet` | One text column per dimension code, `value_text` with the value as written, `value` as `DECIMAL(38, s)` at the largest scale among the values, `symbol` and `unit` |
+
+DuckDB writes the Parquet file from the cells, which reach it as JSON strings and are
+cast to the decimal type, and reads it back with each value as a Python `Decimal`. A
+snapshot is written to a temporary directory, flushed to disk and renamed into place,
+and the store never changes it: a later response with the same body finds it in
+place, and the snapshot keeps the provenance of its first retrieval. Reading a
+snapshot checks that its body hashes to its ID and that the Parquet file hashes to
+the SHA-256 that the manifest records. A result with a value that does not fit
+`DECIMAL(38, s)` gets no snapshot, and any failure to write one leaves the tool
+result as it is, with a warning in the server's log. The server checks at start that
+it can write to the snapshot directory, and stops if it cannot.
 
 ## Trust boundaries
 

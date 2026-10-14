@@ -33,7 +33,7 @@ from opencited.http import Exchange, send
 from opencited.http.cache import ResponseCache
 from opencited.http.limiter import LimitReachedError, RateLimiter, retry_after
 from opencited.model import Frozen
-from opencited.provenance import record_of
+from opencited.provenance import record_of, sha256_hex
 from opencited.sources.errors import (
     InvalidResponseError,
     RateLimitedError,
@@ -51,6 +51,7 @@ from opencited.sources.models import (
     Language,
     Observation,
     QueryResult,
+    QueryRetrieval,
     Retrieved,
     SearchResult,
     Symbol,
@@ -235,18 +236,19 @@ class SsbClient:
         """Return the dimensions, units and notes of a table."""
         check_table_id(table_id)
         check_language(language)
-        return await self._metadata(table_id, language, None)
+        metadata, _ = await self._metadata(table_id, language, None)
+        return metadata
 
     async def _metadata(
         self, table_id: str, language: Language, deadline: float | None
-    ) -> TableMetadata:
+    ) -> tuple[TableMetadata, Fetched]:
         request = self._http.build_request(
             "GET", f"/tables/{table_id}/metadata", params=(("lang", language),)
         )
         fetched = await self._fetch(request, table_id, cache=True, deadline=deadline)
         metadata = parsed(lambda: parse_metadata(fetched.document, table_id, language))
         await self._keep(fetched)
-        return metadata
+        return metadata, fetched
 
     async def data(
         self,
@@ -299,12 +301,21 @@ class SsbClient:
         The metadata and data requests together wait at most the limiter's
         ``max_wait`` for slots.
         """
+        return (await self.retrieve(table_id, selection, language)).result
+
+    async def retrieve(
+        self,
+        table_id: str,
+        selection: Mapping[str, Sequence[str]],
+        language: Language = "no",
+    ) -> QueryRetrieval:
+        """Run a query as ``query`` does, and keep the responses its result came from."""
         check_table_id(table_id)
         check_language(language)
         check_selection(selection)
         self._check_revision_period()
         deadline = self._limiter.deadline()
-        metadata = await self._metadata(table_id, language, deadline)
+        metadata, described = await self._metadata(table_id, language, deadline)
         sent = normalise(selection)
         resolved = resolve(metadata, sent)
         cells = cell_count(resolved)
@@ -324,13 +335,20 @@ class SsbClient:
             table_url=TABLE_PAGES[language].format(table_id),
             table_updated=result.updated,
         )
-        return QueryResult.model_validate(
+        query_result = QueryResult.model_validate(
             {
                 **dict(result),
                 "symbols": explained_symbols(result.observations, result.notes),
                 "provenance": provenance,
                 "cached": fetched.cached,
             }
+        )
+        return QueryRetrieval(
+            query_result,
+            fetched.exchange.content,
+            metadata,
+            sha256_hex(described.exchange.content),
+            language,
         )
 
     @property

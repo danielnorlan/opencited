@@ -134,6 +134,23 @@ class QueryResult(DataResult):
 
 
 @dataclass(frozen=True)
+class QueryRetrieval:
+    """A query result with the responses it was built from, which a snapshot keeps.
+
+    ``body`` is the raw body of the data response, whose SHA-256 the provenance record
+    holds. ``metadata`` is the table's metadata that the query read, and
+    ``metadata_sha256`` the SHA-256 of that response's body. Labels are in
+    ``language``, the language of the request.
+    """
+
+    result: QueryResult
+    body: bytes
+    metadata: TableMetadata
+    metadata_sha256: str
+    language: Language
+
+
+@dataclass(frozen=True)
 class Retrieved[T]:
     """A result and the exchange it came from, which the provenance record describes."""
 

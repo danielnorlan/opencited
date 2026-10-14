@@ -1,6 +1,6 @@
 # 0011. Snapshots and exact arithmetic
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-10-13
 
 ## Context

@@ -37,6 +37,7 @@ def servers(monkeypatch: pytest.MonkeyPatch) -> list[FakeServer]:
         return built[-1]
 
     monkeypatch.setattr(cli, "build_server", build)
+    monkeypatch.delenv(cli.SNAPSHOT_DIR, raising=False)
     return built
 
 
@@ -52,7 +53,8 @@ def test_the_cache_lies_in_the_user_s_cache_directory_by_default(
     cli.main(["mcp"])
     [server] = servers
     expected = platformdirs.user_cache_path("opencited", appauthor=False) / "responses.sqlite"
-    assert set(server.built) == {"cache"}
+    assert set(server.built) == {"cache", "snapshots"}
+    assert server.built["snapshots"] is None
     assert server.built["cache"].path == expected
 
 
@@ -65,7 +67,7 @@ def test_the_cache_can_move(servers: list[FakeServer], tmp_path: Path) -> None:
 def test_the_cache_can_be_turned_off(servers: list[FakeServer]) -> None:
     cli.main(["mcp", "--no-cache"])
     [server] = servers
-    assert server.built == {"cache": None}
+    assert server.built == {"cache": None, "snapshots": None}
 
 
 def test_a_cache_directory_and_no_cache_exclude_each_other(tmp_path: Path) -> None:
@@ -102,7 +104,7 @@ def test_replay_serves_recordings_without_the_revision_period(
 ) -> None:
     assert cli.main(["mcp", "--replay", str(FIXTURES)]) == 0
     [server] = servers
-    assert set(server.built) == {"transport", "revision_period"}
+    assert set(server.built) == {"transport", "revision_period", "snapshots"}
     assert server.built["transport"] is not None
     assert server.built["revision_period"] is False
     assert "instead of calling SSB" in caplog.text
@@ -137,3 +139,40 @@ def test_the_command_reports_its_version() -> None:
         check=True,
     )
     assert finished.stdout.strip() == f"opencited {__version__}"
+
+
+def test_snapshots_go_to_the_directory_the_option_names(
+    servers: list[FakeServer], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(cli.SNAPSHOT_DIR, str(tmp_path / "from-variable"))
+    cli.main(["mcp", "--snapshot-dir", str(tmp_path / "from-option")])
+    [server] = servers
+    assert server.built["snapshots"].directory == tmp_path / "from-option"
+
+
+def test_snapshots_go_to_the_directory_the_variable_names(
+    servers: list[FakeServer], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(cli.SNAPSHOT_DIR, str(tmp_path))
+    cli.main(["mcp", "--replay", str(FIXTURES)])
+    [server] = servers
+    assert server.built["snapshots"].directory == tmp_path
+
+
+def test_an_empty_variable_sets_no_snapshot_directory(
+    servers: list[FakeServer], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(cli.SNAPSHOT_DIR, "")
+    cli.main(["mcp", "--no-cache"])
+    [server] = servers
+    assert server.built["snapshots"] is None
+
+
+def test_a_snapshot_directory_that_cannot_be_written_stops_the_server(
+    servers: list[FakeServer], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    blocked = tmp_path / "a file"
+    blocked.write_text("not a directory", encoding="utf-8")
+    assert cli.main(["mcp", "--snapshot-dir", str(blocked)]) == 2
+    assert servers == []
+    assert "snapshots cannot be written to" in capsys.readouterr().err

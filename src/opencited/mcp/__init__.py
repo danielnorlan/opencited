@@ -14,6 +14,7 @@ from contextlib import asynccontextmanager
 from typing import Annotated
 
 import anyio
+import anyio.to_thread
 import httpx2
 from mcp.server import MCPServer
 from mcp.server.mcpserver import Context
@@ -25,9 +26,11 @@ from opencited import __version__
 from opencited.http import make_client
 from opencited.http.cache import ResponseCache
 from opencited.model import TableId
+from opencited.snapshots import SnapshotError, SnapshotStore
 from opencited.sources import (
     Language,
     QueryResult,
+    QueryRetrieval,
     SearchResult,
     SourceError,
     TableMetadata,
@@ -106,10 +109,12 @@ def build_server(
     transport: httpx2.AsyncBaseTransport | None = None,
     revision_period: bool = True,
     cache: ResponseCache | None = None,
+    snapshots: SnapshotStore | None = None,
 ) -> MCPServer[SsbClient]:
     """Return the server, which caches SSB's responses in ``cache`` when one is given.
 
-    ``transport`` and ``revision_period`` serve recorded responses.
+    With ``snapshots``, every ``query_table`` result is also kept as a snapshot
+    (spec 0002). ``transport`` and ``revision_period`` serve recorded responses.
     """
 
     @asynccontextmanager
@@ -164,9 +169,27 @@ def build_server(
         table_id: Table, selection: Selection, ctx: Context[SsbClient], language: Lang = "no"
     ) -> QueryResult:
         client = ctx.request_context.lifespan_context
-        return await answer(client.query(table_id, selection, language))
+        retrieval = await answer(client.retrieve(table_id, selection, language))
+        if snapshots is not None:
+            await keep(snapshots, retrieval)
+        return retrieval.result
 
     return server
+
+
+async def keep(snapshots: SnapshotStore, retrieval: QueryRetrieval) -> None:
+    """Write a result's snapshot. A result without one is still returned, with a warning.
+
+    Every failure is caught, since the snapshot is kept beside the result that the
+    client asked for and must never cost it that result.
+    """
+    snapshot_id = retrieval.result.provenance.response_sha256
+    try:
+        await anyio.to_thread.run_sync(snapshots.write, retrieval)
+    except SnapshotError as error:
+        logger.warning("No snapshot of %s was written: %s", snapshot_id, error)
+    except Exception:
+        logger.exception("No snapshot of %s was written", snapshot_id)
 
 
 async def log_versions(client: SsbClient) -> None:

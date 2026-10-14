@@ -16,7 +16,7 @@ A record is proposed in a pull request, and the maintainer accepts it. See
 | [0008](0008-http-client.md) | HTTP client, recorded fixtures and the response cache | Accepted |
 | [0009](0009-exact-decimals.md) | Exact decimals from the source to the answer | Accepted |
 | [0010](0010-agent-loop.md) | Agent loop over a chat completions API | Proposed |
-| [0011](0011-snapshots-and-exact-arithmetic.md) | Snapshots and exact arithmetic | Proposed |
+| [0011](0011-snapshots-and-exact-arithmetic.md) | Snapshots and exact arithmetic | Accepted |
 | [0012](0012-inspect-evaluations.md) | Evaluations with Inspect AI | Proposed |
 
 A new record takes the next number and has the sections Context, Decision,
