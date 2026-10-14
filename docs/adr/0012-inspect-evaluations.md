@@ -1,6 +1,6 @@
 # 0012. Evaluations with Inspect AI
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-10-13
 
 ## Context
@@ -15,6 +15,10 @@ were checked on 2026-10-13 with `inspect-ai` 0.3.279 and `openai` 3.29.0.
   the `openai` SDK to the model under evaluation. A test with Inspect's mock model
   sent one plain completion through the bridge, and Inspect recorded the token use.
   Tool calls and limits through the bridge were not part of that test.
+- Added on 2026-10-14: the first published run answered all 44 questions of set v1
+  through the bridge with DeepSeek's `deepseek-flash`, and Inspect recorded the
+  tokens of every call, with cached input counted apart
+  ([report](../../evals/results/README.md)).
 - The documentation describes limits per sample and none for a whole run. Inspect's
   metrics are floating-point numbers.
 - Installing `inspect-ai` 0.3.279 and `openai` 3.29.0 into an empty environment adds

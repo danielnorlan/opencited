@@ -1,6 +1,6 @@
 # 0010. Agent loop over a chat completions API
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-10-13
 
 ## Context
@@ -20,6 +20,11 @@ The architecture page planned the agent on LangGraph. The facts below were check
 - Inspect AI ran a plain completion from that SDK inside an evaluation through its
   agent bridge ([ADR 0012](0012-inspect-evaluations.md)). Tool calls through the
   bridge are not tested yet.
+- Added on 2026-10-14: the first published run sent the agent's tool calls through
+  the bridge to DeepSeek's endpoint for all 44 questions of set v1, with thinking
+  mode off ([report](../../evals/results/README.md)). With thinking on,
+  `deepseek-flash` requires the reasoning of earlier replies in every later request,
+  which the agent does not send back.
 
 ## Decision
 

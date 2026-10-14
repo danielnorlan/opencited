@@ -13,8 +13,10 @@ source is Statistics Norway (SSB).
 > [!NOTE]
 > OpenCited is in early development. The MCP server for StatBank runs from a clone of
 > this repository and is not on PyPI yet. The calculation engine, the evidence gate,
-> the agent and the evaluation suite are built, and no run of the suite with a model
-> has been published yet. See the
+> the agent and the evaluation suite are built, and the
+> [first published run](https://github.com/danielnorlan/opencited/blob/main/evals/results/README.md)
+> of the suite answered 27 of 44 questions correctly with DeepSeek's `deepseek-flash`.
+> See the
 > [roadmap](https://github.com/danielnorlan/opencited/blob/main/docs/roadmap.md).
 
 ## How it will work
