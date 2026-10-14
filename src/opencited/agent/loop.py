@@ -24,6 +24,7 @@ from opencited.agent.answer import (
     usage_of,
 )
 from opencited.agent.config import ModelConfig
+from opencited.agent.history import SourceMessage, visible
 from opencited.agent.model import (
     AssistantMessage,
     Completion,
@@ -56,7 +57,7 @@ from opencited.agent.run import (
     decide,
 )
 from opencited.agent.tools import Toolbox
-from opencited.gate import Report, check, cited_ids
+from opencited.gate import Report, SourceEvidence, check, cited_ids
 from opencited.sources import Language
 
 MILLISECOND = Decimal("0.001")
@@ -107,6 +108,8 @@ class Run:
             SystemMessage(system_prompt(language)),
             UserMessage(question),
         ]
+        # The tool messages that hold source results, which later calls may shorten.
+        self.sources: list[SourceMessage] = []
 
     def elapsed(self) -> Decimal:
         nanoseconds = Decimal(self.clock() - self.started)
@@ -129,7 +132,9 @@ class Run:
         reply: Completion | None = None
         with anyio.move_on_after(self.remaining()):
             try:
-                reply = await self.model.complete(self.messages, self.toolbox.schemas)
+                reply = await self.model.complete(
+                    visible(self.messages, self.sources), self.toolbox.schemas
+                )
             except ModelError as error:
                 failure = str(error)
             else:
@@ -150,6 +155,8 @@ class Run:
             for call in decision.calls:
                 outcome = await self.toolbox.run(call)
                 self.messages.append(ToolMessage(call.call_id, outcome.text))
+                if isinstance(outcome.evidence, SourceEvidence):
+                    self.sources.append(SourceMessage(len(self.messages) - 1, outcome.evidence))
                 done += 1
         self.state = self.state.ran(done).at(self.elapsed(), timed_out=scope.cancelled_caught)
 
