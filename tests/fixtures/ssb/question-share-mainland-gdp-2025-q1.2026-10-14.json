@@ -1,0 +1,33 @@
+{
+  "name": "question-share-mainland-gdp-2025-q1",
+  "reason": "query Q1 of question share-mainland-gdp-2025 in v2.jsonl",
+  "recorded_at": "2026-10-14T19:35:48Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/09189/data?lang=no&valueCodes%5BMakrost%5D=bnpb.nr23_9%2Cbnpb.nr23_9fn&valueCodes%5BContentsCode%5D=Priser&valueCodes%5BTid%5D=2025&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "question-share-mainland-gdp-2025-q1.2026-10-14.body",
+    "body_sha256": "61046a96acc897ff6ae011a4f1862b34c9e46f7801f51e09fa3ecc623db96c02",
+    "original_body_sha256": "a69abf508b09d2a039d6175dac23fddce81ce6233494b25e0dc457f45780e62a",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

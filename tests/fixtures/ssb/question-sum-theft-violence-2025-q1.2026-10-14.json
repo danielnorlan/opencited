@@ -1,0 +1,33 @@
+{
+  "name": "question-sum-theft-violence-2025-q1",
+  "reason": "query Q1 of question sum-theft-violence-2025 in v2.jsonl",
+  "recorded_at": "2026-10-14T19:36:00Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/08484/data?lang=en&valueCodes%5BLovbruddKrim%5D=1AAAAA-1ZZZZz%2C4AAAAA-4ZZZZz&valueCodes%5BContentsCode%5D=AnmeldteLovbrudd&valueCodes%5BTid%5D=2025&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "question-sum-theft-violence-2025-q1.2026-10-14.body",
+    "body_sha256": "5978bc26acb120559134e9c07ff67fa0a8ab035f5e920762da9d02680c015adb",
+    "original_body_sha256": "88fc77b266d90751f22e962ac3cf687056dd1d49924c904b45308dcbd0111182",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

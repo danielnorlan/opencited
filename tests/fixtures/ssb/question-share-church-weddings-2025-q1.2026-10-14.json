@@ -1,0 +1,33 @@
+{
+  "name": "question-share-church-weddings-2025-q1",
+  "reason": "query Q1 of question share-church-weddings-2025 in v2.jsonl",
+  "recorded_at": "2026-10-14T19:35:37Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/05713/data?lang=en&valueCodes%5BVigselstype%5D=0%2C1&valueCodes%5BContentsCode%5D=Ekteskap&valueCodes%5BTid%5D=2025&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "question-share-church-weddings-2025-q1.2026-10-14.body",
+    "body_sha256": "46c3a29f146a044ac4f1659cebad5c6fd78df4eee25c8fc821781024b0783a6e",
+    "original_body_sha256": "3ac3aab38110fc1f203110aa5fa54a8aa4f0ea6e7da44ce3cea6dfcb9a92f13f",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "name": "question-ranking-divorce-duration-2025-q1",
+  "reason": "query Q1 of question ranking-divorce-duration-2025 in v2.jsonl",
+  "recorded_at": "2026-10-14T19:36:13Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/05692/data?lang=no&valueCodes%5BVarighetIAar%5D=00-02%2C03-04%2C05-09%2C10-14%2C15-19%2C20-24%2C025%2B&valueCodes%5BContentsCode%5D=Skilsmisse&valueCodes%5BTid%5D=2025&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "question-ranking-divorce-duration-2025-q1.2026-10-14.body",
+    "body_sha256": "f3143b1db51266628a941fd0af52efa045e522ee021f2389673256b2369c5bd9",
+    "original_body_sha256": "dd978ca3e6e2ea3630b2a63e358c62be89aa70124f6fdbd7bc0b30c92afbdacb",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

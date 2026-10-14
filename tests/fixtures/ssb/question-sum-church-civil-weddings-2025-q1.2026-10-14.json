@@ -1,0 +1,33 @@
+{
+  "name": "question-sum-church-civil-weddings-2025-q1",
+  "reason": "query Q1 of question sum-church-civil-weddings-2025 in v2.jsonl",
+  "recorded_at": "2026-10-14T19:36:03Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/05713/data?lang=no&valueCodes%5BVigselstype%5D=1%2C2&valueCodes%5BContentsCode%5D=Ekteskap&valueCodes%5BTid%5D=2025&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "question-sum-church-civil-weddings-2025-q1.2026-10-14.body",
+    "body_sha256": "7258b6b3b9ebd9322fc6c208e824719459c2788edccb7699bcdf8cea48bf6638",
+    "original_body_sha256": "1ca8f9763f7fac1bf20dee1b1e53ecdca72dae3ad3464446b709d0502db6bb03",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

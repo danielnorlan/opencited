@@ -1,0 +1,33 @@
+{
+  "name": "question-share-women-wage-of-men-2025-q1",
+  "reason": "query Q1 of question share-women-wage-of-men-2025 in v2.jsonl",
+  "recorded_at": "2026-10-14T19:35:32Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/13312/data?lang=no&valueCodes%5BMaaleMetode%5D=02&valueCodes%5BArbeidsTidRen%5D=H&valueCodes%5BKjonn%5D=2%2C1&valueCodes%5BAlder%5D=999A&valueCodes%5BSektor%5D=ALLE&valueCodes%5BContentsCode%5D=Manedslonn&valueCodes%5BTid%5D=2025&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "question-share-women-wage-of-men-2025-q1.2026-10-14.body",
+    "body_sha256": "e18d591b2ea3723d0b52c3b8153931c6d66af633e7456066ade7a32ccf15f352",
+    "original_body_sha256": "7ebf442a78001a3d18b186456294effb026655db26179a304ae03426aefe0d73",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "name": "question-lookup-weddings-2025-q1",
+  "reason": "query Q1 of question lookup-weddings-2025 in v2.jsonl",
+  "recorded_at": "2026-10-14T19:34:51Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/05713/data?lang=no&valueCodes%5BVigselstype%5D=0&valueCodes%5BContentsCode%5D=Ekteskap&valueCodes%5BTid%5D=2025&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "question-lookup-weddings-2025-q1.2026-10-14.body",
+    "body_sha256": "fd561c1dd1323e100c775d7f96471a29b006f2cb15021419e7f118531c3757ee",
+    "original_body_sha256": "9a988d45ac47a10cab60ea531c24dc2e879a3eae281122088da7dff5ad74bdca",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

@@ -20,7 +20,13 @@ from recorded import FIXTURES
 
 from opencited.calc.plan import Plan
 from opencited.calc.result import CalculationResult, RankedCell, ResultUnit, StepResult
-from opencited.evals.questions import NumberRef, Question, QuestionError, load_questions
+from opencited.evals.questions import (
+    NumberRef,
+    Question,
+    QuestionError,
+    RefusalExpected,
+    load_questions,
+)
 from opencited.evals.reference import (
     Reference,
     ReferencePlanError,
@@ -200,6 +206,8 @@ def broken(question: dict[str, Any], *path: str | int, value: object) -> dict[st
     [
         (broken(lookup(), "category", value="unanswerable"), "expects the other outcome"),
         (broken(refusal(), "category", value="lookup"), "expects the other outcome"),
+        (broken(refusal(), "expected", "reason", value=""), "at least 1 character"),
+        (broken(lookup(), "expected", "reason", value="a reason"), "Extra inputs"),
         (broken(lookup(), "expected", "numbers", value=[]), "at least 1 item"),
         (
             broken(lookup(), "expected", "numbers", value=[{"step": "before", "decimals": 0}]),
@@ -327,6 +335,16 @@ def test_a_ranking_expects_the_first_cell_s_value_and_label(tmp_path: Path) -> N
     assert result.expectation.numbers == (
         ExpectedNumber(step="largest", exact=str(Fraction(first.value)), kind="amount", decimals=0),
     )
+
+
+def test_a_question_that_should_be_refused_may_say_why() -> None:
+    text = "Weather forecasts are not statistics that SSB publishes."
+    question = Question.model_validate_json(
+        json.dumps(refusal() | {"expected": {"outcome": "refusal", "reason": text}})
+    )
+
+    assert isinstance(question.expected, RefusalExpected)
+    assert question.expected.reason == text
 
 
 def test_a_question_that_should_be_refused_reads_nothing(tmp_path: Path) -> None:

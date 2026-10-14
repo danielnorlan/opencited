@@ -1,0 +1,33 @@
+{
+  "name": "question-false-premise-divorces-exceed-weddings-2025-q2",
+  "reason": "query Q2 of question false-premise-divorces-exceed-weddings-2025 in v2.jsonl",
+  "recorded_at": "2026-10-14T19:36:24Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/05692/data?lang=en&valueCodes%5BContentsCode%5D=Skilsmisse&valueCodes%5BTid%5D=2025&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "question-false-premise-divorces-exceed-weddings-2025-q2.2026-10-14.body",
+    "body_sha256": "ccaa9f9303b4dea5ddbfa4fa2760b28e8ec528bff2036831f10886c4a3adcc6d",
+    "original_body_sha256": "4d9b51f6c6bb88545510c23bd6b518b56d18f172ba3e86fd21843b2e6c366d1b",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

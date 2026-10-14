@@ -1,0 +1,33 @@
+{
+  "name": "question-lookup-gdp-mainland-growth-2025-q1",
+  "reason": "query Q1 of question lookup-gdp-mainland-growth-2025 in v2.jsonl",
+  "recorded_at": "2026-10-14T19:34:40Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/09189/data?lang=no&valueCodes%5BMakrost%5D=bnpb.nr23_9fn&valueCodes%5BContentsCode%5D=Volum&valueCodes%5BTid%5D=2025&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "question-lookup-gdp-mainland-growth-2025-q1.2026-10-14.body",
+    "body_sha256": "2fd14e2e47571fb2c9ae358b409c48d3af1242b84bb4ea69dcca68aab0824062",
+    "original_body_sha256": "675ff51401de6dcffd17b83cc2e899b71e5ebc00ff9c67ae79f6e35e1e32f151",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

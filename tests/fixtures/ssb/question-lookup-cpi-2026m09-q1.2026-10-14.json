@@ -1,0 +1,33 @@
+{
+  "name": "question-lookup-cpi-2026m09-q1",
+  "reason": "query Q1 of question lookup-cpi-2026m09 in v2.jsonl",
+  "recorded_at": "2026-10-14T19:34:30Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/14710/data?lang=no&valueCodes%5BContentsCode%5D=KpiIndMnd&valueCodes%5BTid%5D=2026M09&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "question-lookup-cpi-2026m09-q1.2026-10-14.body",
+    "body_sha256": "fae2d8284eb229465a5251b9316c8a5c379ef3081d556d73a610c331609a304a",
+    "original_body_sha256": "f31f6dbd97388429af99f3a6f91f2474c3dc2ec38f86e067e9eeffd620d82b42",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

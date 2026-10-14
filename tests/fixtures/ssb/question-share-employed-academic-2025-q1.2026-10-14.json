@@ -1,0 +1,33 @@
+{
+  "name": "question-share-employed-academic-2025-q1",
+  "reason": "query Q1 of question share-employed-academic-2025 in v2.jsonl",
+  "recorded_at": "2026-10-14T19:35:45Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/09788/data?lang=en&valueCodes%5BKjonn%5D=0&valueCodes%5BYrke%5D=0-9%2C2&valueCodes%5BContentsCode%5D=Sysselsatte&valueCodes%5BTid%5D=2025&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "question-share-employed-academic-2025-q1.2026-10-14.body",
+    "body_sha256": "9877777e47791b1ff6b0c63c15edc9b1a90b4b9a87525f0e3584afbda960333a",
+    "original_body_sha256": "30cd69fc612c600105e4e1c990d936a301e328650374f965e31e321efe0e0bde",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

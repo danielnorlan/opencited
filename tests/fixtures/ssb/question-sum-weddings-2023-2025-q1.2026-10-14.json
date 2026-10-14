@@ -1,0 +1,33 @@
+{
+  "name": "question-sum-weddings-2023-2025-q1",
+  "reason": "query Q1 of question sum-weddings-2023-2025 in v2.jsonl",
+  "recorded_at": "2026-10-14T19:35:55Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/05713/data?lang=en&valueCodes%5BVigselstype%5D=0&valueCodes%5BContentsCode%5D=Ekteskap&valueCodes%5BTid%5D=2023%2C2024%2C2025&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "question-sum-weddings-2023-2025-q1.2026-10-14.body",
+    "body_sha256": "61c729a810161104b85f89c4cb1628487f9faaf67a2126e4d7ef4f31eb38b8ec",
+    "original_body_sha256": "659aab52d389c3ab1cea918036613b4a94b7d39c1b5696135876ef746321f340",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

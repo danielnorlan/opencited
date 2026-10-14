@@ -1,0 +1,33 @@
+{
+  "name": "question-share-divorces-short-marriages-2025-q1",
+  "reason": "query Q1 of question share-divorces-short-marriages-2025 in v2.jsonl",
+  "recorded_at": "2026-10-14T19:35:40Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/05692/data?lang=no&valueCodes%5BVarighetIAar%5D=00-02%2C03-04%2C05-09%2C10-14%2C15-19%2C20-24%2C025%2B%2C999E&valueCodes%5BContentsCode%5D=Skilsmisse&valueCodes%5BTid%5D=2025&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "question-share-divorces-short-marriages-2025-q1.2026-10-14.body",
+    "body_sha256": "fa89e89e7bb3bb372e5dadecd433f05d31ec15e50d620420ea3c922fee99009e",
+    "original_body_sha256": "4a26f599afe3f219618b1bd9c713c127593c09ff8fa569b5c29ac4cfadb60c1a",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

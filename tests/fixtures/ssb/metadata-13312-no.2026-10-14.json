@@ -1,0 +1,33 @@
+{
+  "name": "metadata-13312-no",
+  "reason": "dimensions, codes, labels, units and notes for a reference plan",
+  "recorded_at": "2026-10-14T19:35:14Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/13312/metadata?lang=no",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "metadata-13312-no.2026-10-14.body",
+    "body_sha256": "eee15526c92ca7a6487f3ac490992046a2335466da0adca05aa46ec32b1d2829",
+    "original_body_sha256": "02fe27b919d82d97dd5eedf7bb63e6e890ac9693585c37cee5fd0d58ab900a25",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "name": "question-sum-employed-2026k2-q1",
+  "reason": "query Q1 of question sum-employed-2026k2 in v2.jsonl",
+  "recorded_at": "2026-10-14T19:35:53Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/03778/data?lang=no&valueCodes%5BAlder%5D=15-74&valueCodes%5BKjonn%5D=2%2C1&valueCodes%5BContentsCode%5D=Sysselsatte&valueCodes%5BTid%5D=2026K2&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "question-sum-employed-2026k2-q1.2026-10-14.body",
+    "body_sha256": "4d45cdb8dd5605774a9b140a8750c7446ea96e1be7f3f0664604542992edaa72",
+    "original_body_sha256": "ab808c5622e64f2f6f93e6ab2be49ab0936f14eb18dd37d4694784c18dd4789c",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}
