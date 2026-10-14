@@ -328,3 +328,129 @@ def test_main_refuses_to_run_in_an_avoided_period(
     monkeypatch.setattr(recorder, "in_avoided_period", always)
     assert recorder.main(["--out", str(tmp_path / "fixtures")]) == 1
     assert not (tmp_path / "fixtures").exists()
+
+
+# Recordings for the reference plans of a question set.
+
+TWO_YEARS = {
+    "Kjonn": ["0"],
+    "Alder": ["999B"],
+    "ContentsCode": ["Personer"],
+    "Tid": ["2025", "2026"],
+}
+
+
+def question(identifier: str, selection: dict[str, list[str]], language: str = "en") -> str:
+    return json.dumps(
+        {
+            "id": identifier,
+            "language": language,
+            "text": "How many people lived in Norway?",
+            "category": "lookup",
+            "expected": {
+                "outcome": "answer",
+                "queries": [
+                    {
+                        "name": "Q1",
+                        "table_id": "05810",
+                        "selection": selection,
+                        "language": language,
+                    }
+                ],
+                "plan": {
+                    "steps": [
+                        {
+                            "name": "total",
+                            "operation": "value",
+                            "snapshot": "Q1",
+                            "codes": {
+                                "Kjonn": "0",
+                                "Alder": "999B",
+                                "ContentsCode": "Personer",
+                                "Tid": "2026",
+                            },
+                        }
+                    ]
+                },
+                "numbers": [{"step": "total", "decimals": 0}],
+            },
+        }
+    )
+
+
+REFUSED = json.dumps(
+    {
+        "id": "out-of-scope-weather",
+        "language": "no",
+        "text": "Hvor varmt blir det i morgen?",
+        "category": "out of scope",
+        "expected": {"outcome": "refusal"},
+    }
+)
+
+
+def question_file(tmp_path: Path, *lines: str) -> Path:
+    path = tmp_path / "v1.jsonl"
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
+def test_a_question_s_query_is_recorded_as_the_client_will_send_it(tmp_path: Path) -> None:
+    from opencited.sources.pxweb import normalise
+    from opencited.sources.ssb import data_request
+
+    selection = {**TWO_YEARS, "Tid": ["2026", " top( 2 ) "]}
+    path = question_file(tmp_path, question("lookup-a", selection), REFUSED)
+
+    metadata, data = recorder.question_recordings(path)
+
+    async_client = httpx2.AsyncClient(base_url=recorder.BASE_URL)
+    expected = data_request(async_client, "05810", normalise(selection), "en")
+    with httpx2.Client(base_url=recorder.BASE_URL) as client:
+        assert str(recorder.build(client, data).url) == str(expected.url)
+        assert str(recorder.build(client, metadata).url) == (
+            f"{recorder.BASE_URL}/tables/05810/metadata?lang=en"
+        )
+    assert (metadata.name, data.name) == ("metadata-05810-en", "question-lookup-a-q1")
+
+
+def test_a_request_that_two_questions_send_is_recorded_once(tmp_path: Path) -> None:
+    path = question_file(tmp_path, question("lookup-a", TWO_YEARS), question("lookup-b", TWO_YEARS))
+
+    names = [item.name for item in recorder.question_recordings(path)]
+
+    assert names == ["metadata-05810-en", "question-lookup-a-q1"]
+
+
+def test_requests_that_fixtures_answer_are_not_sent_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The recorded query of table 05810 and its metadata are both in the fixtures.
+    path = question_file(tmp_path, question("lookup-a", TWO_YEARS))
+
+    def never(moment: datetime) -> bool:
+        return False
+
+    monkeypatch.setattr(recorder, "in_avoided_period", never)
+
+    def refuse(*arguments: object, **options: object) -> Path:
+        raise AssertionError("no request should be sent")
+
+    monkeypatch.setattr(recorder, "record", refuse)
+
+    assert recorder.main(["--questions", str(path), "--out", str(FIXTURES)]) == 0
+    assert capsys.readouterr().out == ""
+    with httpx2.Client(base_url=recorder.BASE_URL) as client:
+        [_, data] = recorder.question_recordings(path)
+        assert ("GET", str(recorder.build(client, data).url)) in recorder.recorded_requests(
+            FIXTURES
+        )
+
+
+def test_a_question_set_that_cannot_be_read_stops_the_recorder(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = question_file(tmp_path, '{"id": "broken"}')
+
+    assert recorder.main(["--questions", str(path), "--out", str(tmp_path)]) == 2
+    assert "line 1" in capsys.readouterr().err
