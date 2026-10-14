@@ -21,7 +21,10 @@ from opencited.snapshots import SnapshotStore
 
 # The SHA-256 of the prompt texts for each version. A change to the texts without a
 # new version fails here, since every answer records the version it was made with.
-TEXTS = {"1": "0cbf90b1b19623329bbf09b56bd3223ad1cdcb9b31a98afd6b8c932b8411fea2"}
+TEXTS = {
+    "1": "0cbf90b1b19623329bbf09b56bd3223ad1cdcb9b31a98afd6b8c932b8411fea2",
+    "2": "fa4ea61be2406c0ade156a6d602532dbd5cb00c668d5e9420b73143461639ae3",
+}
 
 
 def test_a_change_to_the_prompt_texts_needs_a_new_version() -> None:
@@ -32,6 +35,7 @@ def test_a_change_to_the_prompt_texts_needs_a_new_version() -> None:
             prompt.UNCITED,
             repr(prompt.LANGUAGES),
             prompt.REFUSAL.pattern,
+            repr(prompt.HINTS),
         ]
     )
 
@@ -61,7 +65,30 @@ def test_a_retry_sends_the_gate_report_back(tmp_path: Path) -> None:
 
     assert message.startswith("The evidence gate blocked your answer.\n")
     assert report.text() in message
-    assert message.endswith("or leave the number out.")
+    assert "or leave the number out.\n" in message
+    # The failed value gets what to do about it, once.
+    assert message.endswith(
+        "Write '5,7 millioner' as a result gives it, with its sign and its per cent word, "
+        "or leave it out."
+    )
+
+
+def test_a_retry_after_a_failed_date_says_to_write_the_period(tmp_path: Path) -> None:
+    found = evidences(SnapshotStore(tmp_path))
+    text = "Per 1. januar 2026 og 1. januar 2026 bodde det mange i Norge [E1]."
+    report = check(text, "no", found.evidence)
+
+    message = retry_message(report)
+
+    hint = "Write '1. januar 2026' as the period it belongs to, such as the year, or leave the date out."
+    assert message.count(hint) == 1
+
+
+def test_a_retry_for_an_uncited_answer_has_no_hints(tmp_path: Path) -> None:
+    found = evidences(SnapshotStore(tmp_path))
+    report = check("Ingen tall her.", "no", found.evidence)
+
+    assert retry_message(report) == prompt.RETRY.format(report=report.text())
 
 
 @pytest.mark.parametrize(

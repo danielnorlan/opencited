@@ -636,3 +636,47 @@ def test_a_call_without_a_language_gets_the_language_of_the_answer(
     [outcome] = result.outcomes
 
     assert view(outcome) == {"evidence_id": "E1", **asyncio.run(direct()).model_dump(mode="json")}
+
+
+def test_the_model_reads_dimension_values_as_codes_and_labels(tmp_path: Path) -> None:
+    result = run(tmp_path, METADATA)
+    [outcome] = result.outcomes
+    metadata = cast("TableMetadata", cast("SourceEvidence", outcome.evidence).result)
+    shown = view(outcome)
+
+    for item, dimension in zip(shown["dimensions"], metadata.dimensions, strict=True):
+        assert item["values"] == {value.code: value.label for value in dimension.values}
+        notes = {value.code: list(value.notes) for value in dimension.values if value.notes}
+        assert item.get("value_notes", {}) == notes
+        assert (item["code"], item["label"], item["time"]) == (
+            dimension.code,
+            dimension.label,
+            dimension.time,
+        )
+    # The evidence for the gate keeps every field.
+    assert outcome.evidence is not None
+    assert result.evidence[0].result == metadata
+
+
+def test_notes_of_a_value_stay_beside_the_compact_values() -> None:
+    from opencited.agent.tools import compact_dimension
+
+    dimension: dict[str, Any] = {
+        "code": "Region",
+        "label": "region",
+        "values": [
+            {"code": "0", "label": "Hele landet", "notes": []},
+            {"code": "3101", "label": "Halden", "notes": ["Ny kommune fra 2024."]},
+        ],
+        "notes": [],
+        "time": False,
+    }
+
+    assert compact_dimension(dimension) == {
+        "code": "Region",
+        "label": "region",
+        "values": {"0": "Hele landet", "3101": "Halden"},
+        "value_notes": {"3101": ["Ny kommune fra 2024."]},
+        "notes": [],
+        "time": False,
+    }
