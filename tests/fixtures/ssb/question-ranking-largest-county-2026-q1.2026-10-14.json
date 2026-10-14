@@ -1,0 +1,33 @@
+{
+  "name": "question-ranking-largest-county-2026-q1",
+  "reason": "query Q1 of question ranking-largest-county-2026 in v1.jsonl",
+  "recorded_at": "2026-10-14T06:21:58Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/06913/data?lang=en&valueCodes%5BRegion%5D=31%2C32%2C03%2C34%2C33%2C39%2C40%2C42%2C11%2C46%2C15%2C50%2C18%2C55%2C56&valueCodes%5BContentsCode%5D=Folkemengde&valueCodes%5BTid%5D=2026&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "question-ranking-largest-county-2026-q1.2026-10-14.body",
+    "body_sha256": "17930d8b7dfc6412ce143a9881258b1a996125b2321c2f8e2915f2f707b5aa8a",
+    "original_body_sha256": "c2fbd03fa46c14ef3d1299a0298d57e78fce41cee49822cec28306b8619cd291",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

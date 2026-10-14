@@ -1,0 +1,33 @@
+{
+  "name": "question-lookup-immigrants-bergen-2026-q1",
+  "reason": "query Q1 of question lookup-immigrants-bergen-2026 in v1.jsonl",
+  "recorded_at": "2026-10-14T06:21:13Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/09817/data?lang=no&valueCodes%5BRegion%5D=4601&valueCodes%5BInnvandrKat%5D=B&valueCodes%5BLandbakgrunn%5D=999&valueCodes%5BContentsCode%5D=Personer1&valueCodes%5BTid%5D=2026&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "question-lookup-immigrants-bergen-2026-q1.2026-10-14.body",
+    "body_sha256": "2e11da9b55f763dd2a6a9f57a3cabf2a31ffb4f9c831009d1e0b9e77b3cda9a7",
+    "original_body_sha256": "1279906de5a93f680edd70322add67bdd7f2e26771e5f76a5abd90a68354a6ac",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "name": "question-ranking-largest-age-group-2026-q1",
+  "reason": "query Q1 of question ranking-largest-age-group-2026 in v1.jsonl",
+  "recorded_at": "2026-10-14T06:22:06Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/05810/data?lang=no&valueCodes%5BKjonn%5D=0&valueCodes%5BAlder%5D=00-06%2C07-15%2C16-44%2C45-66%2C67-79%2C80%2B&valueCodes%5BContentsCode%5D=Personer&valueCodes%5BTid%5D=2026&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "question-ranking-largest-age-group-2026-q1.2026-10-14.body",
+    "body_sha256": "494b8d053edf665998bdcc6bca0086179c0fadddd368838ef4aa49295179f27b",
+    "original_body_sha256": "0bc58faa5dc6c7ec05c09c39132dd7672fbec167f93a475b8ae1d20885d4bcae",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

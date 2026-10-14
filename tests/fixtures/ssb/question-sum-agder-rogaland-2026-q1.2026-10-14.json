@@ -1,0 +1,33 @@
+{
+  "name": "question-sum-agder-rogaland-2026-q1",
+  "reason": "query Q1 of question sum-agder-rogaland-2026 in v1.jsonl",
+  "recorded_at": "2026-10-14T06:21:55Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/06913/data?lang=no&valueCodes%5BRegion%5D=42%2C11&valueCodes%5BContentsCode%5D=Folkemengde&valueCodes%5BTid%5D=2026&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "question-sum-agder-rogaland-2026-q1.2026-10-14.body",
+    "body_sha256": "35e90b8323d518dc236f70962b9ae78d4a62114813531913a7ad6dc278a413e8",
+    "original_body_sha256": "939255652366bf777d004d13ee569234f02fb99d9ad6bf994564fa4b11159c9f",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

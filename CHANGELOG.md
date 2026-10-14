@@ -31,6 +31,11 @@ Notable changes to OpenCited are recorded here. The format follows
   Norwegian time, and a rate limiter that keeps each process within 30 requests a
   minute and backs off after HTTP 429. `opencited mcp` takes `--cache-dir` and
   `--no-cache`.
+- The first question set, `evals/questions/v1.jsonl`: 44 questions in Norwegian and
+  English, in the eight categories of spec 0005, with reference plans whose expected
+  numbers a run computes from the day's data; the runner of those plans; and
+  recordings of every table and selection they read, made with
+  `scripts/record_ssb_fixtures.py --questions`.
 - The evaluation suite's scorer, which decides with the gate's rules whether an answer
   holds the expected numbers at the required decimals and a ranking answer its label,
   and its report of correct answers by category and language, wrong refusals and

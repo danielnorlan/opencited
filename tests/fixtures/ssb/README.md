@@ -17,5 +17,13 @@ refuses to run in the periods that
 [ADR 0007](../../../docs/adr/0007-ssb-pxwebapi-v2.md) keeps scheduled jobs away
 from.
 
+The recordings named `question-...`, with the `metadata-...` recordings of their
+tables, hold what the reference plans of the first question set read, so that every
+plan runs in CI
+([spec 0005](../../../docs/specs/0005-evaluation-suite.md)). They come from
+`uv run python scripts/record_ssb_fixtures.py --questions evals/questions/v1.jsonl`,
+which records the metadata and data of each query once and skips requests that a
+recording here already answers.
+
 Source: Statistics Norway. The data is licensed under
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).

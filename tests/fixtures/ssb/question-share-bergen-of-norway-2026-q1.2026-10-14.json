@@ -1,0 +1,33 @@
+{
+  "name": "question-share-bergen-of-norway-2026-q1",
+  "reason": "query Q1 of question share-bergen-of-norway-2026 in v1.jsonl",
+  "recorded_at": "2026-10-14T06:35:11Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/06913/data?lang=en&valueCodes%5BRegion%5D=0%2C4601&valueCodes%5BContentsCode%5D=Folkemengde&valueCodes%5BTid%5D=2026&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "question-share-bergen-of-norway-2026-q1.2026-10-14.body",
+    "body_sha256": "c64def0d3214b10704c26951f77e8f5428a586394a86dd0731a01d6b8e753f01",
+    "original_body_sha256": "8f232b9e7d33f8e354afbdedfb664828095df291b3d3a0186472c0034a195887",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

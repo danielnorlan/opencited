@@ -2,6 +2,7 @@
 """Record responses from Statistics Norway's API as test fixtures.
 
 Usage: uv run python scripts/record_ssb_fixtures.py [--out DIR] [--only NAME ...] [--replace]
+       uv run python scripts/record_ssb_fixtures.py --questions FILE [--out DIR]
 
 Each recording becomes two files, named with the UTC date of the recording:
 NAME.DATE.json holds the request, the response status, the kept headers and two
@@ -12,6 +13,13 @@ and the JSON file records the SHA-256 of the original and of the stored body
 or email addresses remain. Headers come from an allow list, so cookies never reach a
 fixture. The script waits between requests to stay within SSB's rate limit, and it
 refuses to run in the periods that ADR 0007 keeps scheduled jobs away from.
+
+With ``--questions``, it records what the reference plans of a question set read
+(spec 0005): the metadata and the data of every query, with the client's selection
+normalisation, code joining and parameter order, so that the replay finds them; a test
+compares each with the request the client builds. A request that a fixture in the
+directory already answers with HTTP 200 is not sent again, unless ``--replace`` is
+given.
 """
 
 from __future__ import annotations
@@ -559,6 +567,62 @@ def record(client: httpx2.Client, recording: Recording, out: Path, *, replace: b
     return json_path
 
 
+def question_recordings(path: Path) -> tuple[Recording, ...]:
+    """Return the requests that the queries of a question set send, each once."""
+    # Imported here, so that the fixed recordings need nothing from the package.
+    from opencited.evals.questions import AnswerExpected, load_questions
+    from opencited.sources.pxweb import normalise
+    from opencited.sources.ssb import MAX_GET_URL_LENGTH, url_codes
+
+    found: dict[tuple[str, str, tuple[tuple[str, str], ...]], Recording] = {}
+    for question in load_questions(path).questions:
+        expected = question.expected
+        if not isinstance(expected, AnswerExpected):
+            continue
+        for query in expected.queries:
+            table, language = query.table_id, query.language
+            metadata = Recording(
+                f"metadata-{table}-{language}",
+                "GET",
+                f"/tables/{table}/metadata",
+                (("lang", language),),
+                reason="dimensions, codes, labels, units and notes for a reference plan",
+            )
+            codes = normalise(query.selection)
+            data = Recording(
+                f"question-{question.id}-{query.name.lower()}",
+                "GET",
+                f"/tables/{table}/data",
+                (
+                    ("lang", language),
+                    *(
+                        (f"valueCodes[{dimension}]", url_codes(items))
+                        for dimension, items in codes.items()
+                    ),
+                    ("outputFormat", "json-stat2"),
+                ),
+                reason=f"query {query.name} of question {question.id} in {path.name}",
+            )
+            for recording in (metadata, data):
+                with httpx2.Client(base_url=BASE_URL) as client:
+                    if len(str(build(client, recording).url)) >= MAX_GET_URL_LENGTH:
+                        raise RecordingError(f"{recording.name}: the URL is too long for GET")
+                found.setdefault((recording.method, recording.path, recording.params), recording)
+    return tuple(found.values())
+
+
+def recorded_requests(out: Path) -> set[tuple[str, str]]:
+    """Return the method and URL of every request that a fixture answers with HTTP 200."""
+    requests: set[tuple[str, str]] = set()
+    for path in out.glob("*.json"):
+        document = cast("dict[str, object]", json.loads(path.read_text(encoding="utf-8")))
+        request = cast("dict[str, object]", document["request"])
+        response = cast("dict[str, object]", document["response"])
+        if response["status"] == 200:
+            requests.add((str(request["method"]), str(request["url"])))
+    return requests
+
+
 def user_agent() -> str:
     """Return the user agent, which names the project and its version."""
     try:
@@ -576,21 +640,46 @@ def parse_arguments(arguments: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--replace", action="store_true", help="replace recordings made on the same day"
     )
+    parser.add_argument(
+        "--questions",
+        type=Path,
+        metavar="FILE",
+        help="record what the reference plans of a question set read, apart from fixtures that exist",
+    )
     return parser.parse_args(arguments)
 
 
 def main(arguments: list[str] | None = None) -> int:
     """Record the selected recordings. Return 0, 1 when a recording fails, or 2 for bad input."""
     options = parse_arguments(sys.argv[1:] if arguments is None else arguments)
-    unknown = set(options.only or ()) - {r.name for r in RECORDINGS}
+    out: Path = options.out
+    if options.questions is not None:
+        try:
+            available = question_recordings(options.questions)
+        except (ValueError, RecordingError) as error:
+            print(f"{options.questions}: {error}", file=sys.stderr)
+            return 2
+        done = (
+            recorded_requests(out)
+            if out.is_dir() and not options.replace
+            else set[tuple[str, str]]()
+        )
+        with httpx2.Client(base_url=BASE_URL) as client:
+            available = tuple(
+                item
+                for item in available
+                if (item.method, str(build(client, item).url)) not in done
+            )
+    else:
+        available = RECORDINGS
+    unknown = set(options.only or ()) - {r.name for r in available}
     if unknown:
         print(f"Unknown recordings: {', '.join(sorted(unknown))}", file=sys.stderr)
         return 2
     if in_avoided_period(datetime.now(UTC)):
         print("SSB updates or publishes data now (ADR 0007). Try again later.", file=sys.stderr)
         return 1
-    selected = [r for r in RECORDINGS if not options.only or r.name in options.only]
-    out: Path = options.out
+    selected = [r for r in available if not options.only or r.name in options.only]
     out.mkdir(parents=True, exist_ok=True)
     with httpx2.Client(
         base_url=BASE_URL,
