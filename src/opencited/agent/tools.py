@@ -30,7 +30,7 @@ from mcp.types import CallToolResult, TextContent, Tool
 from pydantic import ValidationError
 
 from opencited.agent.model import ToolCall, ToolSchema
-from opencited.calc.engine import CalculationError, Engine
+from opencited.calc.engine import CalculationError, Engine, unit_scale
 from opencited.calc.plan import Plan, plan_schema
 from opencited.calc.result import CalculationResult
 from opencited.gate import CalculationEvidence, Evidence, SourceEvidence
@@ -243,6 +243,25 @@ def compact_dimension(dimension: dict[str, Any]) -> dict[str, Any]:
     return shown
 
 
+# A value in a unit with a multiplier is formatted in the base unit, with the scale word
+# that the gate reads for millions and billions (spec 0003, Matching values, item 6).
+SCALE_WORDS: dict[int, dict[Language, str]] = {
+    6: {"no": "millioner", "en": "million"},
+    9: {"no": "milliarder", "en": "billion"},
+}
+
+
+def formatted(value: Decimal, scale: int, language: Language) -> str:
+    """Return a value for the model to write, in its base unit: 138 in 1000 personer is 138 000."""
+    word = SCALE_WORDS.get(scale)
+    if scale == 0 or word is not None:
+        text = format_number(value, language)
+        return f"{text} {word[language]}" if word is not None else text
+    decimals = max(0, -int(value.as_tuple().exponent) - scale)
+    base = (value * Decimal(10) ** scale).quantize(Decimal(1).scaleb(-decimals))
+    return format_number(base, language)
+
+
 def source_view(
     evidence_id: str, result: QueryResult | TableMetadata | SearchResult, language: Language
 ) -> dict[str, Any]:
@@ -255,10 +274,15 @@ def source_view(
         dimensions = cast("list[dict[str, Any]]", data["dimensions"])
         data["dimensions"] = [compact_dimension(dimension) for dimension in dimensions]
     if isinstance(result, QueryResult):
+        units = {unit.code: unit.base for unit in result.units}
+        contents = [
+            index for index, dimension in enumerate(result.dimensions) if dimension.contents
+        ]
         cells = cast("list[dict[str, Any]]", data["observations"])
         for cell, observation in zip(cells, result.observations, strict=True):
             if observation.value is not None:
-                cell["formatted"] = format_number(observation.value, language)
+                base = units.get(observation.codes[contents[0]]) if contents else None
+                cell["formatted"] = formatted(observation.value, unit_scale(base), language)
     return {"evidence_id": evidence_id, **data}
 
 
@@ -274,10 +298,10 @@ def calculation_view(
         if step.name in reads:
             view["read"] = reads[step.name]
         if step.value is not None:
-            view["formatted"] = format_number(step.value, language)
+            view["formatted"] = formatted(step.value, step.unit.scale, language)
         cells = cast("list[dict[str, Any]]", view["ranked"])
         for cell, ranked in zip(cells, step.ranked, strict=True):
-            cell["formatted"] = format_number(ranked.value, language)
+            cell["formatted"] = formatted(ranked.value, step.unit.scale, language)
     return {"evidence_id": evidence_id, **data}
 
 

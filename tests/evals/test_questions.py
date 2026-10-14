@@ -473,3 +473,21 @@ def test_a_query_held_back_by_the_rate_limit_waits_and_is_sent_again() -> None:
         asyncio.run(patiently(cast("Any", fetch_failing(PATIENCE + 1)), sleep))
     assert len(calls) == PATIENCE + 1
     assert len(waits) == PATIENCE
+
+
+def test_a_reference_number_in_thousands_is_in_persons_to_the_thousand(tmp_path: Path) -> None:
+    # 03778 gives employment in 1 000 personer (spec 0003, Matching values, item 6).
+    second = load_questions(
+        Path(__file__).resolve().parents[2] / "evals" / "questions" / "v2.jsonl"
+    )
+    by_id = {question.id: question for question in second.questions}
+
+    employed = run_reference(by_id["sum-employed-2026k2"], SnapshotStore(tmp_path / "a"))
+    share = run_reference(by_id["share-employed-academic-2025"], SnapshotStore(tmp_path / "b"))
+
+    assert employed.expectation.numbers == (
+        ExpectedNumber(step="employed", exact="2935000", kind="amount", decimals=-3),
+    )
+    # A share of two values in thousands has no multiplier.
+    [number] = share.expectation.numbers
+    assert (number.kind, number.decimals) == ("per cent", 1)

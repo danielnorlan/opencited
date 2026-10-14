@@ -525,3 +525,121 @@ def test_metadata_selects_no_year_for_the_day_of_its_figures() -> None:
     report = check("Per 1. januar 2026 [E1].", "no", [SourceEvidence("E1", metadata())])
 
     assert not report.passed
+
+
+# Values in a unit with a multiplier (spec 0003, Matching values, item 6).
+
+EMPLOYED = {
+    "Alder": ["15-74"],
+    "Kjonn": ["2", "1"],
+    "ContentsCode": ["Sysselsatte"],
+    "Tid": ["2026K2"],
+}
+OCCUPATIONS_EN = {
+    "Kjonn": ["0"],
+    "Yrke": ["0-9", "2"],
+    "ContentsCode": ["Sysselsatte"],
+    "Tid": ["2025"],
+}
+GDP_EN = {"Makrost": ["bnpb.nr23_9"], "ContentsCode": ["Priser"], "Tid": ["2024", "2025"]}
+
+
+def value_at(result: QueryResult, *codes: str) -> Decimal:
+    return next(
+        cell.value
+        for cell in result.observations
+        if cell.value is not None and all(code in cell.codes for code in codes)
+    )
+
+
+@pytest.mark.parametrize(
+    ("text", "passes"),
+    [
+        # 03778 gives employed women as 1382 in the unit 1 000 personer.
+        ("I 2. kvartal 2026 var 1 382 000 kvinner sysselsatt [E1].", True),
+        ("I 2. kvartal 2026 var 1 382 tusen kvinner sysselsatt [E1].", True),
+        ("I 2. kvartal 2026 var 1,4 millioner kvinner sysselsatt [E1].", True),
+        ("I 2. kvartal 2026 var 1 382 kvinner sysselsatt [E1].", False),
+    ],
+)
+def test_a_value_in_thousands_is_compared_in_persons(text: str, passes: bool) -> None:
+    result = retrieve("03778", EMPLOYED, "no").result
+    assert {unit.base for unit in result.units} == {"1 000 personer"}
+    assert value_at(result, "2") == Decimal(1382)
+
+    report = check(text, "no", [SourceEvidence("E1", result)])
+
+    assert report.passed is passes, report.text()
+
+
+@pytest.mark.parametrize(
+    ("text", "passes"),
+    [
+        ("In 2025, 845,000 people worked in academic professions [E1].", True),
+        ("In 2025, 845 thousand people worked in academic professions [E1].", True),
+        ("In 2025, 845 people worked in academic professions [E1].", False),
+    ],
+)
+def test_a_value_in_thousands_of_persons_reads_in_english_too(text: str, passes: bool) -> None:
+    result = retrieve("09788", OCCUPATIONS_EN, "en").result
+    assert {unit.base for unit in result.units} == {"1 000 persons"}
+
+    report = check(text, "en", [SourceEvidence("E1", result)])
+
+    assert report.passed is passes, report.text()
+
+
+@pytest.mark.parametrize(
+    ("text", "passes"),
+    [
+        ("GDP was NOK 5,511,334 million in 2025 [E1].", True),
+        ("GDP was NOK 5,511 billion in 2025 [E1].", True),
+        ("GDP was NOK 5,511,334 in 2025 [E1].", False),
+    ],
+)
+def test_a_value_in_millions_of_kroner_is_compared_in_kroner(text: str, passes: bool) -> None:
+    result = retrieve("09189", GDP_EN, "en").result
+    assert {unit.base for unit in result.units} == {"NOK million"}
+    assert value_at(result, "2025") == Decimal(5511334)
+
+    report = check(text, "en", [SourceEvidence("E1", result)])
+
+    assert report.passed is passes, report.text()
+
+
+def test_a_calculation_carries_the_multiplier_and_a_share_has_none(tmp_path: Path) -> None:
+    store = SnapshotStore(tmp_path)
+    snapshot = store.write(retrieve("03778", EMPLOYED, "no")).name
+    steps = [
+        {"name": "all", "operation": "sum", "snapshot": snapshot, "selection": EMPLOYED},
+        {
+            "name": "women",
+            "operation": "value",
+            "snapshot": snapshot,
+            "codes": {
+                "Alder": "15-74",
+                "Kjonn": "2",
+                "ContentsCode": "Sysselsatte",
+                "Tid": "2026K2",
+            },
+        },
+        {
+            "name": "share",
+            "operation": "share_percent",
+            "part": "women",
+            "total": "all",
+            "decimals": 1,
+        },
+    ]
+    result = Engine(store).run(Plan.model_validate_json(json.dumps({"steps": steps})))
+    evidence = [CalculationEvidence("C1", result)]
+    assert result.step("all").exact == "2935"
+    assert result.step("all").unit.scale == 3
+    assert result.step("share").unit.scale == 0
+
+    def passes(text: str) -> bool:
+        return check(text, "no", evidence).passed
+
+    assert passes("Til sammen var 2 935 000 sysselsatt [C1].")
+    assert not passes("Til sammen var 2 935 sysselsatt [C1].")
+    assert passes("Kvinnene var 47,1 prosent av de sysselsatte [C1].")

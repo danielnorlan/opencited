@@ -28,7 +28,7 @@ from opencited.calc import (
     parse_plan,
     plan_schema,
 )
-from opencited.calc.engine import check_types, locked
+from opencited.calc.engine import check_types, locked, unit_scale
 from opencited.snapshots import MANIFEST, OBSERVATIONS, SnapshotStore
 from opencited.sources import Unit
 
@@ -254,12 +254,16 @@ def test_units_follow_the_operations(store: SnapshotStore) -> None:
         },
         {"name": "product", "operation": "multiply", "left": "fish", "right": "now"},
     )
-    assert result.step("now").unit.model_dump() == {"kind": "amount", "name": "number"}
+    assert result.step("now").unit.model_dump() == {"kind": "amount", "name": "number", "scale": 0}
     assert result.step("share_now").unit.kind == "per cent"
     assert result.step("points").unit.kind == "percentage points"
     assert result.step("shares").unit.kind == "per cent"
     assert result.step("ratio").unit.kind == "ratio"
-    assert result.step("per_person").unit.model_dump() == {"kind": "amount", "name": "kg / number"}
+    assert result.step("per_person").unit.model_dump() == {
+        "kind": "amount",
+        "name": "kg / number",
+        "scale": 0,
+    }
     assert result.step("product").unit.name == "kg \u00d7 number"
 
 
@@ -691,7 +695,7 @@ def test_a_difference_keeps_its_unit_and_of_percentage_points_too(store: Snapsho
         {"name": "points", "operation": "subtract", "left": "share_now", "right": "share_before"},
         {"name": "again", "operation": "subtract", "left": "points", "right": "points"},
     )
-    assert result.step("more").unit.model_dump() == {"kind": "amount", "name": "number"}
+    assert result.step("more").unit.model_dump() == {"kind": "amount", "name": "number", "scale": 0}
     assert result.step("points").unit.kind == "percentage points"
     assert result.step("again").unit.kind == "percentage points"
 
@@ -982,3 +986,92 @@ def test_a_snapshot_with_floating_point_values_is_refused_before_any_step(
         error = plan_error(store, step)
         assert error.step == step["name"]
         assert "cannot be read" in str(error)
+
+
+@pytest.mark.parametrize(
+    ("name", "scale"),
+    [
+        ("1000 personer", 3),
+        ("1 000 persons", 3),
+        ("1 000 kr", 3),
+        ("1000 man-weeks", 3),
+        ("10 000 tonn", 4),
+        ("mill. kr", 6),
+        ("NOK million", 6),
+        ("mrd. kr", 9),
+        ("tusen kroner", 3),
+        # A rate, and units that name no multiplier.
+        ("per 1000", 0),
+        ("per million", 0),
+        ("12 måneder", 0),
+        ("Lovbrudd per 1000 innbyggere", 0),
+        ("personer", 0),
+        ("kg", 0),
+        ("antall per km²", 0),
+        ("2 personer", 0),
+        (None, 0),
+    ],
+)
+def test_a_unit_s_name_gives_its_power_of_ten(name: str | None, scale: int) -> None:
+    assert unit_scale(name) == scale
+
+
+def test_the_scale_of_a_unit_follows_the_operations(store: SnapshotStore) -> None:
+    units = [Unit(code="Personer", base="1000 personer", decimals=0)]
+    snapshot = store.write(altered(population(), units=units)).name
+    result = run(
+        store,
+        value("now", snapshot, "2026"),
+        value("before", snapshot, "2025"),
+        {"name": "more", "operation": "subtract", "left": "now", "right": "before"},
+        {"name": "squared", "operation": "multiply", "left": "now", "right": "before"},
+        {"name": "ratio", "operation": "divide", "left": "now", "right": "before", "decimals": 3},
+        {
+            "name": "growth",
+            "operation": "change_percent",
+            "old": "before",
+            "new": "now",
+            "decimals": 1,
+        },
+    )
+
+    assert result.step("now").unit.scale == 3
+    assert result.step("more").unit.scale == 3
+    assert result.step("squared").unit.scale == 6
+    assert result.step("ratio").unit.model_dump() == {"kind": "ratio", "name": None, "scale": 0}
+    assert result.step("growth").unit.scale == 0
+
+
+def test_a_quotient_of_two_units_subtracts_their_scales(store: SnapshotStore) -> None:
+    units = [Unit(code="Personer", base="1000 personer", decimals=0)]
+    people = store.write(altered(population(), units=units)).name
+    fish = store.write(catch()).name
+    codes = {
+        "FiskeslagSamiske": "80a",
+        "SamiskeElver": "18",
+        "ContentsCode": "Fangst",
+        "Tid": "2016",
+    }
+    result = run(
+        store,
+        value("now", people, "2026"),
+        {"name": "fish", "operation": "value", "snapshot": fish, "codes": codes},
+        {
+            "name": "per_person",
+            "operation": "divide",
+            "left": "fish",
+            "right": "now",
+            "decimals": 9,
+        },
+        {
+            "name": "persons_per_kg",
+            "operation": "divide",
+            "left": "now",
+            "right": "fish",
+            "decimals": 3,
+        },
+    )
+
+    # kg per 1000 personer is a thousandth of kg per person, and the other way round.
+    assert result.step("per_person").unit.scale == -3
+    assert result.step("persons_per_kg").unit.scale == 3

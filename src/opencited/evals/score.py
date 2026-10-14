@@ -3,7 +3,7 @@
 The scorer is deterministic and asks no model. It reads an answer with the evidence
 gate. An expected number is in an answer when a shown number that the gate matched as
 a value may be that value under the gate's rules for unit and rounding, and shows at
-least the required decimals in the value's own unit. Periods, dates, table IDs, label
+least the required decimals in the value's base unit. Periods, dates, table IDs, label
 numbers and numbers in HTML comments do not count. A scale word lowers what a number
 shows: "5,6 millioner" shows a count to one decimal of a million, which is five places
 short of a whole number.
@@ -60,12 +60,16 @@ DASHES = str.maketrans(dict.fromkeys("\u2010\u2011\u2012\u2013\u2014\u2212", "-"
 
 
 class ExpectedNumber(Frozen):
-    """A number the answer must hold: a step of the reference plan, run on the day's data."""
+    """A number the answer must hold: a step of the reference plan, run on the day's data.
+
+    The number is in the base unit of its value: 138 in 1000 personer is 138000 persons,
+    and a question that asks for whole thousands asks for -3 decimals of persons.
+    """
 
     step: str
     exact: str = Field(pattern=FRACTION_PATTERN, description="The step's exact result.")
     kind: UnitKind
-    decimals: int = Field(ge=0, le=20, description="The decimals the answer shows at least.")
+    decimals: int = Field(ge=-30, le=20, description="The decimals the answer shows at least.")
 
 
 class Expectation(Frozen):

@@ -17,7 +17,7 @@ from opencited.gate import Finding, Report
 from opencited.gate.check import UNSELECTED_YEAR
 from opencited.sources import Language
 
-PROMPT_VERSION = "5"
+PROMPT_VERSION = "6"
 
 LANGUAGES: dict[Language, str] = {"no": "Norwegian (bokmål)", "en": "English"}
 
@@ -38,6 +38,9 @@ item or table row as each number it backs. A calculation backs only the numbers 
 computes: where you name a period or a date beside them, also cite the source result \
 that holds it, such as [C1] [E2].
 5. Write a value as its "formatted" field writes it, or rounded to fewer decimals. \
+For a unit such as 1000 personer or mill. kr, "formatted" gives the value in whole \
+persons or kroner, such as 138 000, or with millioner or milliarder; never write the \
+bare number of thousands or millions. \
 Write per cent values with a per cent word and differences of per cent values with \
 "percentage points", or in Norwegian "prosent" and "prosentpoeng". Write a change with \
 its sign as calculate gives it, such as -6.2 per cent, also when you say it fell. Name a \

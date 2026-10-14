@@ -346,10 +346,18 @@ number at the start of a line is read as a number.
 Every other number is a value. It fails in a block that cites no result. It passes
 when a cited result holds a value `v` that, divided by any scale word and rounded with
 ties away from zero to the decimals written, equals the number; for a calculation, `v`
-is the step's exact result, and the values of the cells it ranked count too. A number
-with a percent word matches only per cent values, one with a percentage point word
-only percentage point values, and any other number only values that are not per cent,
-so the sign and the unit must both fit. A citation of an evidence ID that the run does
+is the step's exact result, and the values of the cells it ranked count too. A value
+whose unit names a multiplier is compared in the base unit:
+`opencited.calc.engine.unit_scale` reads a leading power of ten, as in "1 000
+personer", or a scale word, as in "mill. kr" and "NOK million", and gives no
+multiplier to a rate such as "per 1000". So 138 in "1000 personer" matches "138 000"
+and "138 tusen" and fails "138". The result unit of a calculation carries the power
+of ten: a sum or a difference keeps it, a product adds and a quotient subtracts the
+two, and a per cent result has none. The model gets such values formatted in the base
+unit, as "138 000" or "5 511 334 millioner", and the prompt tells it to write them
+so. A number with a percent word matches only per cent values, one with a percentage
+point word only percentage point values, and any other number only values that are
+not per cent, so the sign and the unit must both fit. A citation of an evidence ID that the run does
 not have fails. The rule checks which value a number may be and leaves what the number
 refers to to the evaluation suite, so `5.6 million in 2026` passes when any cited
 value rounds to 5.6 million.
@@ -588,8 +596,9 @@ when the agent released it, it passes the gate again with the run's evidence, it
 holds each expected number, and a ranking answer holds the label. A number holds an
 expected one when the gate matched it as a value, it may be that value under the
 gate's rules for unit and rounding, and it shows at least the required decimals in the
-value's own unit; a scale word lowers what it shows, so "5,6 millioner" shows a count
-to a tenth of a million. Periods, dates, table IDs, label numbers and numbers in HTML
+value's base unit; a scale word lowers what it shows, so "5,6 millioner" shows a count
+to a tenth of a million, and a question that asks for whole thousands of a value in
+"1 000 personer" asks for -3 decimals of persons. Periods, dates, table IDs, label numbers and numbers in HTML
 comments do not count. A label counts when it stands in the shown text as a whole,
 ignoring case and the kind of dash and space, and may not run on into a letter, a
 digit or a hyphen; a label that begins another one, such as "Troms" in "Troms og

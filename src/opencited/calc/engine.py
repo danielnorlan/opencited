@@ -11,6 +11,7 @@ and ranks cells; all arithmetic runs on exact rational numbers in
 from __future__ import annotations
 
 import math
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
@@ -59,6 +60,14 @@ MAX_CELLS = 5000
 # a name such as "Prosent av befolkningen" counts too.
 PER_CENT = ("prosent", "per cent", "percent", "%")
 PERCENTAGE_POINTS = ("prosentpoeng", "percentage point")
+# A unit's own multiplier: a leading power of ten, or the scale words of spec 0003.
+LEADING_NUMBER = re.compile(r"^([0-9]{1,3}(?: [0-9]{3})*|[0-9]+)(?![0-9.,])")
+POWER_OF_TEN = re.compile(r"10*")
+SCALE_WORDS = (
+    (9, ("mrd.", "milliard", "milliarder", "billion")),
+    (6, ("mill.", "million", "millioner")),
+    (3, ("tusen", "thousand")),
+)
 FLOATING = frozenset({"DOUBLE", "FLOAT", "REAL"})
 # An arithmetic line lists the cells of a sum or a mean when there are at most this many.
 LISTED = 10
@@ -92,6 +101,30 @@ class Row:
     unit: str | None
 
 
+def unit_scale(name: str | None) -> int:
+    """Return the power of ten that a unit's name multiplies a value by.
+
+    A name names a multiplier when it begins with a power of ten, as "1000 personer"
+    and "1 000 kr" do, or holds a scale word, as "mill. kr" and "NOK million" do. A
+    name that begins with "per", such as "per 1000", is a rate, and other names, such
+    as "kg", name none (spec 0003, Matching values, item 6).
+    """
+    if name is None:
+        return 0
+    word = " ".join(name.replace("\u00a0", " ").casefold().split())
+    if word.startswith("per ") or word == "per":
+        return 0
+    leading = LEADING_NUMBER.match(word)
+    if leading is not None:
+        digits = leading[1].replace(" ", "")
+        if POWER_OF_TEN.fullmatch(digits):
+            return len(digits) - 1
+    for scale, words in SCALE_WORDS:
+        if any(re.search(rf"(?<![\w.]){re.escape(item)}(?!\w)", word) for item in words):
+            return scale
+    return 0
+
+
 def unit_named(name: str | None) -> ResultUnit:
     """Return the unit of a cell, which is per cent or percentage points when it says so."""
     word = name.lower() if name is not None else ""
@@ -99,7 +132,7 @@ def unit_named(name: str | None) -> ResultUnit:
         return ResultUnit(kind="percentage points", name=name)
     if any(percent in word for percent in PER_CENT):
         return ResultUnit(kind="per cent", name=name)
-    return ResultUnit(kind="amount", name=name)
+    return ResultUnit(kind="amount", name=name, scale=unit_scale(name))
 
 
 def same_unit(left: ResultUnit, right: ResultUnit) -> bool:
@@ -500,8 +533,9 @@ class Runner:
 
 
 def product(left: ResultUnit, right: ResultUnit, operator: str) -> ResultUnit:
-    """Return the unit of a product or a quotient of two results."""
-    return ResultUnit(kind="amount", name=f"{left.text()} {operator} {right.text()}")
+    """Return the unit of a product or a quotient of two results, with its scale."""
+    scale = left.scale + right.scale if operator == TIMES else left.scale - right.scale
+    return ResultUnit(kind="amount", name=f"{left.text()} {operator} {right.text()}", scale=scale)
 
 
 def check_types(cursor: duckdb.DuckDBPyConnection, step: str) -> None:

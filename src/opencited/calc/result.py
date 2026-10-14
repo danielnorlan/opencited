@@ -24,11 +24,19 @@ class ResultUnit(Frozen):
     ``kind`` says how a number with this unit may be written: as an amount, as per
     cent, as percentage points or as a ratio. ``name`` is the source's unit of a cell,
     of any kind, or the product or quotient of two units, and is empty for a per cent,
-    percentage point or ratio result that a calculation made.
+    percentage point or ratio result that a calculation made. ``scale`` is the power of
+    ten in the name of an amount's unit, so a value is ``value * 10**scale`` in the
+    base unit (spec 0003, Matching values, item 6).
     """
 
     kind: Literal["amount", "per cent", "percentage points", "ratio"]
     name: str | None = None
+    scale: int = Field(
+        default=0,
+        ge=-30,
+        le=30,
+        description="The power of ten that the unit multiplies a value by: 3 for 1000 personer.",
+    )
 
     def text(self) -> str:
         if self.kind == "amount":

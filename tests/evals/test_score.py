@@ -9,12 +9,15 @@ numbers come from the engine's results, never from a hand-written value.
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from fractions import Fraction
+from pathlib import Path
 
 import pytest
 from answering import CONFIG, Evidences, evidences
+from snapshotting import retrieve
 
 from opencited.agent.answer import Answer, Refusal, RunUsage, answer_of, model_record, usage_of
 from opencited.agent.run import Attempt, RunState
@@ -33,7 +36,7 @@ from opencited.evals.score import (
     has_label,
     score,
 )
-from opencited.gate import CalculationEvidence, Evidence, check
+from opencited.gate import CalculationEvidence, Evidence, SourceEvidence, check
 from opencited.snapshots import SnapshotStore
 from opencited.sources import Language
 from opencited.values import format_number
@@ -101,15 +104,24 @@ def world(tmp_path_factory: pytest.TempPathFactory) -> World:
 def answered(
     world: World, text: str, language: Language, attempts: tuple[Attempt, ...] = ("passed",)
 ) -> Answer:
+    return answered_from(world.evidence, text, language, attempts)
+
+
+def answered_from(
+    evidence: Sequence[Evidence],
+    text: str,
+    language: Language,
+    attempts: tuple[Attempt, ...] = ("passed",),
+) -> Answer:
     return answer_of(
         question="A question of the test",
         language=language,
         text=text,
-        report=check(text, language, world.evidence),
+        report=check(text, language, evidence),
         attempts=attempts,
         # Each attempt but the last went back to the model.
         retries=len(attempts) - 1,
-        evidence=world.evidence,
+        evidence=evidence,
         model=model_record(CONFIG, ["a-model-2026-10-01"]),
         prompt_version="1",
         usage=USAGE,
@@ -545,3 +557,41 @@ def test_a_failed_run_keeps_its_attempts_and_the_report_counts_recorded_retries(
     assert report_of(verdicts).first_attempt_blocked == Rate(
         count=2, total=2, rate=Decimal("1.0000")
     )
+
+
+EMPLOYED = {
+    "Alder": ["15-74"],
+    "Kjonn": ["2", "1"],
+    "ContentsCode": ["Sysselsatte"],
+    "Tid": ["2026K2"],
+}
+
+
+@pytest.mark.parametrize(
+    ("written", "found"),
+    [("2 935 000", True), ("2 935 tusen", True), ("2,9 millioner", False), ("2 935", False)],
+)
+def test_a_value_in_thousands_is_expected_in_persons_to_the_thousand(
+    tmp_path: Path, written: str, found: bool
+) -> None:
+    # 03778 gives employment in 1 000 personer, and the question asks for whole thousands.
+    store = SnapshotStore(tmp_path)
+    retrieval = retrieve("03778", EMPLOYED, "no")
+    snapshot = store.write(retrieval).name
+    step = {"name": "employed", "operation": "sum", "snapshot": snapshot, "selection": EMPLOYED}
+    plan = Plan.model_validate_json(json.dumps({"steps": [step]}))
+    evidence: list[Evidence] = [
+        SourceEvidence("E1", retrieval.result),
+        CalculationEvidence("C1", Engine(store).run(plan)),
+    ]
+    expected = ExpectedNumber(step="employed", exact="2935000", kind="amount", decimals=-3)
+    text = f"I 2. kvartal 2026 var {written} personer sysselsatt [C1] [E1]."
+
+    verdict = score(
+        expect("sum-employed", "no", "sum", (expected,)),
+        answered_from(evidence, text, "no"),
+        evidence,
+    )
+
+    assert (verdict.numbers[0].text is not None) is found
+    assert verdict.correct is found

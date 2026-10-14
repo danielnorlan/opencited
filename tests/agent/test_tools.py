@@ -12,6 +12,7 @@ import json
 import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, cast
 
@@ -20,7 +21,7 @@ import pytest
 from mcp import Client
 from mcp.types import CallToolResult, Tool
 from recorded import FIXTURES
-from snapshotting import CATCH, POPULATION, SYMBOLS
+from snapshotting import CATCH, POPULATION, SYMBOLS, retrieve
 
 from opencited.agent import tools
 from opencited.agent.model import ToolCall, ToolSchema, tool_param
@@ -31,6 +32,8 @@ from opencited.agent.tools import (
     Toolbox,
     ToolOutcome,
     calculate_schema,
+    formatted,
+    source_view,
 )
 from opencited.calc.engine import Engine
 from opencited.calc.plan import Plan, plan_schema
@@ -680,3 +683,38 @@ def test_notes_of_a_value_stay_beside_the_compact_values() -> None:
         "notes": [],
         "time": False,
     }
+
+
+@pytest.mark.parametrize(
+    ("value", "scale", "norwegian", "english"),
+    [
+        ("1382", 3, "1\u00a0382\u00a0000", "1,382,000"),
+        ("2.5", 3, "2500", "2500"),
+        ("5511334", 6, "5\u00a0511\u00a0334 millioner", "5,511,334 million"),
+        ("3.25", 9, "3,25 milliarder", "3.25 billion"),
+        ("104.0", 0, "104,0", "104.0"),
+    ],
+)
+def test_a_value_is_formatted_in_its_base_unit(
+    value: str, scale: int, norwegian: str, english: str
+) -> None:
+    assert formatted(Decimal(value), scale, "no") == norwegian
+    assert formatted(Decimal(value), scale, "en") == english
+
+
+def test_a_query_result_in_thousands_reaches_the_model_in_persons() -> None:
+    selection = {
+        "Alder": ["15-74"],
+        "Kjonn": ["2", "1"],
+        "ContentsCode": ["Sysselsatte"],
+        "Tid": ["2026K2"],
+    }
+    result = retrieve("03778", selection, "no").result
+
+    view = source_view("E1", result, "no")
+
+    cells = cast("list[dict[str, Any]]", view["observations"])
+    assert [(cell["value"], cell["formatted"]) for cell in cells] == [
+        ("1382", "1\u00a0382\u00a0000"),
+        ("1553", "1\u00a0553\u00a0000"),
+    ]
