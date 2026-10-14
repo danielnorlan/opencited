@@ -622,3 +622,17 @@ def test_a_server_result_that_cannot_be_read_fails_the_call(
     assert outcome.text == "The tool failed: the result of search_tables could not be read"
     assert toolbox.evidence == ()
     assert "The result of search_tables could not be read" in caplog.text
+
+
+@pytest.mark.parametrize(("language", "words"), [("no", "befolkning"), ("en", "population")])
+def test_a_call_without_a_language_gets_the_language_of_the_answer(
+    tmp_path: Path, language: Language, words: str
+) -> None:
+    async def direct() -> SearchResult:
+        async with make_client(BASE_URL, transport=REPLAY) as http:
+            return await SsbClient(http, revision_period=False).search(words, language, 10)
+
+    result = run(tmp_path, call("search_tables", {"query": words}), language=language)
+    [outcome] = result.outcomes
+
+    assert view(outcome) == {"evidence_id": "E1", **asyncio.run(direct()).model_dump(mode="json")}

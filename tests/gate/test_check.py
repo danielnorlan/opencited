@@ -25,7 +25,14 @@ from snapshotting import altered, population, symbols
 
 from opencited.calc import CalculationResult, Engine, Plan, ResultUnit, StepResult
 from opencited.gate.blocks import blocks
-from opencited.gate.check import CalculationEvidence, SourceEvidence, check, language_of
+from opencited.gate.check import (
+    CalculationEvidence,
+    Match,
+    SourceEvidence,
+    check,
+    cited_ids,
+    language_of,
+)
 from opencited.http import make_client
 from opencited.http.replay import replay_transport
 from opencited.snapshots import SnapshotStore
@@ -109,6 +116,7 @@ def test_markers_are_no_findings_and_list_numbers_are_ignored() -> None:
     ]
     assert report.findings[1].evidence == "E1"
     assert report.findings[1].detail.startswith("cell ")
+    assert report.findings[1].matches == (Match(evidence="E1", cell=result.observations[0].codes),)
 
 
 def test_the_report_names_each_failed_number_with_its_reason() -> None:
@@ -196,6 +204,8 @@ def test_a_tie_of_an_exact_result_rounds_away_from_zero(
     # 49/20 is 2.45: half-even rounding would give 2.4, the gate's rule gives 2.5.
     report = check(f"It was {written} kg [C1].", "en", [CalculationEvidence("C1", tied(exact))])
     assert report.passed is passes
+    if passes:
+        assert report.findings[0].matches == (Match(evidence="C1", step="mean"),)
 
 
 def test_a_cell_whose_unit_names_per_cent_needs_a_percent_word() -> None:
@@ -229,6 +239,7 @@ def test_the_cells_of_a_ranking_are_values_of_the_calculation(tmp_path: Path) ->
     )
     assert report.passed, report.text()
     assert report.findings[0].detail.startswith("step top, ")
+    assert report.findings[0].matches[0] == Match(evidence="C1", cell=second.codes, step="top")
 
 
 def test_a_retrieval_just_after_midnight_in_oslo_has_both_dates() -> None:
@@ -367,7 +378,7 @@ def test_an_overlong_number_fails_with_a_report() -> None:
 def test_the_same_answer_gets_the_same_report_in_other_processes() -> None:
     script = (
         "import sys; sys.path[:0] = ['tests']; import snapshotting as s; "
-        "from opencited.gate import check, SourceEvidence; "
+        "from opencited.gate import Match, cited_ids, check, SourceEvidence; "
         "print(check(sys.argv[1], 'en', [SourceEvidence('E1', s.population().result)]).model_dump_json())"
     )
     answer = "In 2026 it was 5,627,400 [E1], and 7 in 2019 [E1]."
@@ -392,3 +403,25 @@ def test_an_update_just_before_midnight_in_utc_has_both_dates() -> None:
     evidence = [SourceEvidence("E1", result)]
     for day in ("2026-02-24", "2026-02-25"):
         assert check(f"Updated {day} [E1].", "en", evidence).passed, day
+
+
+def test_a_number_that_fits_several_cited_values_lists_them_all() -> None:
+    result = population().result
+    report = check(
+        "Det bodde om lag 5,6 millioner i Norge [E1].", "no", [SourceEvidence("E1", result)]
+    )
+    totals = [
+        cell.codes for cell in result.observations if cell.codes[:3] == ("0", "999B", "Personer")
+    ]
+
+    assert report.passed, report.text()
+    [found] = report.findings
+    assert [match.cell for match in found.matches] == totals
+    assert {match.evidence for match in found.matches} == {"E1"}
+    assert found.detail == f"cell {', '.join(totals[0])}"
+
+
+def test_shown_markers_are_cited_in_order_and_hidden_ones_are_not() -> None:
+    text = "Først [E2], så [C1] og [E2] igjen. <!-- [E7] --> Til slutt [E10]."
+
+    assert cited_ids(text, "no") == ["E2", "C1", "E10"]

@@ -1,4 +1,4 @@
-"""The command line: ``opencited mcp`` serves the MCP server.
+"""The command line: ``opencited mcp`` serves the MCP server, ``opencited ask`` answers.
 
 Without ``--http`` the server speaks MCP over stdio, as clients that start it expect,
 and logs go to standard error, since standard output carries the protocol. With
@@ -17,6 +17,13 @@ set by default.
 ``--replay DIR`` serves the responses recorded in a directory instead of calling SSB,
 without a cache. It exists for tests (ADR 0008), and the server warns when it starts
 with it.
+
+``opencited ask "<question>"`` answers with the model that the ``OPENCITED_MODEL_*``
+variables name (spec 0004), the same tools in the same process, and snapshots in the
+user's data directory unless ``--snapshot-dir`` or the variable names another. It
+prints the answer with numbered sources, or with ``--json`` every record of it. The
+exit status is 0 for an answer, 3 for a refusal, 1 for a run that failed and 2 for
+configuration that cannot be used.
 """
 
 from __future__ import annotations
@@ -28,14 +35,27 @@ import sys
 from pathlib import Path
 from typing import cast
 
+import anyio
 import platformdirs
+from mcp import Client
+from mcp.server import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
 
 from opencited import __version__
+from opencited.agent.answer import Answer, Refusal
+from opencited.agent.config import ConfigurationError, ModelConfig, from_environment
+from opencited.agent.language import language_of
+from opencited.agent.loop import AgentError, ask
+from opencited.agent.model import ModelClient, ModelError
+from opencited.agent.render import text_of
+from opencited.agent.tools import Toolbox
 from opencited.http.cache import ResponseCache
 from opencited.http.replay import replay_transport
 from opencited.mcp import build_server
 from opencited.snapshots import SnapshotError, SnapshotStore
+from opencited.sources import Language
+from opencited.sources.ssb import SsbClient
+from opencited.values import exact_text
 
 logger = logging.getLogger("opencited.cli")
 
@@ -75,6 +95,35 @@ def default_cache_dir() -> Path:
     return platformdirs.user_cache_path("opencited", appauthor=False)
 
 
+def default_snapshot_dir() -> Path:
+    """Return the snapshot directory of ``opencited ask`` in the user's data directory."""
+    return platformdirs.user_data_path("opencited", appauthor=False) / "snapshots"
+
+
+def add_sources(command: argparse.ArgumentParser, snapshots: str) -> None:
+    """Add the options for the cache, the snapshots and recorded responses."""
+    caching = command.add_mutually_exclusive_group()
+    caching.add_argument(
+        "--cache-dir",
+        type=Path,
+        metavar="DIR",
+        help="directory of the response cache (default: the user's cache directory)",
+    )
+    caching.add_argument("--no-cache", action="store_true", help="send every request to SSB")
+    command.add_argument(
+        "--snapshot-dir",
+        type=Path,
+        metavar="DIR",
+        help=f"keep every query result as a snapshot in DIR (default: ${SNAPSHOT_DIR}, or {snapshots})",
+    )
+    command.add_argument(
+        "--replay",
+        type=directory,
+        metavar="DIR",
+        help="serve the responses recorded in DIR instead of calling SSB (for tests)",
+    )
+
+
 def parse_arguments(arguments: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="opencited", description="Official statistics with provenance, over MCP."
@@ -95,26 +144,18 @@ def parse_arguments(arguments: list[str]) -> argparse.Namespace:
         default=DEFAULT_PORT,
         help=f"port for --http (default: {DEFAULT_PORT})",
     )
-    caching = serve.add_mutually_exclusive_group()
-    caching.add_argument(
-        "--cache-dir",
-        type=Path,
-        metavar="DIR",
-        help="directory of the response cache (default: the user's cache directory)",
+    add_sources(serve, "none")
+    question = commands.add_parser(
+        "ask", help="answer a question with numbers from SSB, each with its source"
     )
-    caching.add_argument("--no-cache", action="store_true", help="send every request to SSB")
-    serve.add_argument(
-        "--snapshot-dir",
-        type=Path,
-        metavar="DIR",
-        help=f"keep every query result as a snapshot in DIR (default: ${SNAPSHOT_DIR}, or none)",
+    question.add_argument("question", help="the question, in Norwegian or English")
+    question.add_argument(
+        "--language",
+        choices=("no", "en"),
+        help="the language of the answer (default: the language of the question)",
     )
-    serve.add_argument(
-        "--replay",
-        type=directory,
-        metavar="DIR",
-        help="serve the responses recorded in DIR instead of calling SSB (for tests)",
-    )
+    question.add_argument("--json", action="store_true", help="print every record as JSON")
+    add_sources(question, "the user's data directory")
     return parser.parse_args(arguments)
 
 
@@ -126,7 +167,7 @@ def cache_of(options: argparse.Namespace) -> ResponseCache | None:
     return ResponseCache(directory / CACHE_FILE)
 
 
-def snapshots_of(options: argparse.Namespace) -> SnapshotStore | None:
+def snapshots_of(options: argparse.Namespace, default: Path | None = None) -> SnapshotStore | None:
     """Return the snapshot store that the options or the variable name, or None.
 
     The directory is checked at start, so that a directory that cannot be written stops
@@ -135,6 +176,7 @@ def snapshots_of(options: argparse.Namespace) -> SnapshotStore | None:
     directory = cast("Path | None", options.snapshot_dir)
     if directory is None and os.environ.get(SNAPSHOT_DIR):
         directory = Path(os.environ[SNAPSHOT_DIR])
+    directory = directory or default
     if directory is None:
         return None
     store = SnapshotStore(directory)
@@ -143,31 +185,110 @@ def snapshots_of(options: argparse.Namespace) -> SnapshotStore | None:
     return store
 
 
+def server_of(options: argparse.Namespace, snapshots: SnapshotStore | None) -> MCPServer[SsbClient]:
+    if options.replay is None:
+        return build_server(cache=cache_of(options), snapshots=snapshots)
+    logger.warning(
+        "Serving the responses recorded in %s instead of calling SSB. They are not "
+        "live data, and each provenance record gives the time of the replay.",
+        options.replay,
+    )
+    # The recordings were taken outside SSB's revision period, so replaying them is
+    # safe at any hour, and the check would only block tests run at those hours.
+    return build_server(
+        transport=replay_transport(options.replay), revision_period=False, snapshots=snapshots
+    )
+
+
+async def answer(
+    question: str,
+    language: Language,
+    model: ModelClient,
+    server: MCPServer[SsbClient],
+    store: SnapshotStore,
+) -> Answer | Refusal | AgentError:
+    """Return the answer, the refusal, or the error that stopped the run.
+
+    The error is returned, since raised inside the MCP client's task group it would
+    leave wrapped in an exception group.
+    """
+    try:
+        async with Client(server) as client, model:
+            try:
+                toolbox = await Toolbox.connect(client, store, language)
+                return await ask(question, language, model=model, toolbox=toolbox)
+            except AgentError as error:
+                return error
+            except Exception as error:
+                return unexpected(error)
+    except Exception as error:
+        # Raised while the client or the server starts or stops, maybe in a group.
+        return unexpected(error)
+
+
+def unexpected(error: Exception) -> AgentError:
+    """Return a fault of this package as a run error; the traceback is logged for debugging."""
+    logger.debug("The run stopped on an unexpected error", exc_info=error)
+    first: BaseException = error
+    while isinstance(first, BaseExceptionGroup):
+        group = cast("BaseExceptionGroup[BaseException]", first)
+        first = group.exceptions[0]
+    return AgentError(f"an unexpected error: {type(first).__name__}: {first}", None)
+
+
+def spent(error: AgentError) -> str:
+    """Return what a failed run used, for its error line."""
+    usage = error.usage
+    if usage is None:
+        return ""
+    cost = f", cost {exact_text(usage.cost)}" if usage.cost is not None else ""
+    return (
+        f" (after {usage.model_calls} model calls, {usage.tool_calls} tool calls, "
+        f"{usage.input_tokens + usage.output_tokens:,} tokens, {exact_text(usage.seconds)} s{cost})"
+    )
+
+
+def ask_command(options: argparse.Namespace) -> int:
+    try:
+        config: ModelConfig = from_environment(os.environ)
+        store = snapshots_of(options, default_snapshot_dir())
+        # Last, since the client holds an HTTP connection pool until the run closes it.
+        model = ModelClient(config)
+    except (ConfigurationError, ModelError, SnapshotError) as error:
+        print(f"opencited: {error}", file=sys.stderr)
+        return 2
+    if store is None:
+        raise ValueError("ask always has a snapshot store")
+    question = cast("str", options.question)
+    language: Language = options.language or language_of(question)
+    server = server_of(options, store)
+    result = anyio.run(answer, question, language, model, server, store)
+    if isinstance(result, AgentError):
+        print(f"opencited: the run failed: {result}{spent(result)}", file=sys.stderr)
+        return 1
+    print(result.model_dump_json(indent=2) if options.json else text_of(result))
+    return 0 if isinstance(result, Answer) else 3
+
+
 def main(arguments: list[str] | None = None) -> int:
     options = parse_arguments(sys.argv[1:] if arguments is None else arguments)
+    asking = options.command == "ask"
     logging.basicConfig(
-        stream=sys.stderr, level=logging.INFO, format="%(levelname)s %(name)s: %(message)s"
+        stream=sys.stderr,
+        # The answer is the output of ask; only warnings and errors join it.
+        level=logging.WARNING if asking else logging.INFO,
+        format="%(levelname)s %(name)s: %(message)s",
     )
     # The HTTP library logs every request at INFO, which buries the server's own log.
     logging.getLogger("httpx2").setLevel(logging.WARNING)
+    if asking:
+        return ask_command(options)
     try:
         snapshots = snapshots_of(options)
     except SnapshotError as error:
         print(f"opencited: {error}", file=sys.stderr)
         return 2
-    if options.replay is None:
-        server = build_server(cache=cache_of(options), snapshots=snapshots)
-    else:
-        logger.warning(
-            "Serving the responses recorded in %s instead of calling SSB. They are not "
-            "live data, and each provenance record gives the time of the replay.",
-            options.replay,
-        )
-        # The recordings were taken outside SSB's revision period, so replaying them is
-        # safe at any hour, and the check would only block tests run at those hours.
-        server = build_server(
-            transport=replay_transport(options.replay), revision_period=False, snapshots=snapshots
-        )
+    server = server_of(options, snapshots)
     if options.http:
         server.run(
             "streamable-http", host=options.host, port=options.port, transport_security=SECURITY

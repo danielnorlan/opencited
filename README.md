@@ -12,8 +12,9 @@ source is Statistics Norway (SSB).
 
 > [!NOTE]
 > OpenCited is in early development. The MCP server for StatBank runs from a clone of
-> this repository and is not on PyPI yet. The agent, the calculation engine and the
-> evaluation suite are planned for the second milestone. See the
+> this repository and is not on PyPI yet. The calculation engine, the evidence gate
+> and the agent are built, and the agent has not yet been measured with a model; the
+> evaluation suite that will measure it is planned. See the
 > [roadmap](https://github.com/danielnorlan/opencited/blob/main/docs/roadmap.md).
 
 ## How it will work
@@ -92,6 +93,32 @@ the cache and `--no-cache` turns it off. `--snapshot-dir` keeps a snapshot of ea
 query result, which the server never changes once written; a result with a value
 wider than 38 digits gets none. From 05:00 to 08:15 Norwegian time, `query_table`
 returns an error instead of data, since SSB revises figures then.
+
+## Asking a question
+
+`opencited ask` answers a question with a language model of your choice, through an
+endpoint that is compatible with the OpenAI chat completions API, such as a hosted
+provider or a local server. Three variables name the endpoint, the model and the
+variable that holds the API key:
+
+```sh
+export OPENCITED_MODEL_URL=https://api.example.org/v1
+export OPENCITED_MODEL=model-name
+export OPENCITED_MODEL_KEY_VARIABLE=EXAMPLE_API_KEY
+opencited ask "Hvor mange bor i Norge?"
+```
+
+The answer comes in the language of the question, or in the one `--language no` or
+`--language en` sets, with numbered sources. `--json` prints every record: the
+citations with their provenance records and the cells used, the calculations with
+their SQL, the gate report, the model and its settings, and the usage. The command
+exits with 0 for an answer, 3 for a refusal, 1 when the run fails and 2 when the
+configuration cannot be used.
+
+Each question is limited to 12 model calls, 20 tool calls, 100,000 tokens and 300
+seconds. The [architecture page](https://github.com/danielnorlan/opencited/blob/main/docs/architecture.md#agent-m2)
+lists the variables that change these limits and set prices, a temperature and a
+seed.
 
 ## Sources
 
