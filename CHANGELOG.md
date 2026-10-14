@@ -31,6 +31,11 @@ Notable changes to OpenCited are recorded here. The format follows
   Norwegian time, and a rate limiter that keeps each process within 30 requests a
   minute and backs off after HTTP 429. `opencited mcp` takes `--cache-dir` and
   `--no-cache`.
+- The agent's model client and tools (spec 0004): the endpoint, the model, its
+  settings, prices and limits from `OPENCITED_*` variables; a client for chat
+  completions that keeps the API key out of every representation, error and log;
+  and a toolbox that calls the MCP tools and `calculate`, runs only calls that match
+  the published schemas and gives every result an evidence ID.
 - The evidence gate, which matches every number of an answer to the results its
   block cites and reports each number's match or the reason it failed, with a corpus
   of example answers over recorded data (spec 0003).

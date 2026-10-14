@@ -24,7 +24,7 @@ flowchart LR
 | MCP server | Table search, metadata and data from each source, with a provenance record on every data result | In progress ([spec 0001](specs/0001-ssb-mcp-server.md)) |
 | Calculation engine | Runs typed calculation plans over stored snapshots: DuckDB selects the cells, and the arithmetic uses exact rational numbers | Built; the `calculate` tool comes with the agent ([spec 0002](specs/0002-snapshots-and-calculation.md)) |
 | Evidence gate | Matches every number in an answer to source data or a calculation result, and blocks the answer otherwise | Built; the agent's retry comes with the agent ([spec 0003](specs/0003-evidence-gate.md)) |
-| Agent | Plans, calls tools and drafts the answer, in a loop of its own over a chat completions API | Specification approved ([spec 0004](specs/0004-agent.md)) |
+| Agent | Plans, calls tools and drafts the answer, in a loop of its own over a chat completions API | In progress: the model client and the tools are built, and the loop comes next ([spec 0004](specs/0004-agent.md)) |
 | Evaluation suite | Versioned questions with computed answers, run with Inspect AI | Specification approved ([spec 0005](specs/0005-evaluation-suite.md)) |
 | Table search | Hybrid full-text and vector search over table metadata, in PostgreSQL with pgvector | Planned, M3 |
 | Model gateway | Routes requests between local and hosted models within budgets, using LiteLLM | Planned, M3 |
@@ -174,6 +174,7 @@ At the limit of 5,000 cells that comes to about 1 MB.
 | Contract tests | Every client method against responses recorded from the live API | None, recorded fixtures |
 | End-to-end tests | Every tool through an MCP client, over stdio and over HTTP, and in memory for quick tests | Local only |
 | Live smoke test | Every tool through `opencited mcp` over stdio, against the real API, checking the form of each result and the table's dimensions against the recording | The source API |
+| Model endpoint test | That the configured endpoint takes the four tool schemas and reports the model and usage | The model endpoint |
 
 Fixtures are recorded by a script that writes the request and the raw response, with
 SSB's contact details removed, to a file named with the recording date. A test transport replays them, so no fixture is
@@ -185,6 +186,11 @@ Oslo, outside the times that scheduled jobs avoid
 ([ADR 0007](adr/0007-ssb-pxwebapi-v2.md), decision 6), and it can be started by hand.
 From 05:00 to 08:15 Norwegian time the query test expects the error that names SSB's
 revision period instead of data.
+
+The model endpoint tests are marked `model` and run only with `pytest -m model`, since
+each call needs a key and costs a little; without the `OPENCITED_MODEL_*` variables
+they fail and name the one that is missing. No test runs the agent against a model
+that gives scripted answers ([spec 0004](specs/0004-agent.md)).
 
 ## Provenance
 
@@ -353,6 +359,67 @@ in Norwegian with no-break spaces between groups, a decimal comma and the minus 
 U+2212, and in English with commas, a decimal point and a hyphen-minus. It groups an
 integer part of five digits or more, so years keep their usual form. Every decimal it
 writes is read back with its value and decimals.
+
+## Agent (M2)
+
+The agent answers one question in a loop over a chat completions endpoint
+([ADR 0010](adr/0010-agent-loop.md)). The configuration, the model client and the
+tools are built; the loop, its limits and retries, answers, refusals and
+`opencited ask` are planned.
+
+### Configuration
+
+`opencited.agent.config` reads the configuration from environment variables, so a
+change of endpoint, model or key needs no code change.
+
+| Variable | Setting | Default |
+| --- | --- | --- |
+| `OPENCITED_MODEL_URL` | The base URL of the endpoint, http or https, with no user name, password, query or fragment | Required |
+| `OPENCITED_MODEL` | The model name | Required |
+| `OPENCITED_MODEL_KEY_VARIABLE` | The name of the variable that holds the API key | Required |
+| `OPENCITED_TEMPERATURE`, `OPENCITED_SEED` | Model settings, recorded in every answer | Not sent |
+| `OPENCITED_PRICE_INPUT`, `OPENCITED_PRICE_OUTPUT` | Prices per million input and output tokens, set together | None |
+| `OPENCITED_MAX_MODEL_CALLS`, `OPENCITED_MAX_TOOL_CALLS`, `OPENCITED_MAX_TOKENS`, `OPENCITED_MAX_SECONDS` | The limits of one question | 12, 20, 100,000 and 300 |
+| `OPENCITED_MAX_COST` | A cost limit in the currency of the prices, which needs prices | None |
+
+The configuration holds the name of the key variable and never the key.
+
+### Model client
+
+`opencited.agent.model.ModelClient` sends a conversation and the tool schemas to the
+endpoint through the `openai` SDK over an `httpx2` client, and returns the reply's
+text, its tool calls, the model name that the endpoint reports and the usage it
+reports. It reads the key when it is made and keeps it inside the SDK client: no
+representation, error or log holds it, and an error from the endpoint is reported
+with the key taken out, or for HTTP 401 and 403 with only the variable's name. The
+SDK retries nothing, so every request is one model call that the agent counts. The
+SDK would read an organisation, a project and extra headers from `OPENAI_*`
+variables and send them to any endpoint; the client sends no organisation or
+project, and refuses to start while `OPENAI_CUSTOM_HEADERS` is set.
+
+### Tools
+
+`opencited.agent.tools.Toolbox` gives the model the three tools of the MCP server,
+called through the official MCP client, and `calculate`, and no other tool that a
+server may list. It runs only calls to these four tools whose arguments are a JSON
+object, name no argument outside the schema and match the published schema; numbers
+in arguments are parsed as integers or decimals, never as floats. A call that does
+not match is not run, and the model gets the reason with the path to the part that
+does not match. For a step of a plan, the reason is why the step does not match the
+operation it names.
+
+Every result gets an evidence ID: `E1`, `E2` and so on for source results, and `C1`,
+`C2` and so on for calculations. A call that fails gets none. The toolbox keeps the
+results with their IDs as the evidence that the gate takes. Results reach the model
+as compact JSON with their evidence ID, and every value both as a decimal string and
+formatted for the language of the answer.
+
+`calculate` publishes the plan schema of spec 0002 with an evidence ID wherever a
+step names a snapshot. Before the engine runs, the toolbox replaces each ID with the
+snapshot ID of that query result, and the engine runs in a worker thread. A result
+that is not from `query_table`, an ID the run does not have and a query result
+without a snapshot are reported to the model by their evidence IDs, and so are the
+engine's errors.
 
 ## Trust boundaries
 
