@@ -31,6 +31,10 @@ Notable changes to OpenCited are recorded here. The format follows
   Norwegian time, and a rate limiter that keeps each process within 30 requests a
   minute and backs off after HTTP 429. `opencited mcp` takes `--cache-dir` and
   `--no-cache`.
+- A release workflow that publishes to PyPI with trusted publishing when a GitHub
+  release is published, `server.json` for the MCP Registry, a check that the release
+  metadata agrees, a check in CI that starts the server from the built wheel, client
+  setup in the README and the maintainer's steps in `docs/releasing.md`.
 - A live smoke test that calls every tool through `opencited mcp` against SSB's API,
   run every night by the `Nightly` workflow.
 - Checks for commits, branch names and personal data, run in the git hooks and in CI

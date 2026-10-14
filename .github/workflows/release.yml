@@ -1,0 +1,89 @@
+name: Release
+
+# Builds and checks the distribution files, and publishes them to PyPI with trusted
+# publishing when a GitHub release is published. A run started by hand builds and
+# checks the files and uploads nothing. docs/releasing.md lists the maintainer's steps.
+#
+# The build job holds no publishing credential. The publish job builds the files again
+# from the same commit and publishes them only when their SHA-256 matches the files
+# that the build job checked, since uv's builds are reproducible with
+# SOURCE_DATE_EPOCH. This keeps the files out of artifact actions, which the
+# repository does not allow.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      hashes: ${{ steps.hashes.outputs.hashes }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - name: Install
+        run: uv sync --locked
+      - name: Check the release metadata
+        run: uv run --frozen python scripts/check_release.py
+      - name: Check the release tag
+        if: github.event_name == 'release'
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: uv run --frozen python scripts/check_release.py --tag "$TAG"
+      - name: Validate server.json against the MCP Registry's schema
+        run: >-
+          uvx check-jsonschema@0.38.2
+          --schemafile https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json
+          server.json
+      - name: Build
+        run: SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)" uv build
+      - name: Check the distribution files
+        run: uvx twine@7.0.0 check --strict dist/*
+      - name: Start the server from the wheel and call every tool
+        run: uv run --frozen python scripts/smoke_package.py dist/*.whl
+      - name: Record the hashes
+        id: hashes
+        run: |
+          {
+            echo "hashes<<END"
+            sha256sum dist/*
+            echo "END"
+          } >> "$GITHUB_OUTPUT"
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    if: github.event_name == 'release'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment:
+      name: pypi
+      url: https://pypi.org/project/opencited/
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - name: Build
+        run: SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)" uv build
+      - name: Check that the files are the ones the build job checked
+        env:
+          HASHES: ${{ needs.build.outputs.hashes }}
+        run: printf '%s\n' "$HASHES" | sha256sum --check --strict
+      - name: Publish
+        run: uv publish --trusted-publishing always
