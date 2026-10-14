@@ -58,7 +58,7 @@ GROUP_FROM = 5
 
 
 def format_number(value: Decimal, language: Literal["no", "en"]) -> str:
-    """Write a decimal for text in Norwegian or English, with its scale as it is.
+    """Write a decimal for text in Norwegian or English, with its decimals as they are.
 
     ``Decimal("1234567.50")`` becomes ``1 234 567,50`` in Norwegian, with no-break
     spaces, and ``1,234,567.50`` in English.

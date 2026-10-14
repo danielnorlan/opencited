@@ -279,33 +279,43 @@ snapshot it read with the provenance record. `readable()` writes the steps as te
 
 `opencited.gate.numbers` reads every number in an answer in Norwegian or English, for
 the evidence gate ([spec 0003](specs/0003-evidence-gate.md)). It normalises the text
-to Unicode NFC and finds, in this order, citation markers and the numbers of ordered
-list items, dates, periods, the forms that block an answer, and other numbers, so a
-later pass never reads a digit that an earlier one read. It uses no model and no
-network.
+to Unicode NFC and finds, in this order, citation markers, dates, periods, the
+numbers of ordered list items, the forms that block an answer, and other numbers, so
+a later pass never reads a digit that an earlier one read. It uses no model and no
+network, and positions are offsets in the normalised text.
 
-A number is read with its value and scale, `12,50` as `Decimal("12.50")`: in Norwegian
-text with digits grouped in threes by a space, U+00A0, U+202F or U+2009 and a decimal
-comma, and in English text with commas between groups and a decimal point. A minus
-sign, `-` or U+2212, counts at the start of a number, after a space or after an
-opening bracket. A hyphen or an en dash between two numbers marks a range, whose ends
-are read on their own and share a percent or scale word after the range. A percent
-word or sign, a percentage point word or a scale word goes with its number.
+A number is read with its value and decimals, `12,50` as `Decimal("12.50")`: in
+Norwegian text with digits grouped in threes by a space, U+00A0, U+202F or U+2009 and
+a decimal comma, and in English text with commas between groups and a decimal point.
+A minus sign, `-` or U+2212, counts at the start of the text, after a space, after an
+opening bracket and after Markdown markup such as `**` or `|`. A hyphen or an en dash
+between two numbers marks a range, whose ends are read on their own and share a
+percent or scale word after the range. A percent word or sign, a percentage point
+word or a scale word goes with its number.
 
-Dates are ISO dates, `13.10.2026` and dates with the month in words. Periods are SSB's
-codes such as `2023K1` and `2023M01` and quarters and months in words, read as SSB
-writes them. Years and five-digit table IDs are read as numbers, since only the cited
-results say whether a number is a period, an ID or a value. Exponent notation, digits
+Dates are ISO dates and timestamps, `13.10.2026` and dates with the month in words.
+Periods are SSB's codes such as `2023K1` and `2023M01` and quarters and months in
+words, read as SSB writes them; English months count only with a capital. The parts
+of a date or a period may be separated by any of the spaces that group digits. Years
+and five-digit table IDs are read as numbers, since only the cited results say whether
+a number is a period, an ID or a value.
+
+The gate is a check, so a form that it cannot read with certainty blocks the answer
+with a reason. That covers the blocking forms of spec 0003: exponent notation, digits
 other than 0 to 9, separators that fit neither language, a point between digits in
-Norwegian text, digits grouped by spaces in English text, `billion` in Norwegian text,
-numbers in words with a percent or scale word, words that multiply, and numbers
-joined to letters are read as blocking forms, with the reason.
+Norwegian text, digits grouped by spaces in English text, `billion` in Norwegian
+text, numbers in words with a percent or scale word, compounds and fractions included,
+and words that multiply. Beyond the specification it covers a number joined to
+letters, such as `CO2` or `5G`; a sign or a dash before a number where spec 0003 reads
+no minus sign, such as `x-3` or `–3`; and unit and scale words that the specification
+does not list, such as `mill` without its point, `mrd`, `bn` or `trillion`, since
+reading the number without them would change its size.
 
 `opencited.values.format_number` writes decimals for each language with their scale:
 in Norwegian with no-break spaces between groups, a decimal comma and the minus sign
 U+2212, and in English with commas, a decimal point and a hyphen-minus. It groups an
 integer part of five digits or more, so years keep their usual form. Every decimal it
-writes is read back with its value and scale.
+writes is read back with its value and decimals.
 
 ## Trust boundaries
 
