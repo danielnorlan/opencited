@@ -1,9 +1,10 @@
 """The corpus of example answers: each with the decision the gate must reach and its rule.
 
 The evidence is recorded data from `tests/fixtures/ssb/` and calculations over its
-snapshots. The numbers in the answers are formatted from that evidence by the
-project's formatter, so no number in the corpus is written by hand; the words around
-them are written for the tests.
+snapshots. Every number that an answer must match is formatted from that evidence by
+the project's formatter. The numbers that an answer must not match, such as another
+table's ID or a date that no result has, and the words around the numbers, are
+written for the tests.
 """
 
 from __future__ import annotations
@@ -13,7 +14,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal
 from fractions import Fraction
-from pathlib import Path
 
 import pytest
 from snapshotting import catch, population, retrieve
@@ -430,4 +430,3 @@ def test_the_same_answer_gets_the_same_report(run: Run) -> None:
     answer = CASES[0].answer(run) + "\n\n" + CASES[7].answer(run)
     reports: list[Report] = [check(answer, "no", run.evidence("no")) for _ in range(3)]
     assert reports[0] == reports[1] == reports[2]
-    assert Path(__file__).exists()

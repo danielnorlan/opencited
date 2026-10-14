@@ -81,13 +81,20 @@ type Evidence = SourceEvidence | CalculationEvidence
 
 
 class Finding(Frozen):
-    """One number of the answer, and what the gate made of it."""
+    """One number of the answer, and what the gate made of it.
+
+    ``position`` and ``end`` are offsets in the answer as the reader normalised it, to
+    Unicode NFC. ``value`` is the number as written, before its ``scale`` word, and
+    ``unit`` its percent or percentage point word.
+    """
 
     position: int
     end: int
     text: str
     kind: FindingKind
     value: ExactDecimal | None = None
+    scale: int = 0
+    unit: Literal["per cent", "percentage points"] | None = None
     outcome: Outcome
     evidence: str | None = None
     detail: str
@@ -130,7 +137,20 @@ class Holdings:
     periods: dict[str, str] = field(default_factory=dict[str, str])
     dates: dict[date, str] = field(default_factory=dict[date, str])
     tables: dict[str, str] = field(default_factory=dict[str, str])
-    labels: dict[Decimal, str] = field(default_factory=dict[Decimal, str])
+    labels: dict[str, str] = field(default_factory=dict[str, str])
+
+    def add(self, other: Holdings) -> None:
+        """Add what another cited result holds; the first holder of each item is kept."""
+        self.values.extend(other.values)
+        for mine, theirs in (
+            (self.periods, other.periods),
+            (self.tables, other.tables),
+            (self.labels, other.labels),
+        ):
+            for key, holder in theirs.items():
+                mine.setdefault(key, holder)
+        for day, holder in other.dates.items():
+            self.dates.setdefault(day, holder)
 
 
 def language_of(url: str) -> Language:
@@ -138,12 +158,9 @@ def language_of(url: str) -> Language:
     return "en" if "/en/" in url else "no"
 
 
-def label_numbers(text: str, language: Language) -> list[Decimal]:
-    return [
-        number.value
-        for number in read_numbers(text, language)
-        if number.kind == "number" and number.value is not None
-    ]
+def label_numbers(text: str, language: Language) -> list[str]:
+    """Return the numbers in a title or a label as they are written there."""
+    return [number.text for number in read_numbers(text, language) if number.kind == "number"]
 
 
 def days(moment: datetime) -> list[date]:
@@ -156,6 +173,13 @@ def value_of(number: Number) -> Decimal:
     if number.value is None:
         raise ValueError(f"{number.text!r} has no value")
     return number.value
+
+
+def held(evidence: Evidence) -> Holdings:
+    """Return what one result holds, for every block that cites it."""
+    holdings = Holdings()
+    hold(holdings, evidence)
+    return holdings
 
 
 def hold(holdings: Holdings, evidence: Evidence) -> None:
@@ -191,24 +215,28 @@ def hold(holdings: Holdings, evidence: Evidence) -> None:
         for dimension in result.dimensions:
             for value in dimension.values:
                 if dimension.time:
+                    # A period's label is its code, which counts as a period, not a label.
                     holdings.periods.setdefault(value.code, name)
+                    continue
                 for number in label_numbers(value.label, language):
                     holdings.labels.setdefault(number, name)
         for number in label_numbers(result.title, language):
             holdings.labels.setdefault(number, name)
         holdings.tables.setdefault(result.table_id, name)
-        for day in [result.updated.date(), *days(result.provenance.retrieved_at)]:
+        for day in [*days(result.updated), *days(result.provenance.retrieved_at)]:
             holdings.dates.setdefault(day, name)
     elif isinstance(result, TableMetadata):
         language = language_of(result.url)
         holdings.tables.setdefault(result.table_id, name)
-        holdings.dates.setdefault(result.updated.date(), name)
+        for day in days(result.updated):
+            holdings.dates.setdefault(day, name)
         for number in label_numbers(result.title, language):
             holdings.labels.setdefault(number, name)
     else:
         for table in result.tables:
             holdings.tables.setdefault(table.table_id, name)
-            holdings.dates.setdefault(table.updated.date(), name)
+            for day in days(table.updated):
+                holdings.dates.setdefault(day, name)
             for number in label_numbers(table.title, language_of(table.url)):
                 holdings.labels.setdefault(number, name)
 
@@ -244,6 +272,11 @@ def why_not(number: Number, holdings: Holdings) -> str:
     negated = number.model_copy(update={"value": -value_of(number)})
     if any(fits(negated, candidate) for candidate in candidates):
         return "a cited value has this number with the other sign"
+    digits = number.text.strip()
+    if number.unit is None and number.scale == 0 and re.fullmatch(r"[0-9]{4}", digits):
+        return "a year that no cited result selected, and no value that a cited result holds"
+    if number.unit is None and number.scale == 0 and re.fullmatch(r"[0-9]{5}", digits):
+        return "the ID of no cited table, and no value that a cited result holds"
     return "no value of the cited results gives this number when rounded to the decimals written"
 
 
@@ -256,6 +289,8 @@ def finding(
         text=number.text,
         kind=kind,
         value=number.value,
+        scale=number.scale,
+        unit=number.unit,
         outcome=outcome,
         evidence=evidence,
         detail=detail,
@@ -299,7 +334,7 @@ def judge(number: Number, holdings: Holdings, cited: bool) -> Finding:
             )
         case _:
             pass
-    value = value_of(number)
+    value_of(number)
     if not cited:
         return finding(number, "value", "failed", "a value in a block that cites no result")
     plain = number.unit is None and number.scale == 0
@@ -319,13 +354,13 @@ def judge(number: Number, holdings: Holdings, cited: bool) -> Finding:
     for name, candidate in holdings.values:
         if allowed(number, candidate.kind) and fits(number, candidate):
             return finding(number, "value", "matched", candidate.where, name)
-    if plain and value in holdings.labels:
+    if plain and digits in holdings.labels:
         return finding(
             number,
             "label number",
             "passed",
-            "a number in a title or a label of a cited result",
-            holdings.labels[value],
+            "a number written as in a title or a label of a cited result",
+            holdings.labels[digits],
         )
     return finding(number, "value", "failed", why_not(number, holdings))
 
@@ -337,6 +372,9 @@ def check(answer: str, language: Language, evidence: Sequence[Evidence]) -> Repo
     if len(known) != len(evidence):
         raise ValueError("two results of the run have the same evidence ID")
     numbers = read_numbers(text, language)
+    # A marker in an HTML comment is not shown, so it cites nothing.
+    hidden = [match.span() for match in re.finditer(r"<!--.*?(?:-->|$)", text, re.DOTALL)]
+    holdings_of = {name: held(item) for name, item in known.items()}
     findings: list[Finding] = []
     for block in blocks(text):
         inside = [number for number in numbers if block.start <= number.position < block.end]
@@ -344,6 +382,8 @@ def check(answer: str, language: Language, evidence: Sequence[Evidence]) -> Repo
         cited = False
         for number in inside:
             if number.kind != "marker":
+                continue
+            if any(start <= number.position < end for start, end in hidden):
                 continue
             name = number.text[1:-1]
             item = known.get(name)
@@ -358,7 +398,7 @@ def check(answer: str, language: Language, evidence: Sequence[Evidence]) -> Repo
                 )
                 continue
             cited = True
-            hold(holdings, item)
+            holdings.add(holdings_of[item.evidence_id])
         findings += [judge(number, holdings, cited) for number in inside if number.kind != "marker"]
     findings.sort(key=lambda item: (item.position, item.end))
     return Report(

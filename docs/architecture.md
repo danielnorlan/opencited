@@ -267,9 +267,9 @@ are written in fixed point.
 
 Each result has a unit kind that the evidence gate can match: an amount, with the
 source's unit; per cent, for `change_percent`, `share_percent` and cells whose unit
-is `prosent`, `per cent`, `percent` or `%`; percentage points, for the difference of
-two per cent values and cells whose unit is `prosentpoeng` or `percentage points`; or a
-ratio, for the quotient of two values with the same unit. `parse_plan` reads a plan
+name holds `prosent`, `per cent`, `percent` or `%`; percentage points, for the
+difference of two per cent values and cells whose unit name holds `prosentpoeng` or
+`percentage point`; or a ratio, for the quotient of two values with the same unit. `parse_plan` reads a plan
 from JSON and refuses an object that repeats a key.
 A result lists every step with its operation, inputs, SQL, bound codes, arithmetic
 with the numbers filled in, exact and rounded result and unit, and names every
@@ -307,9 +307,10 @@ Norwegian text, digits grouped by spaces in English text, `billion` in Norwegian
 text, numbers in words with a percent or scale word, compounds and fractions included,
 and words that multiply. Beyond the specification it covers a number joined to
 letters, such as `CO2` or `5G`; a sign or a dash before a number where spec 0003 reads
-no minus sign, such as `x-3` or `–3`; and unit and scale words that the specification
+no minus sign, such as `x-3` or `–3`; unit and scale words that the specification
 does not list, such as `mill` without its point, `mrd`, `bn` or `trillion`, since
-reading the number without them would change its size.
+reading the number without them would change its size; a percent word after a scale
+word; a time of day in a timestamp; and a number of more than 60 digits.
 
 ### Matching numbers to evidence
 
@@ -317,15 +318,20 @@ reading the number without them would change its size.
 each source result, a query, metadata or a search, with an evidence ID such as `E1`,
 and each calculation result with an ID such as `C1`. It splits the answer into blocks,
 paragraphs, list items, table rows and headings, and matches every number of a block
-against the results whose markers the block holds.
+against the results whose markers the block holds. Since a citation must never reach
+a number outside its block, the split errs towards smaller blocks: a blank line, a
+thematic break such as `---`, a code fence and a change of block quote depth end a
+block, every line that holds a pipe is a table row of its own, and a marker inside an
+HTML comment cites nothing.
 
 A period passes when a cited query result selected it, a date when it is the last
 update or the retrieval date of a cited result in UTC or in Norwegian time, a
 five-digit table ID when it is the ID of a cited result, and a number from the title
-of a cited result, or from the label of a value it selected, when it has no unit,
-percent or scale word. A four-digit number that a cited result selected as a period
-counts as a year. Citation markers are not findings, and the numbers of ordered list
-items are ignored.
+of a cited result, or from the label of a value it selected, when it is written as
+there and has no unit, percent or scale word. A four-digit number that a cited query
+result selected as a period counts as a year. Citation markers are not findings, and
+the numbers of an ordered list are ignored when they count up from 1; any other
+number at the start of a line is read as a number.
 
 Every other number is a value. It fails in a block that cites no result. It passes
 when a cited result holds a value `v` that, divided by any scale word and rounded with

@@ -54,10 +54,11 @@ from opencited.values import exact_text
 
 # A step selects at most this many cells, as a query does (spec 0002).
 MAX_CELLS = 5000
-# A cell's unit counts as per cent, or as percentage points, when its name is one of
-# the words that spec 0003 lists for them, or the per cent sign, in any case.
-PER_CENT = frozenset({"prosent", "per cent", "percent", "%"})
-PERCENTAGE_POINTS = frozenset({"prosentpoeng", "percentage points"})
+# A cell's unit counts as percentage points, or as per cent, when its name holds one of
+# the words that spec 0003 lists for them, or the per cent sign, in any case, so that
+# a name such as "Prosent av befolkningen" counts too.
+PER_CENT = ("prosent", "per cent", "percent", "%")
+PERCENTAGE_POINTS = ("prosentpoeng", "percentage point")
 FLOATING = frozenset({"DOUBLE", "FLOAT", "REAL"})
 # An arithmetic line lists the cells of a sum or a mean when there are at most this many.
 LISTED = 10
@@ -93,11 +94,11 @@ class Row:
 
 def unit_named(name: str | None) -> ResultUnit:
     """Return the unit of a cell, which is per cent or percentage points when it says so."""
-    word = name.strip().lower() if name is not None else None
-    if word in PER_CENT:
-        return ResultUnit(kind="per cent", name=name)
-    if word in PERCENTAGE_POINTS:
+    word = name.lower() if name is not None else ""
+    if any(points in word for points in PERCENTAGE_POINTS):
         return ResultUnit(kind="percentage points", name=name)
+    if any(percent in word for percent in PER_CENT):
+        return ResultUnit(kind="per cent", name=name)
     return ResultUnit(kind="amount", name=name)
 
 

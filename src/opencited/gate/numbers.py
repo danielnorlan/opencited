@@ -44,6 +44,9 @@ OTHER_DASHES = "\u2013\u2014\u2012"
 # is not text. Elsewhere a sign before a digit cannot be read with certainty.
 BEFORE_MINUS = "([{*_|~>"
 ASCII_DIGITS = "0123456789"
+# A source value has at most 38 digits; a written number may round it or add zeros,
+# and no number in an answer needs more than this many.
+MAX_DIGITS = 60
 
 MONTHS_NO = (
     "januar",
@@ -432,6 +435,8 @@ class Reader:
                 when = read_date(kind, match.groups())
                 if when is None:
                     self.block(*match.span(), "a date that does not exist")
+                elif kind == "iso" and "T" in match[0]:
+                    self.block(*match.span(), "a time of day, which the gate cannot check")
                 else:
                     self.add(
                         Number(
@@ -458,12 +463,21 @@ class Reader:
                     )
 
     def list_numbers(self) -> None:
+        """Mark the numbers of ordered list items: a list starts at 1 and counts up.
+
+        Any other number at the start of a line is read as a number, so a value cannot
+        pass as the number of a list item.
+        """
+        expected = 1
         for match in LIST_NUMBER.finditer(self.text):
             start, end = match.start(1), match.end(1) + 1
-            if self.free(start, end):
-                self.add(
-                    Number(position=start, end=end, text=self.text[start:end], kind="list number")
-                )
+            value = int(match[1]) if len(match[1]) < 10 else -1
+            if value == 1:
+                expected = 1
+            if value != expected or not self.free(start, end):
+                continue
+            expected += 1
+            self.add(Number(position=start, end=end, text=self.text[start:end], kind="list number"))
 
     def blocking_forms(self) -> None:
         for match in MULTIPLYING.finditer(self.text):
@@ -518,7 +532,13 @@ class Reader:
                 else:
                     run_start = None
                 offset += len(part)
-            if run_start is not None and self.free(run_start, match.end()):
+            # A scale word after digits belongs to the number that the digits start.
+            digits_before = re.search(rf"[0-9]{SPACE}?$", self.text[: run_start or 0])
+            if (
+                run_start is not None
+                and digits_before is None
+                and self.free(run_start, match.end())
+            ):
                 self.block(
                     run_start, match.end(), "a number written in words with a percent or scale word"
                 )
@@ -662,6 +682,11 @@ class Reader:
             return Blocked(
                 "a point between digits in Norwegian text outside a date", self.run_end(end + 1)
             )
+        if len(digits.replace(".", "")) > MAX_DIGITS:
+            return Blocked(
+                f"a number of more than {MAX_DIGITS} digits, more than any source value has",
+                self.run_end(end),
+            )
         return Read(digits, end)
 
     def trailing(self, end: int) -> After | Blocked:
@@ -712,7 +737,15 @@ class Reader:
             SCALE_WORDS[self.language].items(), key=lambda item: -len(item[0])
         ):
             if ends_word(word):
-                return After(None, power, end + offset + len(word))
+                stop = end + offset + len(word)
+                percent = re.match(
+                    rf"{SPACE}?(?:%|{alternatives([*POINT_WORDS, *PER_CENT_WORDS])})",
+                    self.text[stop:],
+                    re.IGNORECASE,
+                )
+                if percent:
+                    return Blocked("a percent word after a scale word", stop + percent.end())
+                return After(None, power, stop)
         for word in sorted(UNREAD_WORDS, key=len, reverse=True):
             if ends_word(word):
                 return Blocked(
