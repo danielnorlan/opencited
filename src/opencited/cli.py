@@ -35,7 +35,7 @@ from opencited import __version__
 from opencited.http.cache import ResponseCache
 from opencited.http.replay import replay_transport
 from opencited.mcp import build_server
-from opencited.snapshots import SnapshotStore
+from opencited.snapshots import SnapshotError, SnapshotStore
 
 logger = logging.getLogger("opencited.cli")
 
@@ -127,13 +127,20 @@ def cache_of(options: argparse.Namespace) -> ResponseCache | None:
 
 
 def snapshots_of(options: argparse.Namespace) -> SnapshotStore | None:
+    """Return the snapshot store that the options or the variable name, or None.
+
+    The directory is checked at start, so that a directory that cannot be written stops
+    the server instead of leaving every result without a snapshot.
+    """
     directory = cast("Path | None", options.snapshot_dir)
     if directory is None and os.environ.get(SNAPSHOT_DIR):
         directory = Path(os.environ[SNAPSHOT_DIR])
     if directory is None:
         return None
+    store = SnapshotStore(directory)
+    store.check()
     logger.info("Keeping a snapshot of every query result in %s", directory)
-    return SnapshotStore(directory)
+    return store
 
 
 def main(arguments: list[str] | None = None) -> int:
@@ -143,7 +150,11 @@ def main(arguments: list[str] | None = None) -> int:
     )
     # The HTTP library logs every request at INFO, which buries the server's own log.
     logging.getLogger("httpx2").setLevel(logging.WARNING)
-    snapshots = snapshots_of(options)
+    try:
+        snapshots = snapshots_of(options)
+    except SnapshotError as error:
+        print(f"opencited: {error}", file=sys.stderr)
+        return 2
     if options.replay is None:
         server = build_server(cache=cache_of(options), snapshots=snapshots)
     else:

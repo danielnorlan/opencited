@@ -15,7 +15,6 @@ from typing import Annotated
 
 import anyio
 import anyio.to_thread
-import duckdb
 import httpx2
 from mcp.server import MCPServer
 from mcp.server.mcpserver import Context
@@ -179,13 +178,18 @@ def build_server(
 
 
 async def keep(snapshots: SnapshotStore, retrieval: QueryRetrieval) -> None:
-    """Write a result's snapshot. A result without one is still returned, with a warning."""
+    """Write a result's snapshot. A result without one is still returned, with a warning.
+
+    Every failure is caught, since the snapshot is kept beside the result that the
+    client asked for and must never cost it that result.
+    """
+    snapshot_id = retrieval.result.provenance.response_sha256
     try:
         await anyio.to_thread.run_sync(snapshots.write, retrieval)
-    except (SnapshotError, OSError, duckdb.Error) as error:
-        logger.warning(
-            "No snapshot of %s was written: %s", retrieval.result.provenance.response_sha256, error
-        )
+    except SnapshotError as error:
+        logger.warning("No snapshot of %s was written: %s", snapshot_id, error)
+    except Exception:
+        logger.exception("No snapshot of %s was written", snapshot_id)
 
 
 async def log_versions(client: SsbClient) -> None:

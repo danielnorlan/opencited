@@ -27,7 +27,7 @@ from opencited.http.cache import ResponseCache
 from opencited.http.replay import replay_transport
 from opencited.mcp import build_server
 from opencited.snapshots import SnapshotStore
-from opencited.sources import Language, QueryResult, SearchResult, TableMetadata
+from opencited.sources import Language, QueryResult, QueryRetrieval, SearchResult, TableMetadata
 from opencited.sources.ssb import BASE_URL, MAX_SEARCH_LIMIT, SsbClient
 
 REPLAY = replay_transport(FIXTURES)
@@ -430,3 +430,19 @@ def test_a_snapshot_that_cannot_be_written_leaves_the_result(
     content = query_through({"snapshots": SnapshotStore(blocked)})
     assert content["observations"]
     assert "No snapshot of" in caplog.text
+
+
+class FailingStore(SnapshotStore):
+    """A store whose writing fails in a way that no snapshot rule names."""
+
+    def write(self, retrieval: QueryRetrieval) -> Path:
+        raise RuntimeError("an unexpected failure")
+
+
+def test_an_unexpected_failure_of_a_snapshot_leaves_the_result(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    content = query_through({"snapshots": FailingStore(tmp_path)})
+    assert content["observations"]
+    assert "No snapshot of" in caplog.text
+    assert "an unexpected failure" in caplog.text

@@ -196,7 +196,7 @@ this record. [Spec 0001](specs/0001-ssb-mcp-server.md) defines it.
 ## Calculation and the evidence gate (M2)
 
 The agent never states a number that it did not receive from a tool. With a snapshot
-directory set, the MCP server stores every data result as a snapshot that never
+directory set, the MCP server stores each data result as a snapshot that it never
 changes. The agent writes a typed calculation plan over these snapshots: DuckDB
 selects the cells, and all arithmetic uses exact rational numbers, because DuckDB
 returns floating point for division and means of decimals and does not catch every
@@ -217,17 +217,19 @@ directory is set by default. A snapshot is a directory named by the
 | File | Contents |
 | --- | --- |
 | `response.json` | The raw response body, whose SHA-256 is the snapshot's ID |
-| `snapshot.json` | The provenance record, the language, the labels of every code, the units from the table's metadata, the SHA-256 of that metadata response, and the scale of the values |
+| `snapshot.json` | The provenance record, the language, the labels of every code, the units from the table's metadata, the SHA-256 of that metadata response and of the Parquet file, and the scale of the values |
 | `observations.parquet` | One text column per dimension code, `value_text` with the value as written, `value` as `DECIMAL(38, s)` at the largest scale among the values, `symbol` and `unit` |
 
-DuckDB writes the Parquet file, with every value bound as text and cast to the
-decimal type, and reads it back with each value as a Python `Decimal`. A snapshot is
-written to a temporary directory and renamed into place, and it never changes: a
-later response with the same body finds it in place, and the snapshot keeps the
-provenance of its first retrieval. Reading a snapshot checks that its body hashes to
-its ID. A result with a value that does not fit `DECIMAL(38, s)` gets no snapshot,
-and a snapshot that cannot be written leaves the tool result as it is, with a
-warning in the server's log.
+DuckDB writes the Parquet file from the cells, which reach it as JSON strings and are
+cast to the decimal type, and reads it back with each value as a Python `Decimal`. A
+snapshot is written to a temporary directory, flushed to disk and renamed into place,
+and the store never changes it: a later response with the same body finds it in
+place, and the snapshot keeps the provenance of its first retrieval. Reading a
+snapshot checks that its body hashes to its ID and that the Parquet file hashes to
+the SHA-256 that the manifest records. A result with a value that does not fit
+`DECIMAL(38, s)` gets no snapshot, and any failure to write one leaves the tool
+result as it is, with a warning in the server's log. The server checks at start that
+it can write to the snapshot directory, and stops if it cannot.
 
 ## Trust boundaries
 

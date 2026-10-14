@@ -157,3 +157,22 @@ def test_snapshots_go_to_the_directory_the_variable_names(
     cli.main(["mcp", "--replay", str(FIXTURES)])
     [server] = servers
     assert server.built["snapshots"].directory == tmp_path
+
+
+def test_an_empty_variable_sets_no_snapshot_directory(
+    servers: list[FakeServer], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(cli.SNAPSHOT_DIR, "")
+    cli.main(["mcp", "--no-cache"])
+    [server] = servers
+    assert server.built["snapshots"] is None
+
+
+def test_a_snapshot_directory_that_cannot_be_written_stops_the_server(
+    servers: list[FakeServer], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    blocked = tmp_path / "a file"
+    blocked.write_text("not a directory", encoding="utf-8")
+    assert cli.main(["mcp", "--snapshot-dir", str(blocked)]) == 2
+    assert servers == []
+    assert "snapshots cannot be written to" in capsys.readouterr().err

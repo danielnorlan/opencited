@@ -17,6 +17,7 @@ import duckdb
 import pytest
 from recorded import FIXTURES, raw, recorded_cells
 
+from opencited import snapshots
 from opencited.http import make_client
 from opencited.http.replay import replay_transport
 from opencited.snapshots import (
@@ -221,6 +222,40 @@ def test_a_snapshot_whose_body_changed_cannot_be_read(tmp_path: Path) -> None:
         store.read(directory.name)
 
 
+@pytest.mark.parametrize("field", ["snapshot_id", "provenance"])
+def test_a_manifest_that_names_another_snapshot_cannot_be_read(tmp_path: Path, field: str) -> None:
+    store = SnapshotStore(tmp_path)
+    directory = store.write(retrieve("05810", POPULATION, "en", 1800))
+    manifest = store.read(directory.name).manifest
+    other = "0" * 64
+    if field == "snapshot_id":
+        altered = manifest.model_copy(update={"snapshot_id": other})
+    else:
+        record = manifest.provenance.model_copy(update={"response_sha256": other})
+        altered = manifest.model_copy(update={"provenance": record})
+    (directory / MANIFEST).write_text(altered.model_dump_json(), encoding="utf-8")
+    with pytest.raises(SnapshotError, match="names another snapshot"):
+        store.read(directory.name)
+
+
+def test_changed_cells_cannot_be_read(tmp_path: Path) -> None:
+    store = SnapshotStore(tmp_path)
+    directory = store.write(retrieve("05810", POPULATION, "en", 1800))
+    other = store.write(retrieve("05810", POPULATION, "no", 1800))
+    # A valid Parquet file, but not the one the manifest records.
+    (directory / OBSERVATIONS).write_bytes((other / OBSERVATIONS).read_bytes())
+    with pytest.raises(SnapshotError, match="have changed"):
+        store.read(directory.name)
+
+
+def test_a_damaged_manifest_is_reported(tmp_path: Path) -> None:
+    store = SnapshotStore(tmp_path)
+    directory = store.write(retrieve("05810", POPULATION, "en", 1800))
+    (directory / MANIFEST).write_text("{}", encoding="utf-8")
+    with pytest.raises(SnapshotError, match="cannot be read"):
+        store.read(directory.name)
+
+
 def test_a_manifest_for_another_snapshot_cannot_be_read(tmp_path: Path) -> None:
     store = SnapshotStore(tmp_path)
     one = store.write(retrieve("05810", POPULATION, "en", 1800))
@@ -241,39 +276,100 @@ def test_a_missing_snapshot_is_reported(tmp_path: Path) -> None:
         SnapshotStore(tmp_path).read("0" * 64)
 
 
-def with_value(retrieval: QueryRetrieval, value: Decimal) -> QueryRetrieval:
-    """Return the retrieval with its first cell's value replaced, to test a limit."""
-    first = retrieval.result.observations[0]
-    cell = Observation(codes=first.codes, value=value, symbol=None)
-    cells = (cell, *retrieval.result.observations[1:])
-    return replace(retrieval, result=retrieval.result.model_copy(update={"observations": cells}))
+def with_values(retrieval: QueryRetrieval, *values: Decimal) -> QueryRetrieval:
+    """Return the retrieval with its first cells' values replaced, to test a limit.
+
+    These values stand for no response from SSB; the recordings hold none so wide.
+    """
+    cells = list(retrieval.result.observations)
+    for index, value in enumerate(values):
+        cells[index] = Observation(codes=cells[index].codes, value=value, symbol=None)
+    altered = retrieval.result.model_copy(update={"observations": tuple(cells)})
+    return replace(retrieval, result=altered)
 
 
 @pytest.mark.parametrize(
-    ("value", "written"),
+    ("values", "written"),
     [
-        (Decimal("9" * 38), True),
-        (Decimal("9" * 39), False),
-        # 2.7 sets the scale to 1, so this value needs 38 + 1 digits.
-        (Decimal("9" * 38 + ".5"), False),
+        ((Decimal("9" * 38),), True),
+        ((Decimal("9" * 39),), False),
+        ((Decimal("1E+37"),), True),
+        ((Decimal("1E+38"),), False),
+        # The .5 sets the scale to 1, so this value needs 38 + 1 digits.
+        ((Decimal("9" * 38 + ".5"),), False),
+        # A value below 1, and zero, need only the decimals of the scale.
+        ((Decimal("0." + "9" * 38), Decimal("0")), True),
+        ((Decimal("0." + "0" * 38 + "1"),), False),
+        ((Decimal("-" + "9" * 38),), True),
     ],
 )
 def test_a_value_that_does_not_fit_38_digits_gets_no_snapshot(
-    tmp_path: Path, value: Decimal, written: bool
+    tmp_path: Path, values: tuple[Decimal, ...], written: bool
 ) -> None:
     store = SnapshotStore(tmp_path)
-    retrieval = with_value(retrieve("05810", POPULATION, "en", 1800), value)
+    retrieval = with_values(retrieve("05810", POPULATION, "en", 1800), *values)
     if written:
-        assert store.read(store.write(retrieval).name).cells[0].value == value
+        cells = store.read(store.write(retrieval).name).cells
+        assert [cell.value for cell in cells[: len(values)]] == list(values)
     else:
         with pytest.raises(SnapshotError, match="does not fit DECIMAL"):
             store.write(retrieval)
         assert list(tmp_path.iterdir()) == []
 
 
-def test_a_dimension_may_not_take_a_column_name(tmp_path: Path) -> None:
+def test_a_value_is_written_in_fixed_point(tmp_path: Path) -> None:
+    store = SnapshotStore(tmp_path)
+    retrieval = with_values(retrieve("05810", POPULATION, "en", 1800), Decimal("0.0000001"))
+    [first, *_] = store.read(store.write(retrieval).name).cells
+    assert first.value_text == "0.0000001"
+    assert first.value == Decimal("0.0000001")
+
+
+def test_a_failed_write_leaves_no_temporary_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def broken(*arguments: object) -> None:
+        raise OSError("the disk is full")
+
+    monkeypatch.setattr(snapshots, "write_cells", broken)
+    with pytest.raises(OSError, match="the disk is full"):
+        SnapshotStore(tmp_path).write(retrieve("05810", POPULATION, "en", 1800))
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_codes_and_directories_with_quotes_are_written_and_read(tmp_path: Path) -> None:
+    store = SnapshotStore(tmp_path / "it's here")
     retrieval = retrieve("05810", POPULATION, "en", 1800)
-    first = retrieval.result.dimensions[0].model_copy(update={"code": "value"})
+    first = retrieval.result.dimensions[0].model_copy(update={"code": 'Kj"onn'})
+    dimensions = (first, *retrieval.result.dimensions[1:])
+    altered = replace(
+        retrieval, result=retrieval.result.model_copy(update={"dimensions": dimensions})
+    )
+    snapshot = store.read(store.write(altered).name)
+    assert snapshot.manifest.dimensions[0].code == 'Kj"onn'
+    assert [cell.codes for cell in snapshot.cells] == [
+        cell.codes for cell in retrieval.result.observations
+    ]
+
+
+def test_the_units_come_from_the_metadata_of_the_query(tmp_path: Path) -> None:
+    retrieval = retrieve("05810", POPULATION, "en", 1800)
+    # Units that differ from the data response's own, to show which ones the snapshot keeps.
+    units = tuple(
+        unit.model_copy(update={"base": f"{unit.base} (metadata)"})
+        for unit in retrieval.metadata.units
+    )
+    altered = replace(retrieval, metadata=retrieval.metadata.model_copy(update={"units": units}))
+    store = SnapshotStore(tmp_path)
+    snapshot = store.read(store.write(altered).name)
+    assert snapshot.manifest.units == units
+    assert {cell.unit for cell in snapshot.cells} == {unit.base for unit in units}
+
+
+@pytest.mark.parametrize("code", ["value", "Value", "UNIT", "file_row_number"])
+def test_a_dimension_may_not_take_a_column_name(tmp_path: Path, code: str) -> None:
+    retrieval = retrieve("05810", POPULATION, "en", 1800)
+    first = retrieval.result.dimensions[0].model_copy(update={"code": code})
     dimensions = (first, *retrieval.result.dimensions[1:])
     altered = replace(
         retrieval, result=retrieval.result.model_copy(update={"dimensions": dimensions})

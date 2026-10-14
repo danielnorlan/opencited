@@ -5,20 +5,26 @@ the provenance record, the labels of every code, the units from the table's meta
 and the cells as a Parquet file. Its ID is the SHA-256 of the body, which the
 provenance record holds as ``response_sha256``.
 
-A snapshot is written to a temporary directory next to its place and renamed into it
-when complete, so a reader sees either no snapshot or a whole one. A snapshot is
-never changed: a later response with the same body finds it in place and keeps the
-provenance of the first retrieval.
+A snapshot is written to a temporary directory next to its place, flushed to disk and
+renamed into place when complete, so a reader sees either no snapshot or a whole one.
+The store never changes a snapshot: a later response with the same body finds it in
+place, and the snapshot keeps the provenance of the first retrieval. Reading checks
+that the body hashes to the ID and that the Parquet file hashes to the SHA-256 that
+the manifest records.
 
 The Parquet file has one text column per dimension code, ``value_text`` with the value
-as SSB wrote it, ``value`` as ``DECIMAL(38, s)`` where ``s`` is the largest scale among
-the values, ``symbol`` for a missing value and ``unit`` for the unit of the content. A
-result with a value that does not fit ``DECIMAL(38, s)`` gets no snapshot.
+in fixed point as SSB writes it, ``value`` as ``DECIMAL(38, s)`` where ``s`` is the
+largest scale among the values, ``symbol`` for a missing value and ``unit`` for the
+unit of the content. The cells reach DuckDB as JSON strings and are cast to the decimal
+type, so no value passes through a binary number. A result with a value that does not
+fit ``DECIMAL(38, s)`` gets no snapshot.
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
+import os
 import shutil
 import uuid
 from dataclasses import dataclass
@@ -27,7 +33,7 @@ from pathlib import Path
 from typing import cast
 
 import duckdb
-from pydantic import Field
+from pydantic import Field, ValidationError
 
 from opencited.model import Frozen, Sha256Hex
 from opencited.provenance import ProvenanceRecord
@@ -37,8 +43,13 @@ from opencited.values import ExactDecimal, exact_text
 BODY = "response.json"
 MANIFEST = "snapshot.json"
 OBSERVATIONS = "observations.parquet"
-# The columns after the dimension codes, which no dimension code may take.
+# The rows on their way to DuckDB, removed before the snapshot is placed.
+ROWS = "cells.jsonl"
+# The columns after the dimension codes. No dimension code may take one, nor the
+# column that DuckDB adds when it reads the row numbers. DuckDB compares column names
+# without regard to case.
 COLUMNS = ("value_text", "value", "symbol", "unit")
+RESERVED = frozenset({*COLUMNS, "file_row_number"})
 # DuckDB's widest decimal type holds 38 digits.
 MAX_DIGITS = 38
 
@@ -67,6 +78,7 @@ class Manifest(Frozen):
     language: Language
     provenance: ProvenanceRecord
     metadata_sha256: Sha256Hex = Field(description="SHA-256 of the metadata response read.")
+    observations_sha256: Sha256Hex = Field(description="SHA-256 of the Parquet file.")
     dimensions: tuple[DimensionLabels, ...]
     units: tuple[Unit, ...]
     scale: int = Field(ge=0, le=MAX_DIGITS, description="The scale of the value column.")
@@ -89,9 +101,13 @@ class Snapshot:
 
 
 def digits(value: Decimal, scale: int) -> int:
-    """Return how many digits ``value`` takes when written with ``scale`` decimals."""
-    _, coefficient, exponent = value.as_tuple()
-    return len(coefficient) + cast("int", exponent) + scale
+    """Return how many digits ``value`` takes in a decimal type with ``scale`` decimals.
+
+    The type stores the integer part and ``scale`` decimals, so a value below 1, zero
+    included, needs ``scale`` digits.
+    """
+    whole = 0 if value.is_zero() else max(0, value.adjusted() + 1)
+    return whole + scale
 
 
 def scale_of(value: Decimal) -> int:
@@ -101,6 +117,19 @@ def scale_of(value: Decimal) -> int:
 def quoted(name: str) -> str:
     """Return an SQL identifier for a column name, with any double quote doubled."""
     return '"' + name.replace('"', '""') + '"'
+
+
+def sha256_file(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def flushed(path: Path) -> None:
+    """Flush a file or a directory to disk, so that a rename never shows empty files."""
+    descriptor = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 class SnapshotStore:
@@ -115,6 +144,18 @@ class SnapshotStore:
             raise SnapshotError(f"{snapshot_id!r} is not a snapshot ID")
         return self.directory / snapshot_id
 
+    def check(self) -> None:
+        """Create the directory and check that a snapshot can be written there."""
+        try:
+            self.directory.mkdir(parents=True, exist_ok=True)
+            probe = self.directory / f".probe.{uuid.uuid4().hex}"
+            probe.write_bytes(b"")
+            probe.unlink()
+        except OSError as error:
+            raise SnapshotError(
+                f"snapshots cannot be written to {self.directory}: {error}"
+            ) from error
+
     def write(self, retrieval: QueryRetrieval) -> Path:
         """Write the snapshot of a query result, unless it exists, and return its directory."""
         result = retrieval.result
@@ -125,54 +166,61 @@ class SnapshotStore:
         if final.exists():
             return final
         codes = [dimension.code for dimension in result.dimensions]
-        taken = sorted(set(codes) & set(COLUMNS))
+        taken = sorted(code for code in codes if code.lower() in RESERVED)
         if taken:
             raise SnapshotError(f"the dimension codes {taken} are column names of a snapshot")
         values = [cell.value for cell in result.observations if cell.value is not None]
         scale = max((scale_of(value) for value in values), default=0)
-        wide = [value for value in values if digits(value, scale) > MAX_DIGITS]
-        if scale > MAX_DIGITS or wide:
+        if scale > MAX_DIGITS or any(digits(value, scale) > MAX_DIGITS for value in values):
             raise SnapshotError(
                 f"a value does not fit DECIMAL({MAX_DIGITS}, {scale}), so no snapshot is written"
             )
-        manifest = Manifest(
-            snapshot_id=snapshot_id,
-            language=retrieval.language,
-            provenance=result.provenance,
-            metadata_sha256=retrieval.metadata_sha256,
-            dimensions=tuple(
-                DimensionLabels(
-                    code=dimension.code,
-                    label=dimension.label,
-                    values=tuple(
-                        Label(code=value.code, label=value.label) for value in dimension.values
-                    ),
-                )
-                for dimension in result.dimensions
-            ),
-            units=retrieval.metadata.units,
-            scale=scale,
-        )
         self.directory.mkdir(parents=True, exist_ok=True)
         temporary = self.directory / f".{snapshot_id}.{uuid.uuid4().hex}.tmp"
         temporary.mkdir()
         try:
             (temporary / BODY).write_bytes(retrieval.body)
+            write_cells(temporary, retrieval, codes, scale)
+            manifest = Manifest(
+                snapshot_id=snapshot_id,
+                language=retrieval.language,
+                provenance=result.provenance,
+                metadata_sha256=retrieval.metadata_sha256,
+                observations_sha256=sha256_file(temporary / OBSERVATIONS),
+                dimensions=tuple(
+                    DimensionLabels(
+                        code=dimension.code,
+                        label=dimension.label,
+                        values=tuple(
+                            Label(code=value.code, label=value.label) for value in dimension.values
+                        ),
+                    )
+                    for dimension in result.dimensions
+                ),
+                units=retrieval.metadata.units,
+                scale=scale,
+            )
             (temporary / MANIFEST).write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
-            write_cells(temporary / OBSERVATIONS, retrieval, codes, scale)
-            return place(temporary, final)
+            for name in (BODY, MANIFEST, OBSERVATIONS):
+                flushed(temporary / name)
+            flushed(temporary)
+            placed = place(temporary, final)
+            flushed(self.directory)
+            return placed
         finally:
             if temporary.exists():
                 shutil.rmtree(temporary)
 
     def read(self, snapshot_id: str) -> Snapshot:
-        """Return a snapshot, after checking that its body hashes to its ID."""
+        """Return a snapshot, after checking its body and its cells against their hashes."""
         directory = self.path(snapshot_id)
         try:
             body = (directory / BODY).read_bytes()
             manifest = Manifest.model_validate_json((directory / MANIFEST).read_bytes())
         except FileNotFoundError as error:
             raise SnapshotError(f"there is no snapshot {snapshot_id}") from error
+        except (OSError, ValidationError) as error:
+            raise SnapshotError(f"snapshot {snapshot_id} cannot be read: {error}") from error
         if hashlib.sha256(body).hexdigest() != snapshot_id:
             raise SnapshotError(f"the body of snapshot {snapshot_id} does not hash to its ID")
         if (
@@ -180,7 +228,14 @@ class SnapshotStore:
             or manifest.provenance.response_sha256 != snapshot_id
         ):
             raise SnapshotError(f"the manifest of snapshot {snapshot_id} names another snapshot")
-        return Snapshot(manifest, read_cells(directory / OBSERVATIONS, manifest))
+        observations = directory / OBSERVATIONS
+        try:
+            if sha256_file(observations) != manifest.observations_sha256:
+                raise SnapshotError(f"the cells of snapshot {snapshot_id} have changed")
+            cells = read_cells(observations, manifest)
+        except (OSError, duckdb.Error, ValidationError) as error:
+            raise SnapshotError(f"snapshot {snapshot_id} cannot be read: {error}") from error
+        return Snapshot(manifest, cells)
 
 
 def place(temporary: Path, final: Path) -> Path:
@@ -193,30 +248,49 @@ def place(temporary: Path, final: Path) -> Path:
     return final
 
 
-def write_cells(path: Path, retrieval: QueryRetrieval, codes: list[str], scale: int) -> None:
-    """Write the cells as Parquet, with each value bound as text and cast to the decimal type."""
+def write_cells(directory: Path, retrieval: QueryRetrieval, codes: list[str], scale: int) -> None:
+    """Write the cells of a result as Parquet in ``directory``.
+
+    Each row reaches DuckDB as a JSON array of strings, led by its position, and the
+    value is cast from text to the decimal type. Binding 5,000 rows one by one took
+    seconds; reading them as JSON Lines takes a fraction of one.
+    """
     result = retrieval.result
     contents = next(
         (index for index, dimension in enumerate(result.dimensions) if dimension.contents), None
     )
     units = {unit.code: unit.base for unit in retrieval.metadata.units}
+    rows = directory / ROWS
+    with rows.open("w", encoding="utf-8") as file:
+        for position, cell in enumerate(result.observations):
+            text = exact_text(cell.value) if cell.value is not None else None
+            unit = units.get(cell.codes[contents]) if contents is not None else None
+            line = [str(position), *cell.codes, text, cell.symbol, unit]
+            file.write(json.dumps(line) + "\n")
     decimal = f"DECIMAL({MAX_DIGITS}, {scale})"
     columns = [f"{quoted(code)} VARCHAR" for code in codes]
     columns += ["value_text VARCHAR", f"value {decimal}", "symbol VARCHAR", "unit VARCHAR"]
-    rows: list[list[str | None]] = []
-    for cell in result.observations:
-        text = exact_text(cell.value) if cell.value is not None else None
-        unit = units.get(cell.codes[contents]) if contents is not None else None
-        rows.append([*cell.codes, text, text, cell.symbol, unit])
-    marks = ", ".join(["?"] * len(codes) + ["?", f"CAST(? AS {decimal})", "?", "?"])
+    # DuckDB's lists count from 1, and element 1 holds the position.
+    fields = [f"row[{index + 2}]" for index in range(len(codes))]
+    text = f"row[{len(codes) + 2}]"
+    fields += [
+        text,
+        f"CAST({text} AS {decimal})",
+        f"row[{len(codes) + 3}]",
+        f"row[{len(codes) + 4}]",
+    ]
     with duckdb.connect() as connection:
         connection.execute(f"CREATE TABLE cells ({', '.join(columns)})")
-        if rows:
-            insert = f"INSERT INTO cells VALUES ({marks})"  # noqa: S608 - only placeholders and a fixed decimal type
-            connection.executemany(insert, rows)
+        connection.execute(
+            f"INSERT INTO cells SELECT {', '.join(fields)} FROM read_json(?, format = "  # noqa: S608 - list positions and a fixed decimal type only
+            "'newline_delimited', records = false, columns = {'row': 'VARCHAR[]'}) "
+            "ORDER BY CAST(row[1] AS INTEGER)",
+            [str(rows)],
+        )
         # COPY takes no parameter for its file; the path is the store's own, quoted.
-        target = str(path).replace("'", "''")
+        target = str(directory / OBSERVATIONS).replace("'", "''")
         connection.execute(f"COPY cells TO '{target}' (FORMAT parquet)")
+    rows.unlink()
 
 
 def read_cells(path: Path, manifest: Manifest) -> tuple[Cell, ...]:
