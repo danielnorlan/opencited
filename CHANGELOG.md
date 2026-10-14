@@ -31,6 +31,11 @@ Notable changes to OpenCited are recorded here. The format follows
   Norwegian time, and a rate limiter that keeps each process within 30 requests a
   minute and backs off after HTTP 429. `opencited mcp` takes `--cache-dir` and
   `--no-cache`.
+- The evaluation suite as an Inspect task in `evals/`, with the agent behind Inspect's
+  agent bridge and only its own four tools, Inspect's limits above the agent's, runs
+  kept away from SSB's update periods, and `evals/report.py`, which writes the run
+  report from the log (spec 0005). Inspect 0.3.279 is pinned in the `evals` group, and
+  a CI job type-checks and tests the task.
 - The first question set, `evals/questions/v1.jsonl`: 44 questions in Norwegian and
   English, in the eight categories of spec 0005, with reference plans whose expected
   numbers a run computes from the day's data; the runner of those plans; and

@@ -25,6 +25,7 @@ from pydantic import Field, ValidationError
 from opencited import __version__
 from opencited.http import make_client
 from opencited.http.cache import ResponseCache
+from opencited.http.limiter import RateLimiter
 from opencited.model import TableId
 from opencited.snapshots import SnapshotError, SnapshotStore
 from opencited.sources import (
@@ -110,17 +111,20 @@ def build_server(
     revision_period: bool = True,
     cache: ResponseCache | None = None,
     snapshots: SnapshotStore | None = None,
+    limiter: RateLimiter | None = None,
 ) -> MCPServer[SsbClient]:
     """Return the server, which caches SSB's responses in ``cache`` when one is given.
 
     With ``snapshots``, every ``query_table`` result is also kept as a snapshot
-    (spec 0002). ``transport`` and ``revision_period`` serve recorded responses.
+    (spec 0002). ``transport`` and ``revision_period`` serve recorded responses. A
+    ``limiter`` that other clients share keeps them all within SSB's rate limit
+    together; without one the server keeps its own.
     """
 
     @asynccontextmanager
     async def lifespan(server: MCPServer[SsbClient]) -> AsyncGenerator[SsbClient]:
         async with make_client(BASE_URL, transport=transport) as http:
-            client = SsbClient(http, revision_period=revision_period, cache=cache)
+            client = SsbClient(http, revision_period=revision_period, cache=cache, limiter=limiter)
             async with anyio.create_task_group() as tasks:
                 # In the background, so that a slow answer from SSB does not hold up
                 # the client's handshake.

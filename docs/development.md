@@ -24,6 +24,7 @@ passes on the way.
 | Pyright and pytest | Locally and in CI | Type errors and failing tests |
 | Live smoke test | `uv run pytest -m live` locally, and the `Nightly` workflow | Nothing: it reports changes in SSB's API that the recorded fixtures cannot show |
 | Model endpoint test | `uv run pytest -m model` locally, with the `OPENCITED_MODEL_*` variables set | Nothing: it shows that the configured endpoint takes the tool schemas and reports usage |
+| Evaluation suite job | CI, and `uv run --group evals pytest evals/tests` locally | Type errors and failing tests in `evals/`, with Inspect installed |
 | Package build | Locally and in CI | A wheel that does not build or does not import, release metadata that disagrees between `pyproject.toml`, `server.json` and the README, and a server that does not start from the wheel in a clean environment |
 | Merge script | `scripts/pull_request.py` | Merging while CI fails; a squash commit with an unexpected author, committer or message |
 
