@@ -173,11 +173,18 @@ At the limit of 5,000 cells that comes to about 1 MB.
 | Unit and property tests | Validation, selection expansion, cell counting, value parsing and formatting | None |
 | Contract tests | Every client method against responses recorded from the live API | None, recorded fixtures |
 | End-to-end tests | Every tool through an MCP client, over stdio and over HTTP, and in memory for quick tests | Local only |
-| Live smoke test | The same calls against the real API, every night | The source API |
+| Live smoke test | Every tool through `opencited mcp` over stdio, against the real API, checking the form of each result and the table's dimensions against the recording | The source API |
 
 Fixtures are recorded by a script that writes the request and the raw response, with
 SSB's contact details removed, to a file named with the recording date. A test transport replays them, so no fixture is
 written by hand.
+
+The live tests are marked `live` and left out of the default run. The `Nightly`
+workflow runs them with `pytest -m live` at 01:17 UTC, which is 02:17 or 03:17 in
+Oslo, outside the times that scheduled jobs avoid
+([ADR 0007](adr/0007-ssb-pxwebapi-v2.md), decision 6), and it can be started by hand.
+From 05:00 to 08:15 Norwegian time the query test expects the error that names SSB's
+revision period instead of data.
 
 ## Provenance
 
