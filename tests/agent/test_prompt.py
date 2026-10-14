@@ -18,12 +18,14 @@ from opencited.agent.prompt import (
 )
 from opencited.gate import check
 from opencited.snapshots import SnapshotStore
+from opencited.values import format_number
 
 # The SHA-256 of the prompt texts for each version. A change to the texts without a
 # new version fails here, since every answer records the version it was made with.
 TEXTS = {
     "1": "0cbf90b1b19623329bbf09b56bd3223ad1cdcb9b31a98afd6b8c932b8411fea2",
     "2": "fa4ea61be2406c0ade156a6d602532dbd5cb00c668d5e9420b73143461639ae3",
+    "3": "66f2f7dad880370a0ee54caf2ad406acc5a71a2669004849dd9d3bbfadd018e6",
 }
 
 
@@ -73,15 +75,42 @@ def test_a_retry_sends_the_gate_report_back(tmp_path: Path) -> None:
     )
 
 
-def test_a_retry_after_a_failed_date_says_to_write_the_period(tmp_path: Path) -> None:
+def test_a_retry_after_a_failed_date_says_to_cite_the_result_that_gives_it(
+    tmp_path: Path,
+) -> None:
     found = evidences(SnapshotStore(tmp_path))
     text = "Per 1. januar 2026 og 1. januar 2026 bodde det mange i Norge [E1]."
     report = check(text, "no", found.evidence)
 
     message = retry_message(report)
 
-    hint = "Write '1. januar 2026' as the period it belongs to, such as the year, or leave the date out."
+    hint = (
+        "Cite the source result that gives '1. januar 2026' in the same paragraph, list item "
+        "or table row, or leave the date out."
+    )
     assert message.count(hint) == 1
+
+
+def test_a_retry_after_a_year_that_only_a_calculation_backs_says_to_cite_its_source(
+    tmp_path: Path,
+) -> None:
+    found = evidences(SnapshotStore(tmp_path))
+    growth = format_number(found.step("growth"), "no")
+    text = f"Folketallet økte med {growth} prosent fra 2025 til 2026 [C1]."
+    report = check(text, "no", found.evidence)
+
+    message = retry_message(report)
+
+    assert not report.passed
+    for year in ("2025", "2026"):
+        assert (
+            message.count(
+                f"Cite the source result that selected '{year}' in the same paragraph, list item "
+                "or table row, or leave the period out."
+            )
+            == 1
+        )
+    assert "per cent word" not in message
 
 
 def test_a_retry_for_an_uncited_answer_has_no_hints(tmp_path: Path) -> None:

@@ -72,8 +72,11 @@ gate says which number failed and why.
    years, SSB's codes such as `2023K1` and `2023M01`, and quarters and months in
    words in either language, such as `1. kvartal 2023` or `January 2023`.
 2. A date passes when it equals the last update or the retrieval date of a source
-   result cited in the block. Dates are written as `2026-10-13`, as `13.10.2026` or
-   with the month in words in either language.
+   result cited in the block. It also passes when a query result cited in the block
+   selected its year as a period and the label of a value that result selected names
+   its day and month, as `1. januar`, `1 January` or `1.1.` do, so "1. januar 2026"
+   passes for a population at "Befolkning 1. januar" in 2026. Dates are written as
+   `2026-10-13`, as `13.10.2026` or with the month in words in either language.
 3. A five-digit table ID passes when it is the ID of a source result cited in the
    block.
 4. A number that appears in the title of a source result cited in the block, or in
