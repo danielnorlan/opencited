@@ -3,7 +3,7 @@
 <!-- mcp-name: io.github.danielnorlan/opencited -->
 
 [![CI](https://github.com/danielnorlan/opencited/actions/workflows/ci.yml/badge.svg)](https://github.com/danielnorlan/opencited/actions/workflows/ci.yml)
-[![Licence: Apache-2.0](https://img.shields.io/badge/licence-Apache--2.0-blue.svg)](LICENSE)
+[![Licence: Apache-2.0](https://img.shields.io/badge/licence-Apache--2.0-blue.svg)](https://github.com/danielnorlan/opencited/blob/main/LICENSE)
 
 OpenCited answers questions from authoritative public sources. Every number in an
 answer links to the data it came from, calculations run in code where they can be
@@ -14,7 +14,7 @@ source is Statistics Norway (SSB).
 > OpenCited is in early development. The MCP server for StatBank runs from a clone of
 > this repository and is not on PyPI yet. The agent, the calculation engine and the
 > evaluation suite are planned for the second milestone. See the
-> [roadmap](docs/roadmap.md).
+> [roadmap](https://github.com/danielnorlan/opencited/blob/main/docs/roadmap.md).
 
 ## How it will work
 
@@ -100,21 +100,21 @@ the cache and `--no-cache` turns it off. From 05:00 to 08:15 Norwegian time,
 | International statistics | Eurostat, OECD and others | Candidate |
 | Health guidance | Approved health authorities | Candidate, risk review first |
 
-Every source passes a review before it is added. See [sources](docs/sources.md).
+Every source passes a review before it is added. See [sources](https://github.com/danielnorlan/opencited/blob/main/docs/sources.md).
 
 ## Documentation
 
-- [Architecture](docs/architecture.md)
-- [Roadmap](docs/roadmap.md)
-- [Decision records](docs/adr/README.md)
-- [Specifications](docs/specs/README.md)
-- [Sources](docs/sources.md)
-- [Development](docs/development.md) and [releasing](docs/releasing.md)
-- [Contributing](CONTRIBUTING.md) and [security policy](SECURITY.md)
+- [Architecture](https://github.com/danielnorlan/opencited/blob/main/docs/architecture.md)
+- [Roadmap](https://github.com/danielnorlan/opencited/blob/main/docs/roadmap.md)
+- [Decision records](https://github.com/danielnorlan/opencited/blob/main/docs/adr/README.md)
+- [Specifications](https://github.com/danielnorlan/opencited/blob/main/docs/specs/README.md)
+- [Sources](https://github.com/danielnorlan/opencited/blob/main/docs/sources.md)
+- [Development](https://github.com/danielnorlan/opencited/blob/main/docs/development.md) and [releasing](https://github.com/danielnorlan/opencited/blob/main/docs/releasing.md)
+- [Contributing](https://github.com/danielnorlan/opencited/blob/main/CONTRIBUTING.md) and [security policy](https://github.com/danielnorlan/opencited/blob/main/SECURITY.md)
 
 ## Licence
 
-The code is licensed under the [Apache License 2.0](LICENSE). Evaluation datasets
+The code is licensed under the [Apache License 2.0](https://github.com/danielnorlan/opencited/blob/main/LICENSE). Evaluation datasets
 will be published under CC BY 4.0. Data from each source keeps its own licence.
 
 Data from StatBank comes from Statistics Norway (SSB) and is licensed under

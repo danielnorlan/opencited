@@ -37,5 +37,20 @@ def test_the_check_reports_tools_that_give_no_result(tmp_path: Path) -> None:
     assert [problem.split()[0] for problem in found] == smoke.TOOLS
 
 
+def test_the_check_reports_a_server_with_other_tools(tmp_path: Path) -> None:
+    script = tmp_path / "server.py"
+    script.write_text(
+        "from mcp.server import MCPServer\n"
+        "server = MCPServer(name='other')\n"
+        "@server.tool()\n"
+        "def search_tables() -> str:\n"
+        "    return 'no tables'\n"
+        "server.run()\n",
+        encoding="utf-8",
+    )
+    found = asyncio.run(smoke.problems([sys.executable, str(script)]))
+    assert found[0] == f"the server lists ['search_tables'], not {smoke.TOOLS}"
+
+
 def test_the_script_needs_one_wheel() -> None:
     assert smoke.main([]) == 2

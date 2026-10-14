@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Start the server from a built wheel in a clean environment and call every tool.
+"""Start the server from a built wheel in an environment of its own and call every tool.
 
 Usage: python scripts/smoke_package.py WHEEL
 
-The server runs as `uvx --isolated --from WHEEL opencited mcp`, so it uses only the
-wheel and the dependencies it declares, and it replays the recordings in
+The server runs as `uvx --isolated --from WHEEL opencited mcp`, in a new environment
+that holds the wheel and the dependencies it declares, apart from the project's own
+environment and any installed tools. It replays the recordings in
 `tests/fixtures/ssb/`, so the check needs no access to SSB. The script lists the tools,
 calls each of them over stdio, prints one line per problem and exits with 1 when there
 is one.
@@ -42,7 +43,7 @@ CALLS: list[tuple[str, dict[str, Any]]] = [
 
 
 def command(wheel: Path) -> list[str]:
-    """Return the command that starts the server from a wheel in a clean environment."""
+    """Return the command that starts the server from a wheel in an environment of its own."""
     return [
         "uvx",
         "--isolated",

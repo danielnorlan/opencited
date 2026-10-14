@@ -6,10 +6,12 @@ Usage: python scripts/check_release.py [--tag TAG] [--root DIR]
 The MCP Registry lists the server from `server.json`, and it accepts a PyPI package
 only when the package's README holds the line `mcp-name: NAME` with the server's name.
 The script checks that `server.json` uses the registry's schema of 2025-12-11, that its
-version and its PyPI package match `pyproject.toml`, and that the README names the
-server. With ``--tag`` it also checks that a release tag is ``v`` and the version. It
-prints one line per problem and exits with 1 when there is one. The release workflow
-validates `server.json` against the schema itself.
+version and its PyPI package match `pyproject.toml`, that the package starts the
+server with `opencited mcp` over stdio, and that the README names the server. With
+``--tag`` it also checks that a release tag is ``v`` and the version, and that the
+README, which becomes the package's page on PyPI, no longer says that the package is
+not on PyPI. It prints one line per problem and exits with 1 when there is one. The
+release workflow validates `server.json` against the schema itself.
 """
 
 from __future__ import annotations
@@ -25,6 +27,9 @@ from typing import cast
 SCHEMA = "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json"
 # The registry's schema allows at most this many characters.
 MAX_DESCRIPTION = 100
+# The README says this until the first release, and PyPI keeps a version's page as it
+# was uploaded.
+BEFORE_RELEASE = "not on PyPI"
 
 type Json = dict[str, object]
 
@@ -34,7 +39,7 @@ def load(root: Path) -> tuple[Json, Json, str]:
     with (root / "pyproject.toml").open("rb") as file:
         project = cast("Json", tomllib.load(file)["project"])
     server = cast("Json", json.loads((root / "server.json").read_text(encoding="utf-8")))
-    readme = (root / "README.md").read_text(encoding="utf-8")
+    readme = (root / str(project.get("readme", "README.md"))).read_text(encoding="utf-8")
     return project, server, readme
 
 
@@ -42,6 +47,8 @@ def problems(project: Json, server: Json, readme: str, tag: str | None = None) -
     """Return every disagreement between the package, `server.json`, the README and a tag."""
     found: list[str] = []
     name, version = project.get("name"), project.get("version")
+    if not isinstance(version, str) or not version:
+        found.append("pyproject.toml has no version")
     if server.get("$schema") != SCHEMA:
         found.append(f"server.json does not use the schema {SCHEMA}")
     if server.get("version") != version:
@@ -59,12 +66,21 @@ def problems(project: Json, server: Json, readme: str, tag: str | None = None) -
             found.append(f"the PyPI package in server.json is not {name!r}")
         if package.get("version") != version:
             found.append(f"the PyPI package in server.json is not version {version!r}")
+        transport = cast("Json", package.get("transport") or {})
+        arguments = cast("list[Json]", package.get("packageArguments") or [])
+        if transport.get("type") != "stdio" or [
+            (argument.get("type"), argument.get("value")) for argument in arguments
+        ] != [("positional", "mcp")]:
+            found.append("the PyPI package in server.json does not run 'opencited mcp' on stdio")
     server_name = server.get("name")
-    line = re.compile(rf"(?m)^(?:<!--\s*)?mcp-name: {re.escape(str(server_name))}(?:\s*-->)?\s*$")
+    named = rf"mcp-name: {re.escape(str(server_name))}"
+    line = re.compile(rf"(?m)^(?:{named}|<!--\s*{named}\s*-->)\s*$")
     if not isinstance(server_name, str) or not line.search(readme):
         found.append(f"the README has no line 'mcp-name: {server_name}'")
     if tag is not None and tag != f"v{version}":
         found.append(f"the tag {tag!r} is not 'v{version}'")
+    if tag is not None and BEFORE_RELEASE in readme:
+        found.append(f"the README still says that the package is {BEFORE_RELEASE}")
     return found
 
 
