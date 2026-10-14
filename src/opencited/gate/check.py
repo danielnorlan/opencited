@@ -35,7 +35,15 @@ from opencited.calc.arithmetic import round_away
 from opencited.calc.engine import unit_named
 from opencited.calc.result import CalculationResult
 from opencited.gate.blocks import blocks
-from opencited.gate.numbers import MONTHS_EN, MONTHS_NO, Language, Number, normalise, read_numbers
+from opencited.gate.numbers import (
+    MONTHS_EN,
+    MONTHS_NO,
+    Language,
+    Number,
+    alternatives,
+    normalise,
+    read_numbers,
+)
 from opencited.model import Frozen
 from opencited.sources import QueryResult, SearchResult, TableMetadata
 from opencited.values import ExactDecimal
@@ -46,10 +54,12 @@ MONTH_NUMBERS = {
     for names in (MONTHS_NO, MONTHS_EN)
     for number, name in enumerate(names, start=1)
 }
-MONTH_WORDS = "|".join(sorted(MONTH_NUMBERS, key=len, reverse=True))
 # A day and a month in a label: "1. januar", "1 January", or "1.1." as in
-# "Population per 1.1.".
-DAY_IN_WORDS = re.compile(rf"(?<![0-9.])([0-9]{{1,2}})\.?\s+({MONTH_WORDS})\b", re.IGNORECASE)
+# "Population per 1.1.". English months need their capital, as in answers, which
+# keeps "may" the verb out.
+DAY_IN_WORDS = re.compile(
+    rf"(?<![0-9.])([0-9]{{1,2}})\.?\s+((?i:{alternatives(MONTHS_NO)})|{alternatives(MONTHS_EN)})\b"
+)
 DAY_IN_DIGITS = re.compile(r"(?<![0-9.])([0-9]{1,2})\.([0-9]{1,2})\.(?![0-9])")
 COMMENT = re.compile(r"<!--.*?(?:-->|$)", re.DOTALL)
 SOURCE_ID = re.compile(r"E[1-9][0-9]*")

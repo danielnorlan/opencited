@@ -36,8 +36,8 @@ Notable changes to OpenCited are recorded here. The format follows
   to spec 0003 that the maintainer approved. Version 3 of the system prompt says so,
   and says that a calculation backs only the numbers it computes, so a period or a
   date beside them needs its source result cited as well. A blocked reply's hint for a
-  date or a period, or for a year that the gate read as a value, says to cite that
-  result or leave it out.
+  date or a period says to cite that result or leave it out, and a four-digit number
+  that matched nothing gets the hints for a year and for a value.
 - The model reads each dimension's values as a map from code to label, which halves
   the metadata of large tables, and a blocked reply goes back with what to do about
   each kind of failed number. Version 2 of the system prompt asks for changes with

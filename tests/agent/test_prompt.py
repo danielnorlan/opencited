@@ -25,7 +25,7 @@ from opencited.values import format_number
 TEXTS = {
     "1": "0cbf90b1b19623329bbf09b56bd3223ad1cdcb9b31a98afd6b8c932b8411fea2",
     "2": "fa4ea61be2406c0ade156a6d602532dbd5cb00c668d5e9420b73143461639ae3",
-    "3": "66f2f7dad880370a0ee54caf2ad406acc5a71a2669004849dd9d3bbfadd018e6",
+    "3": "bd2e50b1ca5f176e535cd4d35c0172c4037f629a7b04482ac5ef779b46a7a29c",
 }
 
 
@@ -103,14 +103,36 @@ def test_a_retry_after_a_year_that_only_a_calculation_backs_says_to_cite_its_sou
 
     assert not report.passed
     for year in ("2025", "2026"):
-        assert (
-            message.count(
-                f"Cite the source result that selected '{year}' in the same paragraph, list item "
-                "or table row, or leave the period out."
-            )
-            == 1
-        )
+        assert message.count(year_hint(year)) == 1
     assert "per cent word" not in message
+
+
+def test_a_four_digit_count_that_matches_nothing_gets_the_same_hint(tmp_path: Path) -> None:
+    # The gate cannot tell a year from a count, so the hint covers both.
+    found = evidences(SnapshotStore(tmp_path))
+    report = check("Det bodde 5432 personer i Norge [E1].", "no", found.evidence)
+
+    assert retry_message(report).endswith(year_hint("5432"))
+
+
+def test_a_retry_after_a_failed_period_says_to_cite_the_result_that_selected_it(
+    tmp_path: Path,
+) -> None:
+    found = evidences(SnapshotStore(tmp_path))
+    report = check("I 2019M05 bodde det mange i Norge [E1].", "no", found.evidence)
+
+    assert retry_message(report).endswith(
+        "Cite the source result that selected '2019M05' in the same paragraph, list item "
+        "or table row, or leave the period out."
+    )
+
+
+def year_hint(text: str) -> str:
+    return (
+        f"If '{text}' is a year, cite the source result that selected it in the same "
+        "paragraph, list item or table row; otherwise write it as a result gives it, or "
+        "leave it out."
+    )
 
 
 def test_a_retry_for_an_uncited_answer_has_no_hints(tmp_path: Path) -> None:

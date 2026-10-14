@@ -97,6 +97,12 @@ HINTS: dict[str, str] = {
         "Cite the source result that selected {text!r} in the same paragraph, list item or "
         "table row, or leave the period out."
     ),
+    # The gate cannot tell a year that no cited result selected from a wrong count.
+    "year": (
+        "If {text!r} is a year, cite the source result that selected it in the same "
+        "paragraph, list item or table row; otherwise write it as a result gives it, or "
+        "leave it out."
+    ),
     "value": (
         "Write {text!r} as a result gives it, with its sign and its per cent word, or leave it out."
     ),
@@ -104,8 +110,8 @@ HINTS: dict[str, str] = {
 
 
 def hint_kind(finding: Finding) -> str:
-    """Return the hint's kind for a failed number: a year read as a value is a period."""
-    return "period" if finding.detail == UNSELECTED_YEAR else finding.kind
+    """Return the hint's kind for a failed number, with its own for a four-digit number."""
+    return "year" if finding.detail == UNSELECTED_YEAR else finding.kind
 
 
 def retry_message(report: Report) -> str:

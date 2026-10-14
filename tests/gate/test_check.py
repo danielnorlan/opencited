@@ -450,6 +450,9 @@ def population_of(selection: dict[str, list[str]], language: Language) -> QueryR
         ("Endring 1.5 januar", set[tuple[int, int]]()),
         ("Kode 3.1.12.", set[tuple[int, int]]()),
         ("Kode 31.13.", set[tuple[int, int]]()),
+        # Norwegian months in any case, English ones with their capital, as in answers.
+        ("Befolkning 1. Januar", {(1, 1)}),
+        ("Under 5 may", set[tuple[int, int]]()),
     ],
 )
 def test_the_day_and_month_that_a_label_names(text: str, found: set[tuple[int, int]]) -> None:
