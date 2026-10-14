@@ -1,0 +1,33 @@
+{
+  "name": "question-ranking-occupation-employed-2025-q1",
+  "reason": "query Q1 of question ranking-occupation-employed-2025 in v2.jsonl",
+  "recorded_at": "2026-10-14T19:36:08Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/09788/data?lang=no&valueCodes%5BKjonn%5D=0&valueCodes%5BYrke%5D=1%2C2%2C3%2C4%2C5%2C6%2C7%2C8%2C9&valueCodes%5BContentsCode%5D=Sysselsatte&valueCodes%5BTid%5D=2025&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "question-ranking-occupation-employed-2025-q1.2026-10-14.body",
+    "body_sha256": "32e246cbe1161c6ca2bed0caf72b254b1b84616fc49c8cd6956981c39a85d685",
+    "original_body_sha256": "d6a5d2bf585c13f48e1e830e0bca8f9b602e8573eac8863234c1ca4b4e106a79",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

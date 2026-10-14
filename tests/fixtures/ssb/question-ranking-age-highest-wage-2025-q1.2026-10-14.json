@@ -1,0 +1,33 @@
+{
+  "name": "question-ranking-age-highest-wage-2025-q1",
+  "reason": "query Q1 of question ranking-age-highest-wage-2025 in v2.jsonl",
+  "recorded_at": "2026-10-14T19:36:16Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/13312/data?lang=en&valueCodes%5BMaaleMetode%5D=02&valueCodes%5BArbeidsTidRen%5D=H&valueCodes%5BKjonn%5D=0&valueCodes%5BAlder%5D=-24%2C25-39%2C40-54%2C55-66%2C67%2B&valueCodes%5BSektor%5D=ALLE&valueCodes%5BContentsCode%5D=Manedslonn&valueCodes%5BTid%5D=2025&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "question-ranking-age-highest-wage-2025-q1.2026-10-14.body",
+    "body_sha256": "dc96dddffbf1ae44176e6b4b166ebe3fa59127e92e61998b28ef6ee0dc995418",
+    "original_body_sha256": "710f87f797200ebc01b63c51fc41350e4559ca543d830fd50f702146b3ce5160",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

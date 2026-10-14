@@ -8,6 +8,7 @@ It runs as an Inspect task, with Inspect pinned in the `evals` dependency group
 | Path | Contents |
 | --- | --- |
 | `questions/v1.jsonl` | The first question set, with a reference plan for each question that has an answer |
+| `questions/v2.jsonl` | The second set: questions about prices, wages, the national accounts, crime, marriages, income and employment, and questions where a made-up number would be easy |
 | `opencited_task.py` | The Inspect task: the reference plans, the agent behind Inspect's agent bridge, and the scorer |
 | `report.py` | Writes the report of a run from its Inspect log |
 | `tests/` | Tests of the task and the report, which need no model |
@@ -27,6 +28,22 @@ uv run --group evals inspect eval evals/opencited_task.py --model PROVIDER/MODEL
     --max-samples 1 -T price_input=0.28 -T price_output=0.42 -T max_cost=0.05
 uv run --group evals python evals/report.py logs/LOG.eval
 ```
+
+The task runs set v1 unless `-T questions=evals/questions/v2.jsonl` names another.
+
+## The second set
+
+Set v2 has 43 questions, 23 in Norwegian and 20 in English. Its 31 answerable
+questions read ten tables that set v1 does not read, among them the consumer price
+index (14710, 14711), wages (13312), the national accounts (09189), reported offences
+(08484), weddings and divorces (05713, 05692), household income (06946) and
+employment (03778, 09788). Five of them read values in thousands of persons or in
+millions of kroner. One asks for the marriages of 1900, which table 05803 holds, so a
+refusal there is wrong. Each of its 12 questions that should be refused gives a
+`reason`: a month or week that SSB has not published or does not publish, a
+municipality that does not exist, a street, a person, a company, dogs, a share price,
+a translation, code and a future election. The reasons were checked against the
+tables' metadata and searches of the API on 2026-10-14.
 
 Inspect reads the key of the model provider from that provider's usual environment
 variable; the agent holds only a placeholder key, since the bridge answers its calls.

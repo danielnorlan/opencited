@@ -149,6 +149,11 @@ class AnswerExpected(Frozen):
 
 class RefusalExpected(Frozen):
     outcome: Literal["refusal"]
+    reason: str | None = Field(
+        default=None,
+        min_length=1,
+        description="Why the sources cannot answer the question, as checked when it was written.",
+    )
 
 
 class Question(Frozen):

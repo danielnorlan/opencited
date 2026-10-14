@@ -1,0 +1,33 @@
+{
+  "name": "question-ranking-wedding-type-2025-q1",
+  "reason": "query Q1 of question ranking-wedding-type-2025 in v2.jsonl",
+  "recorded_at": "2026-10-14T19:36:11Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/05713/data?lang=en&valueCodes%5BVigselstype%5D=1%2C2%2C3%2C4&valueCodes%5BContentsCode%5D=Ekteskap&valueCodes%5BTid%5D=2025&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "question-ranking-wedding-type-2025-q1.2026-10-14.body",
+    "body_sha256": "46f62c9bd1a375e67eda8e9b54465ffcd1053d3e019af1011728b191402fb39c",
+    "original_body_sha256": "7ea7a18d7d16c0f6c44c5d34ea7e450df01811acf23cce40fa49885067989812",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

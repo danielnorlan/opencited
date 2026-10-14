@@ -1,0 +1,33 @@
+{
+  "name": "question-sum-divorces-2024-2025-q1",
+  "reason": "query Q1 of question sum-divorces-2024-2025 in v2.jsonl",
+  "recorded_at": "2026-10-14T19:35:58Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/05692/data?lang=no&valueCodes%5BContentsCode%5D=Skilsmisse&valueCodes%5BTid%5D=2024%2C2025&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "question-sum-divorces-2024-2025-q1.2026-10-14.body",
+    "body_sha256": "08cf06184cd8020c41f32e29d5a4bea4ca1a9be1b1ab61f4c4abbd6845045bbb",
+    "original_body_sha256": "aed1b3701d848c2acc38e1f19154966fc0d9d9e47d5cca0ebbd0af61aa289d64",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

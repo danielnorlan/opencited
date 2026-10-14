@@ -1,0 +1,33 @@
+{
+  "name": "question-lookup-wage-fulltime-2025-q1",
+  "reason": "query Q1 of question lookup-wage-fulltime-2025 in v2.jsonl",
+  "recorded_at": "2026-10-14T19:34:35Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/13312/data?lang=en&valueCodes%5BMaaleMetode%5D=02&valueCodes%5BArbeidsTidRen%5D=H&valueCodes%5BKjonn%5D=0&valueCodes%5BAlder%5D=999A&valueCodes%5BSektor%5D=ALLE&valueCodes%5BContentsCode%5D=Manedslonn&valueCodes%5BTid%5D=2025&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "question-lookup-wage-fulltime-2025-q1.2026-10-14.body",
+    "body_sha256": "4e5876a3040579e0d440232b35e60efed270d54cb6dd507d8828bff570e21b92",
+    "original_body_sha256": "9ef97baddf814c3c2933bbf598b93f41b7d6962e6694ca43482280a0feb52512",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

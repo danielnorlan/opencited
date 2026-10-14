@@ -1,0 +1,33 @@
+{
+  "name": "question-change-divorces-2015-2025-q1",
+  "reason": "query Q1 of question change-divorces-2015-2025 in v2.jsonl",
+  "recorded_at": "2026-10-14T19:35:24Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/05692/data?lang=no&valueCodes%5BContentsCode%5D=Skilsmisse&valueCodes%5BTid%5D=2015%2C2025&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "question-change-divorces-2015-2025-q1.2026-10-14.body",
+    "body_sha256": "e3f3e870fa1ddd58f26fd77fadeb5639adcbf046c5f7042cb0425909cfa9ede8",
+    "original_body_sha256": "87b648aa52fc8870768a4f7b3e488bffde647b99c5307d278ada0040ca6ecded",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

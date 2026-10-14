@@ -1,0 +1,33 @@
+{
+  "name": "question-change-cpi-2024-2025-q1",
+  "reason": "query Q1 of question change-cpi-2024-2025 in v2.jsonl",
+  "recorded_at": "2026-10-14T19:35:06Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/14711/data?lang=no&valueCodes%5BContentsCode%5D=KpiAar&valueCodes%5BTid%5D=2024%2C2025&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "question-change-cpi-2024-2025-q1.2026-10-14.body",
+    "body_sha256": "6f86c998081fe4281d51a622d33ffbec1f460575c51b90d4012e3d4d953e27ed",
+    "original_body_sha256": "9f7358dfb13045acac00532bc217a95623603da08594a4bd2707b94805133335",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

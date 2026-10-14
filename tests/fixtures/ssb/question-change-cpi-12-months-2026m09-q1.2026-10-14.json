@@ -1,0 +1,33 @@
+{
+  "name": "question-change-cpi-12-months-2026m09-q1",
+  "reason": "query Q1 of question change-cpi-12-months-2026m09 in v2.jsonl",
+  "recorded_at": "2026-10-14T19:35:12Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/14710/data?lang=en&valueCodes%5BContentsCode%5D=KpiIndMnd&valueCodes%5BTid%5D=2025M09%2C2026M09&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "question-change-cpi-12-months-2026m09-q1.2026-10-14.body",
+    "body_sha256": "77e1c5f5f9e41eafc67b78e78f2be1d44c9831c364803e2d278e99a63856ee1d",
+    "original_body_sha256": "3060a1cab9b8c15dc95741607411f63b66f6d60c3d63b597de6eb2ae55543393",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

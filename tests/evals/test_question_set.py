@@ -1,8 +1,8 @@
-"""The first question set: its schema, its make-up, and every reference plan run in CI.
+"""The question sets: their schema, their make-up, and every reference plan run in CI.
 
 The reference plans run against the recordings in `tests/fixtures/ssb/`, which
-`scripts/record_ssb_fixtures.py --questions evals/questions/v1.jsonl` made, so the
-fixtures cover every table and selection the plans read (spec 0005).
+`scripts/record_ssb_fixtures.py --questions` made for each set, so the fixtures cover
+every table and selection the plans read (spec 0005).
 """
 
 from __future__ import annotations
@@ -15,16 +15,39 @@ from pathlib import Path
 import pytest
 from recorded import FIXTURES
 
-from opencited.evals.questions import AnswerExpected, Question, load_questions
+from opencited.evals.questions import (
+    AnswerExpected,
+    Question,
+    QuestionSet,
+    RefusalExpected,
+    load_questions,
+)
 from opencited.evals.reference import Reference, reference
+from opencited.evals.score import CATEGORIES
 from opencited.http import make_client
 from opencited.http.limiter import RateLimiter
 from opencited.http.replay import replay_transport
 from opencited.snapshots import SnapshotStore
 from opencited.sources.ssb import BASE_URL, SsbClient
 
-QUESTIONS = Path(__file__).resolve().parents[2] / "evals" / "questions" / "v1.jsonl"
-SET = load_questions(QUESTIONS)
+FOLDER = Path(__file__).resolve().parents[2] / "evals" / "questions"
+SET = load_questions(FOLDER / "v1.jsonl")
+SECOND = load_questions(FOLDER / "v2.jsonl")
+SETS = (SET, SECOND)
+QUESTIONS = [question for questions in SETS for question in questions.questions]
+
+
+def tables(questions: QuestionSet) -> set[str]:
+    return {
+        query.table_id
+        for question in questions.questions
+        if isinstance(question.expected, AnswerExpected)
+        for query in question.expected.queries
+    }
+
+
+def refused(questions: QuestionSet) -> list[Question]:
+    return [item for item in questions.questions if isinstance(item.expected, RefusalExpected)]
 
 
 def test_the_first_set_has_the_questions_spec_0005_asks_for() -> None:
@@ -40,9 +63,29 @@ def test_the_first_set_has_the_questions_spec_0005_asks_for() -> None:
     assert languages["en"] >= 15
 
 
+def test_the_second_set_asks_about_other_tables_and_says_why_it_refuses() -> None:
+    categories = Counter(question.category for question in SECOND.questions)
+    # The population tables that both sets read.
+    population = {"06913", "11342", "05803"}
+
+    assert SECOND.version == "v2"
+    assert set(categories) == set(CATEGORIES)
+    assert len(tables(SECOND) - tables(SET) - population) >= 8
+    assert len(refused(SECOND)) >= len(refused(SET))
+    for question in refused(SECOND):
+        assert isinstance(question.expected, RefusalExpected)
+        assert question.expected.reason, question.id
+
+
+def test_question_ids_are_unique_across_the_sets() -> None:
+    ids = [question.id for question in QUESTIONS]
+
+    assert len(ids) == len(set(ids))
+
+
 @pytest.mark.parametrize(
     "question",
-    [item for item in SET.questions if isinstance(item.expected, AnswerExpected)],
+    [item for item in QUESTIONS if isinstance(item.expected, AnswerExpected)],
     ids=lambda question: question.id,
 )
 def test_every_reference_plan_runs_against_the_recordings(
@@ -62,7 +105,7 @@ def test_every_reference_plan_runs_against_the_recordings(
 
 
 def test_every_year_in_a_question_is_a_period_its_queries_fetch() -> None:
-    for question in SET.questions:
+    for question in QUESTIONS:
         if not isinstance(question.expected, AnswerExpected):
             continue
         periods = {
@@ -85,7 +128,10 @@ class Clock:
         self.now += seconds
 
 
-def test_the_whole_set_runs_on_one_client_within_ssb_s_rate_limit(tmp_path: Path) -> None:
+@pytest.mark.parametrize("questions", SETS, ids=lambda questions: questions.version)
+def test_a_whole_set_runs_on_one_client_within_ssb_s_rate_limit(
+    questions: QuestionSet, tmp_path: Path
+) -> None:
     clock = Clock()
 
     async def run() -> list[Reference]:
@@ -95,11 +141,11 @@ def test_the_whole_set_runs_on_one_client_within_ssb_s_rate_limit(tmp_path: Path
             store = SnapshotStore(tmp_path)
             return [
                 await reference(question, client, store, sleep=clock.sleep)
-                for question in SET.questions
+                for question in questions.questions
             ]
 
     references = asyncio.run(run())
 
-    assert len(references) == len(SET.questions)
+    assert len(references) == len(questions.questions)
     # More than 30 requests went out, so the run waited on the limit.
     assert clock.now >= 60
