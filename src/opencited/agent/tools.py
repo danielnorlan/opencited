@@ -227,11 +227,33 @@ def error_text(result: CallToolResult) -> str:
     return " ".join(texts) or "the tool reported an error without a reason"
 
 
+def compact_dimension(dimension: dict[str, Any]) -> dict[str, Any]:
+    """Return a dimension with its values as a map from code to label.
+
+    A table such as 06913 has 1,288 regions, and each value written out as an object
+    with its code, label and notes doubles what the model reads in every later call.
+    A value's notes stay, under ``value_notes``, where it has any.
+    """
+    values = cast("list[dict[str, Any]]", dimension["values"])
+    shown = {key: item for key, item in dimension.items() if key != "values"}
+    shown["values"] = {value["code"]: value["label"] for value in values}
+    notes = {value["code"]: value["notes"] for value in values if value["notes"]}
+    if notes:
+        shown["value_notes"] = notes
+    return shown
+
+
 def source_view(
     evidence_id: str, result: QueryResult | TableMetadata | SearchResult, language: Language
 ) -> dict[str, Any]:
-    """Return a source result for the model, with every value also formatted."""
+    """Return a source result for the model, with every value also formatted.
+
+    The gate reads the result itself; this view only changes how the model reads it.
+    """
     data = result.model_dump(mode="json")
+    if isinstance(result, QueryResult | TableMetadata):
+        dimensions = cast("list[dict[str, Any]]", data["dimensions"])
+        data["dimensions"] = [compact_dimension(dimension) for dimension in dimensions]
     if isinstance(result, QueryResult):
         cells = cast("list[dict[str, Any]]", data["observations"])
         for cell, observation in zip(cells, result.observations, strict=True):

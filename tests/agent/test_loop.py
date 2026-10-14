@@ -22,7 +22,7 @@ from opencited.agent.answer import Answer, ModelRecord, Refusal, RunUsage
 from opencited.agent.config import Limits, ModelConfig
 from opencited.agent.loop import AgentError, Run, ask
 from opencited.agent.model import Completion, Message, ModelClient, Usage, UserMessage
-from opencited.agent.prompt import retry_message, uncited_message
+from opencited.agent.prompt import PROMPT_VERSION, retry_message, uncited_message
 from opencited.agent.run import RunState
 from opencited.agent.tools import Toolbox
 from opencited.gate import Report, check
@@ -141,7 +141,7 @@ def test_a_run_that_has_used_its_time_refuses_before_the_next_call(tmp_path: Pat
             settings=CONFIG.settings,
             prices=CONFIG.prices,
         ),
-        prompt_version="1",
+        prompt_version=PROMPT_VERSION,
         usage=RunUsage(
             model_calls=0,
             tool_calls=0,

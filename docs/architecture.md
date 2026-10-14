@@ -436,7 +436,10 @@ Every result gets an evidence ID: `E1`, `E2` and so on for source results, and `
 `C2` and so on for calculations. A call that fails gets none. The toolbox keeps the
 results with their IDs as the evidence that the gate takes. Results reach the model
 as compact JSON with their evidence ID, and every value both as a decimal string and
-formatted for the language of the answer.
+formatted for the language of the answer. Each dimension's values reach it as a map
+from code to label, with a value's notes only where it has any, which halves the
+metadata of a table such as 06913, with 1,288 regions; the gate reads the results as
+they are.
 
 `calculate` publishes the plan schema of spec 0002 with an evidence ID wherever a
 step names a snapshot. Before the engine runs, the toolbox replaces each ID with the
@@ -451,7 +454,11 @@ reason, which can name a local path.
 `opencited.agent.loop.ask` sends a fixed system prompt, the question and the four
 tool schemas, runs the tool calls of each reply and returns their results, until the
 model replies without a tool call. The gate checks that reply. A blocked reply goes
-back to the model with the gate report, at most twice. A reply is released only when
+back to the model with the gate report, at most twice, and with what to do about each
+kind of failed number: a date becomes its period or goes, and a value is written as a
+result gives it. The prompt tells the model to write a change with its sign and to
+name periods as the results name them, since the gate passes a date only as the
+update or retrieval date of a cited result. A reply is released only when
 the gate passes it and its shown markers cite at least one result: the gate passes a
 text without numbers, and an answer that cites nothing does not rest on the sources,
 so it goes back with a request to cite, counted like a blocked reply. The prompt has a version,
