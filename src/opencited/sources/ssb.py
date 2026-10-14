@@ -351,8 +351,9 @@ class SsbClient:
             raise ValueError("the clock must give a time with a time zone")
         if in_revision_period(moment):
             raise RevisionPeriodError(
-                "No data is fetched from 05:00 to 08:15 Norwegian time, since SSB shows "
-                "figures under revision as 0 or as a dot until 08:00. Try again after 08:15."
+                "No data is fetched in SSB's revision period, from 05:00 to 08:15 Norwegian "
+                "time, since SSB shows figures under revision as 0 or as a dot until 08:00. "
+                "Try again after 08:15."
             )
 
     async def _fetch(

@@ -2,7 +2,8 @@ name: Nightly
 
 # The live smoke test against SSB's API. 01:17 UTC is 02:17 or 03:17 in Oslo, outside
 # 04:55 to 08:15 and 11:25 to 11:45 Norwegian time, which scheduled jobs avoid
-# (ADR 0007, decision 6). A run started by hand checks what the time calls for.
+# (ADR 0007, decision 6). A run started by hand should avoid them too; from 05:00 to
+# 08:15 the query test expects the error that names SSB's revision period.
 on:
   schedule:
     - cron: "17 1 * * *"

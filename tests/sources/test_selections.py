@@ -421,7 +421,10 @@ def test_codes_in_another_order_than_the_metadata_are_accepted() -> None:
 def test_no_request_is_sent_in_the_revision_period() -> None:
     sent: list[str] = []
     six_in_oslo = datetime(2026, 10, 14, 4, 0, tzinfo=UTC)
-    with pytest.raises(RevisionPeriodError, match=re.escape("until 08:00. Try again after 08:15")):
+    with pytest.raises(
+        RevisionPeriodError,
+        match=re.escape("SSB's revision period, from 05:00 to 08:15 Norwegian time"),
+    ):
         query(EVERYTHING, recorded_transport(sent), now=six_in_oslo)
     assert sent == []
 
