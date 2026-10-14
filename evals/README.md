@@ -16,22 +16,33 @@ It runs as an Inspect task, with Inspect pinned in the `evals` dependency group
 ## Running the suite
 
 A run calls SSB's API and the model under evaluation, which Inspect's model option
-sets. Prices per million input and output tokens and a cost limit per question keep
-the run within its budget:
+sets. It needs the model's prices per million input and output tokens and a cost
+limit per question, so that the limit times the number of questions stays within the
+run's budget. Run one question at a time, since every question shares SSB's rate
+limit and a wait for it counts against the agent's time:
 
 ```sh
 uv sync --group evals
 uv run --group evals inspect eval evals/opencited_task.py --model PROVIDER/MODEL \
-    -T price_input=0.28 -T price_output=0.42 -T max_cost=0.05
+    --max-samples 1 -T price_input=0.28 -T price_output=0.42 -T max_cost=0.05
 uv run --group evals python evals/report.py logs/LOG.eval
 ```
 
 Inspect reads the key of the model provider from that provider's usual environment
-variable; the agent itself holds only a placeholder key, since the bridge answers its
-calls. `-T temperature=` and `-T seed=` set the agent's model settings, which the
-bridge forwards. A run keeps its snapshots and SSB's responses under `evals/runs/`,
-and Inspect writes its log under `logs/`; git ignores both.
+variable; the agent holds only a placeholder key, since the bridge answers its calls.
+`-T temperature=` and `-T seed=` set the agent's model settings, which the bridge
+forwards; Inspect's own `--temperature` and `--seed` take precedence over them, and the
+report records both. Inspect's token and time limits lie above the agent's. Its cost
+limit needs the model's prices in Inspect's own form, so pass `--model-cost-config`
+with `--cost-limit` set above `max_cost` to add it.
+
+Each run keeps its snapshots and SSB's responses in a folder of its own under
+`evals/runs/`, and Inspect writes its log under `logs/`; git ignores both. The report
+script refuses a log of a run that did not finish, and one that would put a key in
+the report.
 
 A question is not run in the periods that
 [ADR 0007](../docs/adr/0007-ssb-pxwebapi-v2.md) keeps scheduled jobs away from,
-04:55 to 08:15 and 11:25 to 11:45 in Norwegian time, and the report lists it.
+04:55 to 08:15 and 11:25 to 11:45 in Norwegian time, nor when its reference plan
+cannot run, and the report lists it. An error while the agent answers is scored as a
+failure, so one question cannot end the run.

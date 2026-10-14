@@ -47,7 +47,7 @@ SERVER_TOOLS: Mapping[str, type[QueryResult | TableMetadata | SearchResult]] = {
 }
 CALCULATE = "calculate"
 CALCULATE_DESCRIPTION = (
-    "Run a calculation plan over query results. Each step has a name and an operation, "
+    "Run a calculation plan of 1 to 20 steps over query results. Each step has a name and an operation, "
     "and reads the cells of a query_table result, named by its evidence ID such as E1, "
     "or the results of earlier steps, named by their step names. The arithmetic is "
     "exact, and a step that states decimals rounds once, with ties away from zero. "

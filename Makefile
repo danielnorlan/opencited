@@ -2,7 +2,7 @@
 
 FILES := $(shell git ls-files --cached --others --exclude-standard 2>/dev/null)
 
-.PHONY: help setup check hooks typecheck test package format
+.PHONY: help setup check hooks typecheck test evals package format
 
 help: ## Show the available commands
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "} {printf "  %-10s %s\n", $$1, $$2}'
@@ -12,7 +12,7 @@ setup: ## Create the environment, install the git hooks and check the commit ide
 	uv run pre-commit install
 	uv run python scripts/check_commit_message.py --identity
 
-check: hooks typecheck test package ## Run the checks that CI runs
+check: hooks typecheck test evals package ## Run the checks that CI runs
 
 hooks: ## Run the pre-commit hooks on tracked and new files
 	uv run pre-commit run --show-diff-on-failure --files $(FILES)
@@ -22,6 +22,10 @@ typecheck: ## Type-check with Pyright in strict mode
 
 test: ## Run the test suite
 	uv run pytest
+
+evals: ## Type-check and test the Inspect task, with the evals dependency group
+	uv run --group evals pyright evals
+	uv run --group evals pytest evals/tests
 
 package: ## Build the package, check the release metadata and start the server from the wheel
 	rm -rf dist

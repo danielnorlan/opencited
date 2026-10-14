@@ -1,25 +1,34 @@
 """The evaluation suite as an Inspect task (spec 0005, ADR 0012).
 
-Run it with the model under evaluation set by Inspect's model option, for example::
+Run it with the model under evaluation set by Inspect's model option, one question at
+a time, for example::
 
     uv run --group evals inspect eval evals/opencited_task.py --model PROVIDER/MODEL \\
-        -T price_input=0.28 -T price_output=0.42 -T max_cost=0.05
+        --max-samples 1 -T price_input=0.28 -T price_output=0.42 -T max_cost=0.05
+
+A run needs the model's prices per million tokens and a cost limit per question, so
+that the limit times the number of questions stays within the run's budget (spec 0005).
 
 Each question runs its reference plan on the day's data, then the agent answers it
 inside Inspect's agent bridge, which sends the agent's model calls to the model under
-evaluation, and the scorer of ``opencited.evals`` gives the verdict. The bridge gives
-the agent no tool besides its own four: web search, code execution and the client's
-own MCP servers are turned off, and the agent's model settings are forwarded.
+evaluation, and the scorer of ``opencited.evals`` gives the verdict. The agent offers
+the model only its own four tools; the bridge's web search, code execution and client
+MCP servers are turned off as well, though they apply only to another API than the one
+the agent uses, and the agent's model settings are forwarded. Settings that Inspect's
+own options set, such as ``--temperature``, take precedence over the forwarded ones.
 
-Inspect's limits on tokens, time and cost are set above the agent's, so the agent
-stops first and refuses with a reason. A question in a period that ADR 0007 keeps
-runs away from is not run, and its score says so. ``evals/report.py`` writes the
-run report from the log.
+Inspect's limits on tokens and time are set above the agent's, so the agent stops
+first and refuses with a reason. Inspect's cost limit needs Inspect to know the
+model's prices, which ``--model-cost-config`` gives it, so the task leaves it to
+``--cost-limit``, set above the agent's ``max_cost``. A question in a period that
+ADR 0007 keeps runs away from is not run, and its score says so. ``evals/report.py``
+writes the run report from the log.
 """
 
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 
@@ -55,7 +64,22 @@ OUTCOME = "opencited_outcome"
 # time also covers the reference plan's fetches, which wait on the rate limit.
 TOKEN_MARGIN = Decimal("1.5")
 TIME_MARGIN = 3
-COST_MARGIN = Decimal("1.5")
+# A tool call waits this long at most for a slot under SSB's rate limit, which every
+# question of the run shares.
+RATE_WAIT = 60.0
+
+type Setting = float | int | str
+
+
+def decimal_of(name: str, value: Setting) -> Decimal:
+    """Return a task argument as a decimal, written as Inspect's YAML parser read it."""
+    # -T values arrive parsed as YAML, so 0.28 is a float; its text is the shortest
+    # one that reads back to it, which is how it was written.
+    try:
+        return Decimal(str(value))
+    except ArithmeticError as error:
+        raise ValueError(f"{name} must be a number, not {value!r}") from error
+
 
 OUTCOMES: TypeAdapter[Outcome] = TypeAdapter(Outcome)
 
@@ -71,14 +95,15 @@ def outcome_of(stored: object) -> Outcome:
 
 
 def bridge_config(
-    *, temperature: str | None, seed: int | None, prices: Prices | None, limits: Limits
+    *, temperature: Setting | None, seed: int | None, prices: Prices | None, limits: Limits
 ) -> ModelConfig:
     """Return the agent's configuration for a model reached through the agent bridge."""
+    chosen = decimal_of("temperature", temperature) if temperature is not None else None
     return ModelConfig(
         base_url="http://inspect.invalid/v1",
         model="inspect",
         key_variable=BRIDGE_KEY,
-        settings=Settings(temperature=Decimal(temperature) if temperature else None, seed=seed),
+        settings=Settings(temperature=chosen, seed=seed),
         prices=prices,
         limits=limits,
     )
@@ -117,7 +142,8 @@ def answer_questions(questions: QuestionSet, config: ModelConfig, run_dir: Path)
     """Run each sample's question with the agent behind the bridge, and keep the outcome."""
     by_id: dict[str, Question] = {question.id: question for question in questions.questions}
     run_dir.mkdir(parents=True, exist_ok=True)
-    shared = Shared(cache=ResponseCache(run_dir / "responses.sqlite"), limiter=RateLimiter())
+    limiter = RateLimiter(max_wait=RATE_WAIT)
+    shared = Shared(cache=ResponseCache(run_dir / "responses.sqlite"), limiter=limiter)
     store = SnapshotStore(run_dir / "snapshots")
     store.check()
 
@@ -134,9 +160,14 @@ def answer_questions(questions: QuestionSet, config: ModelConfig, run_dir: Path)
             ModelClient(config, environ=BRIDGE_ENVIRONMENT) as model,
         ):
             source = SsbClient(http, cache=shared.cache, limiter=shared.limiter)
-            outcome = await run_question(
-                question, model=model, source=source, shared=shared, store=store
-            )
+            try:
+                outcome: Outcome = await run_question(
+                    question, model=model, source=source, shared=shared, store=store
+                )
+            except Exception as error:
+                # The run of one question must not end the evaluation; the report lists it.
+                detail = f"{type(error).__name__}: {error}"
+                outcome = Skipped(question_id=question.id, reason="stopped", detail=detail)
         state.store.set(OUTCOME, kept(outcome))
         state.output = ModelOutput.from_content(model="opencited", content=shown_text(outcome))
         return state
@@ -147,7 +178,11 @@ def answer_questions(questions: QuestionSet, config: ModelConfig, run_dir: Path)
 def score_of(outcome: Outcome) -> Score:
     """Return Inspect's score for an outcome, with the verdict as its metadata."""
     if isinstance(outcome, Skipped):
-        return Score(value=NOANSWER, explanation="not run: a period that ADR 0007 avoids")
+        return Score(
+            value=NOANSWER,
+            explanation=f"not run: {outcome.reason}",
+            metadata={"skipped": outcome.model_dump(mode="json")},
+        )
     verdict = outcome.verdict
     return Score(
         value=CORRECT if verdict.correct else INCORRECT,
@@ -162,38 +197,46 @@ def verdict() -> Scorer:
     """Score a sample by the verdict that ``opencited.evals.score`` gave it."""
 
     async def score_sample(state: TaskState, target: Target) -> Score:
-        return score_of(outcome_of(state.store.get(OUTCOME)))
+        stored = state.store.get(OUTCOME)
+        if stored is None:
+            # Inspect stopped the sample before the solver kept an outcome.
+            return Score(value=NOANSWER, explanation="not run: stopped before an outcome")
+        return score_of(outcome_of(stored))
 
     return score_sample
 
 
 @task
 def opencited(
+    price_input: Setting,
+    price_output: Setting,
+    max_cost: Setting,
     questions: str = str(QUESTIONS),
     run_dir: str = str(RUNS),
-    temperature: str | None = None,
+    temperature: Setting | None = None,
     seed: int | None = None,
-    price_input: str | None = None,
-    price_output: str | None = None,
-    max_cost: str | None = None,
 ) -> Task:
-    """The first question set, answered by the agent and scored without a model."""
+    """The first question set, answered by the agent and scored without a model.
+
+    Each run keeps its snapshots and SSB's responses in a folder of its own under
+    ``run_dir``, so no run reads data that an earlier one fetched.
+    """
     question_set = load_questions(Path(questions))
-    prices = (
-        Prices(input=Decimal(price_input), output=Decimal(price_output))
-        if price_input and price_output
-        else None
+    prices = Prices(
+        input=decimal_of("price_input", price_input),
+        output=decimal_of("price_output", price_output),
     )
-    limits = Limits(cost=Decimal(max_cost) if max_cost else None)
+    limits = Limits(cost=decimal_of("max_cost", max_cost))
     config = bridge_config(temperature=temperature, seed=seed, prices=prices, limits=limits)
+    folder = Path(run_dir) / datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     return Task(
         dataset=MemoryDataset(samples(question_set)),
-        solver=answer_questions(question_set, config, Path(run_dir)),
+        solver=answer_questions(question_set, config, folder),
         scorer=verdict(),
         token_limit=int(limits.tokens * TOKEN_MARGIN),
         time_limit=limits.seconds * TIME_MARGIN,
-        # Inspect takes the cost as a float; it is a limit, not a value from a source.
-        cost_limit=float(limits.cost * COST_MARGIN) if limits.cost is not None else None,
+        # One question's error must not end the run; the run report lists it.
+        fail_on_error=False,
         metadata={"question_set": question_set.version},
     )
 

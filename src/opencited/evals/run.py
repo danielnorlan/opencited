@@ -6,7 +6,8 @@ the model client from the caller, so the Inspect task in ``evals/`` can give it 
 whose calls go through Inspect's agent bridge, and it imports nothing from Inspect.
 
 A run sends no new question in the periods that ADR 0007 keeps scheduled jobs away
-from, in Norwegian time, and lists the questions it did not run.
+from, in Norwegian time, nor one whose reference plan could not run, and lists the
+questions it did not run.
 """
 
 from __future__ import annotations
@@ -26,8 +27,9 @@ from opencited.agent.answer import Answer, ModelRecord, Refusal
 from opencited.agent.loop import AgentError, ask
 from opencited.agent.model import ModelClient
 from opencited.agent.tools import Toolbox
+from opencited.calc.engine import CalculationError
 from opencited.evals.questions import Question
-from opencited.evals.reference import reference
+from opencited.evals.reference import ReferencePlanError, reference
 from opencited.evals.report import ScoreReport, report_of
 from opencited.evals.score import Failure, Verdict, score
 from opencited.http.cache import ResponseCache
@@ -35,6 +37,7 @@ from opencited.http.limiter import RateLimiter
 from opencited.mcp import build_server
 from opencited.model import Frozen, Sha256Hex
 from opencited.snapshots import SnapshotStore
+from opencited.sources import SourceError
 from opencited.sources.ssb import SsbClient
 
 OSLO = ZoneInfo("Europe/Oslo")
@@ -66,8 +69,11 @@ class QuestionResult(Frozen):
 
 
 class Skipped(Frozen):
+    """A question that the run did not run, and why. ``detail`` names the error."""
+
     question_id: str
-    reason: Literal["avoided period"]
+    reason: Literal["avoided period", "reference failed", "stopped"]
+    detail: str | None = None
 
 
 type Outcome = QuestionResult | Skipped
@@ -91,7 +97,12 @@ async def run_question(
     """
     if in_avoided_period(now()):
         return Skipped(question_id=question.id, reason="avoided period")
-    expected = await reference(question, source, store)
+    try:
+        expected = await reference(question, source, store)
+    except (SourceError, ReferencePlanError, CalculationError) as error:
+        # Without the day's expected answer the question cannot be scored, so the
+        # agent is not asked it.
+        return Skipped(question_id=question.id, reason="reference failed", detail=str(error))
     server = build_server(
         transport=transport,
         revision_period=revision_period,
@@ -112,6 +123,10 @@ async def run_question(
                 attempts=error.attempts,
                 retries=error.retries,
             )
+        except Exception as error:
+            # Another error from the model's side, such as a limit of the evaluation
+            # harness or a provider's own error: the question failed, and it is scored.
+            result = Failure(message=f"{type(error).__name__}: {error}", usage=None)
         verdict = score(expected.expectation, result, toolbox.evidence)
     snapshots = tuple(QueryUse(name=name, snapshot_id=sid) for name, sid in expected.snapshots)
     return QuestionResult(
@@ -139,8 +154,12 @@ class RunReport(Frozen):
     commit: str
     date: datetime
     model: str = Field(description="The model as Inspect named it.")
-    endpoint: str = Field(description="The endpoint as Inspect named it, without a key.")
-    reported_models: tuple[str, ...] = Field(description="The model names in the replies.")
+    endpoint: str | None = Field(
+        description="The endpoint given for the run, or None for the provider's default."
+    )
+    reported_models: tuple[str, ...] = Field(
+        description="The model names that the endpoint gave in its replies."
+    )
     generation: dict[str, Any] = Field(description="Inspect's generation settings of the run.")
     agent: ModelRecord | None = Field(description="The agent's model settings and prices.")
     counts: ScoreReport
@@ -154,14 +173,20 @@ def run_report(
     commit: str,
     date: datetime,
     model: str,
-    endpoint: str,
+    endpoint: str | None,
     generation: Mapping[str, Any],
     outcomes: tuple[Outcome, ...],
+    reported: tuple[str, ...] | None = None,
 ) -> RunReport:
-    """Return the report of a run from the outcome of each question."""
+    """Return the report of a run from the outcome of each question.
+
+    ``reported`` gives the model names in the endpoint's replies when the caller read
+    them elsewhere; otherwise they come from the agent's own records.
+    """
     results = tuple(item for item in outcomes if isinstance(item, QuestionResult))
     records = [item.result.model for item in results if isinstance(item.result, Answer | Refusal)]
-    reported = tuple(dict.fromkeys(name for record in records for name in record.reported))
+    if reported is None:
+        reported = tuple(dict.fromkeys(name for record in records for name in record.reported))
     return RunReport(
         question_set=question_set,
         commit=commit,
