@@ -23,7 +23,7 @@ flowchart LR
 | --- | --- | --- |
 | MCP server | Table search, metadata and data from each source, with a provenance record on every data result | In progress ([spec 0001](specs/0001-ssb-mcp-server.md)) |
 | Calculation engine | Runs typed calculation plans over stored snapshots: DuckDB selects the cells, and the arithmetic uses exact rational numbers | Built; the `calculate` tool comes with the agent ([spec 0002](specs/0002-snapshots-and-calculation.md)) |
-| Evidence gate | Matches every number in an answer to source data or a calculation result, and blocks the answer otherwise | Specification approved ([spec 0003](specs/0003-evidence-gate.md)) |
+| Evidence gate | Matches every number in an answer to source data or a calculation result, and blocks the answer otherwise | In progress: numbers are read ([spec 0003](specs/0003-evidence-gate.md)) |
 | Agent | Plans, calls tools and drafts the answer, in a loop of its own over a chat completions API | Specification approved ([spec 0004](specs/0004-agent.md)) |
 | Evaluation suite | Versioned questions with computed answers, run with Inspect AI | Specification approved ([spec 0005](specs/0005-evaluation-suite.md)) |
 | Table search | Hybrid full-text and vector search over table metadata, in PostgreSQL with pgvector | Planned, M3 |
@@ -274,6 +274,38 @@ from JSON and refuses an object that repeats a key.
 A result lists every step with its operation, inputs, SQL, bound codes, arithmetic
 with the numbers filled in, exact and rounded result and unit, and names every
 snapshot it read with the provenance record. `readable()` writes the steps as text.
+
+### Reading numbers in answers
+
+`opencited.gate.numbers` reads every number in an answer in Norwegian or English, for
+the evidence gate ([spec 0003](specs/0003-evidence-gate.md)). It normalises the text
+to Unicode NFC and finds, in this order, citation markers and the numbers of ordered
+list items, dates, periods, the forms that block an answer, and other numbers, so a
+later pass never reads a digit that an earlier one read. It uses no model and no
+network.
+
+A number is read with its value and scale, `12,50` as `Decimal("12.50")`: in Norwegian
+text with digits grouped in threes by a space, U+00A0, U+202F or U+2009 and a decimal
+comma, and in English text with commas between groups and a decimal point. A minus
+sign, `-` or U+2212, counts at the start of a number, after a space or after an
+opening bracket. A hyphen or an en dash between two numbers marks a range, whose ends
+are read on their own and share a percent or scale word after the range. A percent
+word or sign, a percentage point word or a scale word goes with its number.
+
+Dates are ISO dates, `13.10.2026` and dates with the month in words. Periods are SSB's
+codes such as `2023K1` and `2023M01` and quarters and months in words, read as SSB
+writes them. Years and five-digit table IDs are read as numbers, since only the cited
+results say whether a number is a period, an ID or a value. Exponent notation, digits
+other than 0 to 9, separators that fit neither language, a point between digits in
+Norwegian text, digits grouped by spaces in English text, `billion` in Norwegian text,
+numbers in words with a percent or scale word, words that multiply, and numbers
+joined to letters are read as blocking forms, with the reason.
+
+`opencited.values.format_number` writes decimals for each language with their scale:
+in Norwegian with no-break spaces between groups, a decimal comma and the minus sign
+U+2212, and in English with commas, a decimal point and a hyphen-minus. It groups an
+integer part of five digits or more, so years keep their usual form. Every decimal it
+writes is read back with its value and scale.
 
 ## Trust boundaries
 

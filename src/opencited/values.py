@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BeforeValidator, PlainSerializer, WithJsonSchema
 
@@ -41,6 +41,40 @@ def exact_text(value: Decimal) -> str:
     ``0.0000000``.
     """
     return format(value, "f")
+
+
+# Separators of the formatter. Norwegian text groups digits with a no-break space and
+# writes the minus sign U+2212; English text groups digits with commas and writes a
+# hyphen-minus. The evidence gate reads these and the other forms of spec 0003.
+NO_BREAK_SPACE = "\u00a0"
+MINUS_SIGN = "\u2212"
+SEPARATORS = {
+    "no": (NO_BREAK_SPACE, ",", MINUS_SIGN),
+    "en": (",", ".", "-"),
+}
+# The integer part is grouped only from this many digits, so years and other numbers
+# of four digits keep their usual form.
+GROUP_FROM = 5
+
+
+def format_number(value: Decimal, language: Literal["no", "en"]) -> str:
+    """Write a decimal for text in Norwegian or English, with its scale as it is.
+
+    ``Decimal("1234567.50")`` becomes ``1 234 567,50`` in Norwegian, with no-break
+    spaces, and ``1,234,567.50`` in English.
+    """
+    group, point, minus = SEPARATORS[language]
+    # copy_abs is exact; abs() would round to the context's 28 digits.
+    text = exact_text(value.copy_abs())
+    whole, _, fraction = text.partition(".")
+    if len(whole) >= GROUP_FROM:
+        first = len(whole) % 3 or 3
+        parts = [whole[:first]] + [
+            whole[index : index + 3] for index in range(first, len(whole), 3)
+        ]
+        whole = group.join(parts)
+    sign = minus if value < 0 and not value.is_zero() else ""
+    return f"{sign}{whole}{point}{fraction}" if fraction else f"{sign}{whole}"
 
 
 def _exact_input(value: object) -> object:
