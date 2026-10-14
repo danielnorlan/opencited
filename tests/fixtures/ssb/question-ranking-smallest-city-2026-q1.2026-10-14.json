@@ -1,0 +1,33 @@
+{
+  "name": "question-ranking-smallest-city-2026-q1",
+  "reason": "query Q1 of question ranking-smallest-city-2026 in v1.jsonl",
+  "recorded_at": "2026-10-14T06:22:00Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/06913/data?lang=no&valueCodes%5BRegion%5D=4601%2C1103%2C3301%2C5501&valueCodes%5BContentsCode%5D=Folkemengde&valueCodes%5BTid%5D=2026&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "question-ranking-smallest-city-2026-q1.2026-10-14.body",
+    "body_sha256": "28d5075746098291893c7c2c49b10e28aa9281adea483ce84e6f2c967519f315",
+    "original_body_sha256": "2ec56dee8228d4519dfbd6378d1a46498fce308610e3620305f7b0254b3fbc92",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

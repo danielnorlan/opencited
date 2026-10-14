@@ -1,0 +1,33 @@
+{
+  "name": "question-lookup-unemployment-2026m08-q1",
+  "reason": "query Q1 of question lookup-unemployment-2026m08 in v1.jsonl",
+  "recorded_at": "2026-10-14T06:21:18Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/13760/data?lang=en&valueCodes%5BKjonn%5D=0&valueCodes%5BAlder%5D=15-74&valueCodes%5BJustering%5D=S&valueCodes%5BContentsCode%5D=ArbledProsArbstyrk&valueCodes%5BTid%5D=2025M08%2C2026M08&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "question-lookup-unemployment-2026m08-q1.2026-10-14.body",
+    "body_sha256": "06bdafee5576c95f87e5ff27f546c29d25be0ad5aab2f05c476f5c7504fc5e03",
+    "original_body_sha256": "fb22387e7057c16f76c97c5db57b344b0ef207a9e4277a95b98dfe405758721b",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "name": "question-share-children-norway-2025-q1",
+  "reason": "query Q1 of question share-children-norway-2025 in v1.jsonl",
+  "recorded_at": "2026-10-14T06:21:47Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/05810/data?lang=en&valueCodes%5BKjonn%5D=0&valueCodes%5BAlder%5D=999B%2C00-06&valueCodes%5BContentsCode%5D=Personer&valueCodes%5BTid%5D=2025&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "question-share-children-norway-2025-q1.2026-10-14.body",
+    "body_sha256": "229a2f5a2b3c726e4c8c01418b52ab6e07a47117cccfa32f7f86a2b8c9ccaa8a",
+    "original_body_sha256": "9481bc0b7ab95d7c3f42573b709e099863d7ed6872a75eaf3fa7814ec62336bd",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "name": "question-share-net-migration-norway-2025-q1",
+  "reason": "query Q1 of question share-net-migration-norway-2025 in v1.jsonl",
+  "recorded_at": "2026-10-14T06:21:50Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/06913/data?lang=no&valueCodes%5BRegion%5D=0&valueCodes%5BContentsCode%5D=Nettoinnflytting%2CFolketilvekst&valueCodes%5BTid%5D=2025&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "question-share-net-migration-norway-2025-q1.2026-10-14.body",
+    "body_sha256": "c404b6e59c608fa21fff9506a48389cc0d36bfd8f989bc3121a154338563e3c6",
+    "original_body_sha256": "011c7e067aaf3a3bbee5538780836ed9f7b500569c51e32d433f6111d4085ad7",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

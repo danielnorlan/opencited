@@ -130,7 +130,10 @@ def test_no_stored_body_holds_contact_details(path: Path) -> None:
 
 def test_contact_details_were_removed_from_data_and_metadata() -> None:
     removed = {name for name, path in LATEST.items() if response_of(path)["removed"]}
-    assert removed == {name for name in LATEST if name.startswith(("data-", "metadata-"))}
+    # Recordings for question sets are data responses too.
+    assert removed == {
+        name for name in LATEST if name.startswith(("data-", "metadata-", "question-"))
+    }
     for name in removed:
         assert response_of(LATEST[name])["removed_fields"] == list(FIELDS)
 

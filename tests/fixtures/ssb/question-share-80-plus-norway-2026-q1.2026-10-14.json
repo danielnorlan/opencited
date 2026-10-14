@@ -1,0 +1,33 @@
+{
+  "name": "question-share-80-plus-norway-2026-q1",
+  "reason": "query Q1 of question share-80-plus-norway-2026 in v1.jsonl",
+  "recorded_at": "2026-10-14T06:21:39Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/05810/data?lang=no&valueCodes%5BKjonn%5D=0&valueCodes%5BAlder%5D=999B%2C67-79%2C80%2B&valueCodes%5BContentsCode%5D=Personer&valueCodes%5BTid%5D=2026&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "question-share-80-plus-norway-2026-q1.2026-10-14.body",
+    "body_sha256": "2baf86b629221f9535add1294c6bc76bfa286b2adfaf4a49edb065f7ec814cf3",
+    "original_body_sha256": "c68b25090f15f073d2a90eac588b82980880f49df8599dd605d632d28504506b",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

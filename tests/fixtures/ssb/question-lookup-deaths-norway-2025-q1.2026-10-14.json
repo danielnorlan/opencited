@@ -1,0 +1,33 @@
+{
+  "name": "question-lookup-deaths-norway-2025-q1",
+  "reason": "query Q1 of question lookup-deaths-norway-2025 in v1.jsonl",
+  "recorded_at": "2026-10-14T06:21:08Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/06913/data?lang=en&valueCodes%5BRegion%5D=0&valueCodes%5BContentsCode%5D=Dode&valueCodes%5BTid%5D=2024%2C2025&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "question-lookup-deaths-norway-2025-q1.2026-10-14.body",
+    "body_sha256": "ff6dd86779fcc65125da3b05ae4bab35ab201e4873ece18ac238556603b4e715",
+    "original_body_sha256": "21090f8bfa737d42b5638ab8884ea1481dde34d3141234228596194a8435ad0e",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

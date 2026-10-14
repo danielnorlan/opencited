@@ -1,0 +1,33 @@
+{
+  "name": "question-lookup-density-oslo-2026-q1",
+  "reason": "query Q1 of question lookup-density-oslo-2026 in v1.jsonl",
+  "recorded_at": "2026-10-14T06:21:24Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/11342/data?lang=no&valueCodes%5BRegion%5D=0301&valueCodes%5BContentsCode%5D=FolkeLandArealKm2&valueCodes%5BTid%5D=2026&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "question-lookup-density-oslo-2026-q1.2026-10-14.body",
+    "body_sha256": "4056b6d357dbed058f2b64ce59ea68a97097db252ffffd643796216e61f329fa",
+    "original_body_sha256": "92244d9fd71a8c31da6cfaebb8fd6339786a4f63cf28d80aa6a7c3afd9fa3114",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

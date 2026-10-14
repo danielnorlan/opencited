@@ -1,0 +1,33 @@
+{
+  "name": "question-share-oslo-of-norway-2026-q1",
+  "reason": "query Q1 of question share-oslo-of-norway-2026 in v1.jsonl",
+  "recorded_at": "2026-10-14T06:21:42Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/06913/data?lang=en&valueCodes%5BRegion%5D=0%2C0301&valueCodes%5BContentsCode%5D=Folkemengde&valueCodes%5BTid%5D=2026&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "question-share-oslo-of-norway-2026-q1.2026-10-14.body",
+    "body_sha256": "49eb5e0b62eef161071fd39b284290ff0af35086fa766e7c282163b58f4eba68",
+    "original_body_sha256": "087342390e7e31a93eec0208c74f6eb1613e809eb5b73d3ba014cdfdf22dda7e",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

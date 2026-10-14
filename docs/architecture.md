@@ -25,7 +25,7 @@ flowchart LR
 | Calculation engine | Runs typed calculation plans over stored snapshots: DuckDB selects the cells, and the arithmetic uses exact rational numbers | Built, with the agent's `calculate` tool ([spec 0002](specs/0002-snapshots-and-calculation.md)) |
 | Evidence gate | Matches every number in an answer to source data or a calculation result, and blocks the answer otherwise | Built, with the agent's retry ([spec 0003](specs/0003-evidence-gate.md)) |
 | Agent | Plans, calls tools and drafts the answer, in a loop of its own over a chat completions API | Built; not yet measured with a model ([spec 0004](specs/0004-agent.md)) |
-| Evaluation suite | Versioned questions with computed answers, run with Inspect AI | In progress: the scorer is built ([spec 0005](specs/0005-evaluation-suite.md)) |
+| Evaluation suite | Versioned questions with computed answers, run with Inspect AI | In progress: the scorer, the first question set and its reference runner are built ([spec 0005](specs/0005-evaluation-suite.md)) |
 | Table search | Hybrid full-text and vector search over table metadata, in PostgreSQL with pgvector | Planned, M3 |
 | Model gateway | Routes requests between local and hosted models within budgets, using LiteLLM | Planned, M3 |
 | Tracing | OpenTelemetry traces, viewed in Langfuse | Planned, M3 |
@@ -508,10 +508,32 @@ logged at debug level.
 ## Evaluation suite (M2)
 
 The suite measures how often the agent answers correctly, refuses when it should and
-is blocked by the gate ([spec 0005](specs/0005-evaluation-suite.md)). The scorer and
-its report are built, in `opencited.evals`, which imports nothing from Inspect
-([ADR 0012](adr/0012-inspect-evaluations.md)). The question set, its reference
-plans and the Inspect task are planned.
+is blocked by the gate ([spec 0005](specs/0005-evaluation-suite.md)). The scorer, its
+report, the first question set and the runner of its reference plans are built, in
+`opencited.evals` and `evals/questions/`; `opencited.evals` imports nothing from
+Inspect ([ADR 0012](adr/0012-inspect-evaluations.md)). The Inspect task is planned.
+
+### Questions and reference plans
+
+A question set is a JSONL file named by its version, such as
+`evals/questions/v1.jsonl`. Each question has an ID, a language, its text, a category
+and the outcome it expects. A question with an answer names the queries its reference
+plan reads, as `Q1`, `Q2` and so on, the plan in the form the calculation engine runs,
+the steps whose results the answer must hold with the decimals it must show, and for a
+ranking the ranking step whose first cell gives the label. The schema checks every
+reference when the file is read: the plan reads each query and only those, each
+number names a step of the plan, a ranking number names a place, the label names a
+ranking step whose query is in the question's language, and the category fixes the
+outcome.
+
+`opencited.evals.reference.reference` fetches a question's queries, keeps each as a
+snapshot and runs the plan, so the expected numbers come from data fetched in the same
+run and none is written down. A number of a ranking is the value of the ranked cell at
+its place, and the label is the ranked dimension's label in the first cell; a ranking
+with a tie for first place has no single label and stops the run of that question.
+In CI every reference plan runs against recordings that
+`scripts/record_ssb_fixtures.py --questions evals/questions/v1.jsonl` made, with the
+client's own request code, so the replay finds each one.
 
 ### Scorer
 

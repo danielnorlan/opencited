@@ -1,0 +1,33 @@
+{
+  "name": "question-change-population-oslo-2020-2025-q1",
+  "reason": "query Q1 of question change-population-oslo-2020-2025 in v1.jsonl",
+  "recorded_at": "2026-10-14T06:21:26Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/06913/data?lang=en&valueCodes%5BRegion%5D=0301&valueCodes%5BContentsCode%5D=Folkemengde&valueCodes%5BTid%5D=2020%2C2025&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "question-change-population-oslo-2020-2025-q1.2026-10-14.body",
+    "body_sha256": "0960ef7d025ea84527005499fa7373e9506df43c259c8af46fbd5c68f474cc10",
+    "original_body_sha256": "2bdc92231bb6d0d50f9e7001a7c328df607ddf5877e99049967d1b59ac7f8d23",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}
