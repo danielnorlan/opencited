@@ -5,6 +5,11 @@ from their raw bytes with decimals (ADR 0009), and every result is a frozen mode
 IDs, languages, limits and the form of a selection are checked before any request. A
 query also checks its selection against the table's metadata and counts its cells
 before the data request.
+
+Every request waits for a slot in a rate limiter (ADR 0007, decision 3). With a cache,
+metadata and data responses are served from it until the first 08:15 Norwegian time
+after their request, when SSB's new figures of the day are final (ADR 0008). A
+response is stored only once the result built from it has been accepted.
 """
 
 from __future__ import annotations
@@ -13,7 +18,8 @@ import itertools
 import math
 import re
 from collections.abc import Callable, Mapping, Sequence
-from datetime import UTC, datetime
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from datetime import time as clock
 from decimal import Decimal
 from http import HTTPStatus
@@ -24,6 +30,8 @@ import httpx2
 from pydantic import ValidationError
 
 from opencited.http import Exchange, send
+from opencited.http.cache import ResponseCache
+from opencited.http.limiter import LimitReachedError, RateLimiter, retry_after
 from opencited.model import Frozen
 from opencited.provenance import record_of
 from opencited.sources.errors import (
@@ -77,6 +85,9 @@ MAX_CELLS = 5000
 # From 05:00 to 08:00 SSB shows figures that are revised at 08:00 as 0 or a dot, and
 # the guide asks users to avoid the minutes around the publication (ADR 0007).
 REVISION_PERIOD = (clock(5, 0), clock(8, 15))
+# A cached response is served until this time of day after its retrieval, the end of
+# the revision period, when the figures published at 08:00 are final (ADR 0008).
+CACHE_UNTIL = clock(8, 15)
 OSLO = ZoneInfo("Europe/Oslo")
 # Whole numbers that describe structure, such as sizes and positions, stay far below
 # this. A larger one would make ``int`` slow and cannot describe a real table.
@@ -84,6 +95,20 @@ MAX_WHOLE_DIGITS = 18
 
 type JsonObject = dict[str, object]
 type Params = tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True)
+class Fetched:
+    """A response's JSON body, the exchange it came in, and whether the cache served it.
+
+    ``expires_at`` is set for a response from SSB that may be stored, until that time,
+    once the result built from it has been accepted.
+    """
+
+    document: object
+    exchange: Exchange
+    cached: bool
+    expires_at: datetime | None = None
 
 
 class ApiConfig(Frozen):
@@ -169,12 +194,16 @@ class SsbClient:
         max_cells: int = MAX_CELLS,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
         revision_period: bool = True,
+        cache: ResponseCache | None = None,
+        limiter: RateLimiter | None = None,
     ) -> None:
         """Wrap an HTTP client whose base URL is ``BASE_URL``.
 
         ``max_cells`` and ``now`` let tests set the cell limit and the clock.
-        ``revision_period`` turns the check of SSB's revision period off for recorded
-        responses, which were all taken outside it.
+        ``revision_period`` turns SSB's revision period off, for queries and for the
+        cache, for recorded responses, which were all taken outside it. Without
+        ``cache`` every request goes to SSB. Without ``limiter`` the client keeps SSB's
+        limit of 30 requests a minute.
         """
         if not str(http.base_url).startswith("https://"):
             raise ValueError("the HTTP client needs SSB's base URL, BASE_URL")
@@ -183,11 +212,13 @@ class SsbClient:
         self._max_cells = max_cells
         self._now = now
         self._revision_period = revision_period
+        self._cache = cache
+        self._limiter = limiter or RateLimiter()
 
     async def config(self) -> ApiConfig:
         """Return what the API reports about itself."""
-        document, _ = await self._fetch(self._http.build_request("GET", "/config"))
-        return parsed(lambda: parse_config(document))
+        fetched = await self._fetch(self._http.build_request("GET", "/config"))
+        return parsed(lambda: parse_config(fetched.document))
 
     async def search(self, query: str, language: Language = "no", limit: int = 10) -> SearchResult:
         """Return the tables that match a free-text query, in SSB's order."""
@@ -197,18 +228,25 @@ class SsbClient:
         if not 1 <= limit <= MAX_SEARCH_LIMIT:
             raise ValueError(f"the limit is from 1 to {MAX_SEARCH_LIMIT}, not {limit}")
         params: Params = (("query", query), ("lang", language), ("pageSize", str(limit)))
-        document, _ = await self._fetch(self._http.build_request("GET", "/tables", params=params))
-        return parsed(lambda: parse_search(document, language))
+        fetched = await self._fetch(self._http.build_request("GET", "/tables", params=params))
+        return parsed(lambda: parse_search(fetched.document, language))
 
     async def metadata(self, table_id: str, language: Language = "no") -> TableMetadata:
         """Return the dimensions, units and notes of a table."""
         check_table_id(table_id)
         check_language(language)
+        return await self._metadata(table_id, language, None)
+
+    async def _metadata(
+        self, table_id: str, language: Language, deadline: float | None
+    ) -> TableMetadata:
         request = self._http.build_request(
             "GET", f"/tables/{table_id}/metadata", params=(("lang", language),)
         )
-        document, _ = await self._fetch(request, table_id)
-        return parsed(lambda: parse_metadata(document, table_id, language))
+        fetched = await self._fetch(request, table_id, cache=True, deadline=deadline)
+        metadata = parsed(lambda: parse_metadata(fetched.document, table_id, language))
+        await self._keep(fetched)
+        return metadata
 
     async def data(
         self,
@@ -224,9 +262,29 @@ class SsbClient:
         check_table_id(table_id)
         check_language(language)
         check_selection(selection)
+        fetched, value = await self._data(table_id, selection, language, None)
+        await self._keep(fetched)
+        return Retrieved(value, fetched.exchange, fetched.cached)
+
+    async def _data(
+        self,
+        table_id: str,
+        selection: Mapping[str, Sequence[str]],
+        language: Language,
+        deadline: float | None,
+        *,
+        revision_check: bool = False,
+    ) -> tuple[Fetched, DataResult]:
         request = data_request(self._http, table_id, selection, language, self._max_get_url_length)
-        document, exchange = await self._fetch(request, table_id)
-        return Retrieved(parsed(lambda: parse_data(document, table_id, language)), exchange)
+        fetched = await self._fetch(
+            request,
+            table_id,
+            cache=True,
+            data=True,
+            deadline=deadline,
+            revision_check=revision_check,
+        )
+        return fetched, parsed(lambda: parse_data(fetched.document, table_id, language))
 
     async def query(
         self,
@@ -238,23 +296,26 @@ class SsbClient:
 
         Before the data request, the selection is checked against the table's metadata
         and its cells are counted, and no data is requested in SSB's revision period.
+        The metadata and data requests together wait at most the limiter's
+        ``max_wait`` for slots.
         """
         check_table_id(table_id)
         check_language(language)
         check_selection(selection)
         self._check_revision_period()
-        metadata = await self.metadata(table_id, language)
+        deadline = self._limiter.deadline()
+        metadata = await self._metadata(table_id, language, deadline)
         sent = normalise(selection)
         resolved = resolve(metadata, sent)
         cells = cell_count(resolved)
         if cells > self._max_cells:
             raise too_many_cells(metadata, resolved, cells, self._max_cells)
         self._check_revision_period()
-        retrieved = await self.data(table_id, sent, language)
-        result = retrieved.value
+        fetched, result = await self._data(table_id, sent, language, deadline, revision_check=True)
         check_reply(result, resolved, cells)
+        await self._keep(fetched)
         provenance = record_of(
-            retrieved.exchange,
+            fetched.exchange,
             source_id=SOURCE_ID,
             publisher=PUBLISHER,
             license=LICENCE,
@@ -268,7 +329,7 @@ class SsbClient:
                 **dict(result),
                 "symbols": explained_symbols(result.observations, result.notes),
                 "provenance": provenance,
-                "cached": retrieved.cached,
+                "cached": fetched.cached,
             }
         )
 
@@ -276,6 +337,11 @@ class SsbClient:
     def max_cells(self) -> int:
         """The most cells that one query may cover."""
         return self._max_cells
+
+    @property
+    def limiter(self) -> RateLimiter:
+        """The rate limiter that every request waits in."""
+        return self._limiter
 
     def _check_revision_period(self) -> None:
         if not self._revision_period:
@@ -290,13 +356,60 @@ class SsbClient:
             )
 
     async def _fetch(
-        self, request: httpx2.Request, table_id: str | None = None
-    ) -> tuple[object, Exchange]:
+        self,
+        request: httpx2.Request,
+        table_id: str | None = None,
+        *,
+        cache: bool = False,
+        data: bool = False,
+        deadline: float | None = None,
+        revision_check: bool = False,
+    ) -> Fetched:
         """Send a request and return its JSON body, or raise the error that fits.
 
-        The status decides first. A body is parsed for a success, and for a client
-        error only to read the reason that SSB gives.
+        With ``cache``, a stored response is served while it lasts, and a successful one
+        may be stored until the first 08:15 Norwegian time after the request. A ``data``
+        response requested or received in SSB's revision period may not (ADR 0007,
+        decision 7). Both times come from the client's clock, which tests can set. With
+        ``revision_check``, the revision period is checked again once the request has a
+        slot, since waiting for one can take it into the period.
         """
+        body = request.content or None
+        if cache and self._cache is not None:
+            stored = await self._cache.get(request.method, str(request.url), body)
+            if stored is not None:
+                return Fetched(self._document(stored, table_id), stored, cached=True)
+        await self._slot(deadline)
+        if revision_check:
+            self._check_revision_period()
+        requested = self._now()
+        exchange = await self._send(request)
+        document = self._document(exchange, table_id)
+        revised = self._revision_period and (
+            in_revision_period(requested) or in_revision_period(self._now())
+        )
+        storable = cache and self._cache is not None and not (data and revised)
+        expires_at = cache_expiry(requested) if storable else None
+        return Fetched(document, exchange, cached=False, expires_at=expires_at)
+
+    async def _keep(self, fetched: Fetched) -> None:
+        """Store a response once the result built from it has been accepted."""
+        if self._cache is not None and fetched.expires_at is not None:
+            await self._cache.put(fetched.exchange, fetched.expires_at)
+
+    async def _slot(self, deadline: float | None) -> None:
+        """Wait for the rate limiter to give a request a slot."""
+        try:
+            await self._limiter.acquire(deadline)
+        except LimitReachedError as error:
+            raise RateLimitedError(
+                f"SSB's rate limit allows no request for another {error.wait} seconds. "
+                "Try again after that.",
+                error.wait,
+            ) from error
+
+    async def _send(self, request: httpx2.Request) -> Exchange:
+        """Send a request that has a slot."""
         try:
             exchange = await send(self._http, request)
         except httpx2.TimeoutException as error:
@@ -305,10 +418,21 @@ class SsbClient:
             raise InvalidResponseError("SSB's answer could not be decoded") from error
         except httpx2.RequestError as error:
             raise SourceUnavailableError("SSB could not be reached") from error
+        self._limiter.observe(exchange)
+        return exchange
+
+    def _document(self, exchange: Exchange, table_id: str | None) -> object:
+        """Return the JSON body of a response, or raise the error that fits.
+
+        The status decides first. A body is parsed for a success, and for a client
+        error only to read the reason that SSB gives.
+        """
         status = exchange.status
         json_body = "json" in exchange.content_type
         if status == HTTPStatus.TOO_MANY_REQUESTS:
-            raise RateLimitedError("SSB's rate limit was reached", retry_after(exchange))
+            wait = retry_after(exchange)
+            advice = f" Try again in {wait} seconds." if wait is not None else ""
+            raise RateLimitedError(f"SSB's rate limit was reached.{advice}", wait)
         if HTTPStatus.BAD_REQUEST <= status < HTTPStatus.INTERNAL_SERVER_ERROR:
             raise client_error(exchange, table_id)
         if not HTTPStatus.OK <= status < HTTPStatus.MULTIPLE_CHOICES:
@@ -319,7 +443,16 @@ class SsbClient:
             document = load_json(exchange.content)
         except ValueError as error:
             raise InvalidResponseError("SSB's answer is not valid JSON") from error
-        return document, exchange
+        return document
+
+
+def cache_expiry(requested: datetime) -> datetime:
+    """Return the first 08:15 Norwegian time after a request, in UTC."""
+    local = requested.astimezone(OSLO)
+    expiry = datetime.combine(local.date(), CACHE_UNTIL, tzinfo=OSLO)
+    if expiry <= local:
+        expiry = datetime.combine(local.date() + timedelta(days=1), CACHE_UNTIL, tzinfo=OSLO)
+    return expiry.astimezone(UTC)
 
 
 def in_revision_period(moment: datetime) -> bool:
@@ -400,14 +533,6 @@ def explained_symbols(
         explanation = note.removeprefix(prefix) if note is not None else None
         symbols.append(Symbol(symbol=symbol, explanation=explanation))
     return tuple(symbols)
-
-
-def retry_after(exchange: Exchange) -> int | None:
-    """Return the seconds in a Retry-After header, or None when it holds no such number."""
-    value = exchange.header("retry-after")
-    if value is not None and value.isascii() and value.isdigit():
-        return int(value)
-    return None
 
 
 def problem_title(exchange: Exchange) -> str | None:

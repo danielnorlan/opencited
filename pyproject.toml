@@ -23,6 +23,7 @@ dependencies = [
   "anyio>=4.15,<5",
   "httpx2>=2.13,<3",
   "mcp>=2.3,<2.4",
+  "platformdirs>=4.13,<5",
   "pydantic>=2.14,<3",
   "tzdata>=2026.5",
 ]
