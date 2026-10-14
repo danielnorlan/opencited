@@ -22,7 +22,7 @@ flowchart LR
 | Component | Responsibility | Status |
 | --- | --- | --- |
 | MCP server | Table search, metadata and data from each source, with a provenance record on every data result | In progress ([spec 0001](specs/0001-ssb-mcp-server.md)) |
-| Calculation engine | Runs typed calculation plans over stored snapshots: DuckDB selects the cells, and the arithmetic uses exact rational numbers | In progress: snapshots are built ([spec 0002](specs/0002-snapshots-and-calculation.md)) |
+| Calculation engine | Runs typed calculation plans over stored snapshots: DuckDB selects the cells, and the arithmetic uses exact rational numbers | Built; the `calculate` tool comes with the agent ([spec 0002](specs/0002-snapshots-and-calculation.md)) |
 | Evidence gate | Matches every number in an answer to source data or a calculation result, and blocks the answer otherwise | Specification approved ([spec 0003](specs/0003-evidence-gate.md)) |
 | Agent | Plans, calls tools and drafts the answer, in a loop of its own over a chat completions API | Specification approved ([spec 0004](specs/0004-agent.md)) |
 | Evaluation suite | Versioned questions with computed answers, run with Inspect AI | Specification approved ([spec 0005](specs/0005-evaluation-suite.md)) |
@@ -230,6 +230,45 @@ the SHA-256 that the manifest records. A result with a value that does not fit
 `DECIMAL(38, s)` gets no snapshot, and any failure to write one leaves the tool
 result as it is, with a warning in the server's log. The server checks at start that
 it can write to the snapshot directory, and stops if it cannot.
+
+### Calculation engine
+
+`opencited.calc` runs a plan of at most 20 steps over the snapshots in a store. A
+step reads cells from a snapshot, named by its ID, or combines the results of earlier
+steps, named by their step names:
+
+| Operation | Reads | Gives |
+| --- | --- | --- |
+| `value` | One cell | Its value |
+| `sum` | One or more codes per dimension | The exact sum |
+| `mean` | One or more codes per dimension, and decimals | The mean, rounded |
+| `add`, `subtract`, `multiply` | Two results | The exact result |
+| `divide` | Two results, and decimals | The quotient, rounded |
+| `change_percent` | An old and a new result, and decimals | (new - old) / old x 100, rounded |
+| `share_percent` | A part and a total, and decimals | part / total x 100, rounded |
+| `rank` | One code per dimension apart from the one ranked, an order and a count from 1 to 10 | The highest or lowest cells, with ties of the last one |
+
+The engine checks the whole plan before it runs any step: unique names, inputs from
+earlier steps that give a single value, snapshots that can be read, codes that exist,
+a code for every dimension and at most 5,000 cells per step. It then loads the
+snapshots into an in-memory DuckDB database, turns off external access and locks the
+configuration, so the SQL it generates, with every code bound as a parameter, can
+read only the loaded tables. A result column of a floating-point type is an error.
+
+DuckDB selects and ranks; all arithmetic runs on Python `Fraction` values made from
+the cells' decimals. A step with decimals rounds once, with ties away from zero, and
+later steps use the rounded value; every step also keeps its exact result as a
+fraction. A step fails, with an error that names it, when it reads a missing value,
+divides by zero, gives more than 38 significant digits, or mixes units in `sum`,
+`mean`, `rank`, `add` or `subtract`.
+
+Each result has a unit kind that the evidence gate can match: an amount, with the
+source's unit; per cent, for `change_percent`, `share_percent` and cells whose unit
+is `prosent`, `per cent`, `percent` or `%`; percentage points, for the difference of
+two per cent values; or a ratio, for the quotient of two values with the same unit.
+A result lists every step with its operation, inputs, SQL, bound codes, arithmetic
+with the numbers filled in, exact and rounded result and unit, and names every
+snapshot it read with the provenance record. `readable()` writes the steps as text.
 
 ## Trust boundaries
 

@@ -31,6 +31,8 @@ Notable changes to OpenCited are recorded here. The format follows
   Norwegian time, and a rate limiter that keeps each process within 30 requests a
   minute and backs off after HTTP 429. `opencited mcp` takes `--cache-dir` and
   `--no-cache`.
+- The calculation engine: typed plans over snapshots, checked before they run, with
+  DuckDB locked to the loaded snapshots and exact rational arithmetic (spec 0002).
 - Write-once snapshots of query results, with the cells in Parquet as exact decimals,
   kept by `opencited mcp --snapshot-dir` (spec 0002). ADR 0011 is accepted.
 - A release workflow that publishes to PyPI with trusted publishing when a GitHub
