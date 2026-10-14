@@ -326,6 +326,8 @@ def test_a_marker_in_an_html_comment_cites_nothing() -> None:
         "a | b\n--- | ---\nx | {v} [E1]\ny | {v}",
         "A {v} [E1]\n---\nB {v}",
         "A {v} [E1]\n\n```\ncode\n```\nB {v}",
+        "A {v} [E1]\n```\ncode\n```\nB {v}",
+        "> A {v} [E1]\nB {v}",
     ],
 )
 def test_a_citation_reaches_no_number_outside_its_block(template: str) -> None:
@@ -381,3 +383,12 @@ def test_the_same_answer_gets_the_same_report_in_other_processes() -> None:
         for seed in ("0", "1")
     }
     assert len(outputs) == 1
+
+
+def test_an_update_just_before_midnight_in_utc_has_both_dates() -> None:
+    base = population().result
+    late = datetime(2026, 2, 24, 23, 30, tzinfo=UTC)
+    result = base.model_copy(update={"updated": late})
+    evidence = [SourceEvidence("E1", result)]
+    for day in ("2026-02-24", "2026-02-25"):
+        assert check(f"Updated {day} [E1].", "en", evidence).passed, day
