@@ -9,6 +9,7 @@ import stat
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import cast
+from zoneinfo import ZoneInfo
 
 import pytest
 from recorded import Json, description, raw
@@ -123,3 +124,23 @@ def test_a_damaged_cache_is_skipped_with_a_warning(
     assert get(cache, exchange) is None
     assert "could not be written" in caplog.text
     assert "could not be read" in caplog.text
+
+
+def test_an_existing_cache_file_is_made_private(tmp_path: Path) -> None:
+    cache, _ = make(tmp_path)
+    cache.path.parent.mkdir()
+    cache.path.touch(mode=0o644)
+    cache.path.chmod(0o644)
+    put(cache, recorded_exchange("metadata-05810-en"))
+    assert stat.S_IMODE(cache.path.stat().st_mode) == 0o600
+
+
+def test_expiry_times_in_any_time_zone_are_compared_as_times(tmp_path: Path) -> None:
+    cache, moment = make(tmp_path)
+    # 08:15 in Oslo is 06:15 in UTC on this day.
+    put(cache, recorded_exchange("metadata-05810-en"), EXPIRES.astimezone(ZoneInfo("Europe/Oslo")))
+    moment.now = EXPIRES + timedelta(microseconds=1)
+    put(cache, recorded_exchange("metadata-05810-no"), EXPIRES + timedelta(days=1))
+    with sqlite3.connect(cache.path) as connection:
+        count = connection.execute("select count(*) from responses").fetchone()[0]
+    assert count == 1

@@ -1,4 +1,9 @@
-"""The rate limiter, on a clock that the tests move instead of waiting."""
+"""The rate limiter, on a clock that the tests move instead of waiting.
+
+SSB's recorded responses all state `40;w=60s`. The other header values here stand for
+no response from SSB: they check how the limiter reads a policy that a source could
+state, which cannot be recorded on demand.
+"""
 
 from __future__ import annotations
 
@@ -10,8 +15,9 @@ import anyio
 import pytest
 from recorded import Json, description
 
-from opencited.http import Exchange
-from opencited.http.limiter import LimitReachedError, RateLimiter
+from opencited.http import Exchange, make_client
+from opencited.http.limiter import MAX_PAUSE, MAX_POLICIES, LimitReachedError, RateLimiter
+from opencited.sources.ssb import BASE_URL, SsbClient
 
 
 class Clock:
@@ -56,9 +62,26 @@ def exchange(status: int = 200, headers: tuple[tuple[str, str], ...] = ()) -> Ex
     )
 
 
+def policy(value: str) -> Exchange:
+    return exchange(headers=(("x-ratelimit-policy", value),))
+
+
 def recorded_headers(name: str) -> tuple[tuple[str, str], ...]:
     response = cast("Json", description(name)["response"])
     return tuple(cast("dict[str, str]", response["headers"]).items())
+
+
+def test_the_defaults_are_ssb_s_limit_and_a_wait_of_ten_seconds() -> None:
+    assert RateLimiter().policies == ((30, 60.0),)
+    assert RateLimiter().max_wait == 10.0
+
+    async def client_limiter() -> RateLimiter:
+        async with make_client(BASE_URL) as http:
+            return SsbClient(http).limiter
+
+    default = asyncio.run(client_limiter())
+    assert default.policies == ((30, 60.0),)
+    assert default.max_wait == 10.0
 
 
 def test_thirty_requests_go_at_once() -> None:
@@ -87,38 +110,60 @@ def test_a_wait_beyond_the_maximum_fails_with_the_wait_rounded_up() -> None:
     assert clock.sleeps == []
 
 
-def test_the_recorded_rate_limit_header_keeps_the_stricter_limit_of_thirty() -> None:
+def test_the_requests_of_one_call_share_one_wait() -> None:
+    clock = Clock()
+    rate = limiter(clock, limit=1, window=6.0)
+    acquire(rate)
+
+    async def two_requests() -> None:
+        deadline = rate.deadline()
+        await rate.acquire(deadline)
+        await rate.acquire(deadline)
+
+    with pytest.raises(LimitReachedError):
+        asyncio.run(two_requests())
+    assert clock.sleeps == [6.0]
+
+
+def test_the_recorded_rate_limit_header_keeps_the_limit_of_thirty() -> None:
     headers = recorded_headers("config")
     assert dict(headers)["x-ratelimit-policy"] == "40;w=60s"
     rate = limiter(Clock())
     rate.observe(exchange(headers=headers))
-    assert (rate.limit, rate.window) == (30, 60.0)
+    assert rate.policies == ((30, 60.0),)
 
 
 @pytest.mark.parametrize(
-    ("policy", "expected"),
+    ("value", "expected"),
     [
-        ("20;w=60s", (20, 60.0)),
-        ("1;w=10s", (1, 10.0)),
-        ("5;w=1s", (30, 60.0)),
-        ("30;w=60s", (30, 60.0)),
-        ("0;w=60s", (30, 60.0)),
-        ("20;w=0s", (30, 60.0)),
-        ("twenty", (30, 60.0)),
+        ("20;w=60s", ((20, 60.0),)),
+        ("20;w=30s", ((20, 30.0), (30, 60.0))),
+        ("100;w=3600s", ((30, 60.0), (100, 3600.0))),
+        ("0;w=60s", ((30, 60.0),)),
+        ("20;w=0s", ((30, 60.0),)),
+        ("twenty", ((30, 60.0),)),
     ],
 )
-def test_a_header_only_ever_lowers_the_rate(policy: str, expected: tuple[int, float]) -> None:
+def test_a_header_adds_its_policy(value: str, expected: tuple[tuple[int, float], ...]) -> None:
     rate = limiter(Clock())
-    rate.observe(exchange(headers=(("x-ratelimit-policy", policy),)))
-    assert (rate.limit, rate.window) == expected
+    rate.observe(policy(value))
+    assert rate.policies == expected
 
 
-def test_a_lower_limit_from_a_header_holds_requests_back() -> None:
+def test_every_policy_holds_requests_back() -> None:
     clock = Clock()
     rate = limiter(clock, max_wait=60.0)
-    rate.observe(exchange(headers=(("x-ratelimit-policy", "2;w=60s"),)))
-    acquire(rate, 3)
-    assert clock.sleeps == [60.0]
+    # 40 a minute, but at most 20 in any 30 seconds.
+    rate.observe(policy("20;w=30s"))
+    acquire(rate, 21)
+    assert clock.sleeps == [30.0]
+
+
+def test_the_number_of_policies_is_bounded() -> None:
+    rate = limiter(Clock())
+    for window in range(1, 20):
+        rate.observe(policy(f"1000;w={window}s"))
+    assert len(rate.policies) == MAX_POLICIES
 
 
 def test_http_429_holds_every_request_for_the_time_the_source_asks() -> None:
@@ -141,23 +186,32 @@ def test_http_429_without_a_wait_holds_requests_for_a_window() -> None:
     assert clock.sleeps == [60.0]
 
 
-def test_concurrent_requests_never_exceed_the_limit() -> None:
-    clock = Clock()
-    rate = limiter(clock, limit=2, window=10.0, max_wait=100.0)
-    taken: list[float] = []
+@pytest.mark.parametrize("seconds", ["86400000", "9" * 5000])
+def test_a_long_retry_after_is_cut_to_an_hour(seconds: str) -> None:
+    rate = limiter(Clock())
+    rate.observe(exchange(429, (("retry-after", seconds),)))
+    with pytest.raises(LimitReachedError) as caught:
+        acquire(rate)
+    assert caught.value.wait == MAX_PAUSE
 
-    async def one() -> None:
+
+def test_waiting_calls_take_slots_in_the_order_they_arrive() -> None:
+    clock = Clock()
+    rate = limiter(clock, limit=1, window=10.0, max_wait=100.0)
+    order: list[str] = []
+
+    async def call(name: str) -> None:
         await rate.acquire()
-        taken.append(clock.now)
+        order.append(name)
 
     async def run() -> None:
         async with anyio.create_task_group() as tasks:
-            for _ in range(7):
-                tasks.start_soon(one)
+            for name in ("first", "second", "third"):
+                tasks.start_soon(call, name)
 
     asyncio.run(run())
-    assert len(taken) == 7
-    assert all(sum(start <= time < start + 10 for time in taken) <= 2 for start in taken)
+    assert order == ["first", "second", "third"]
+    assert clock.now == 20.0
 
 
 @pytest.mark.parametrize(("limit", "window"), [(0, 60.0), (30, 0.0), (30, -1.0)])

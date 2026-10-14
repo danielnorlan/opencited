@@ -108,25 +108,33 @@ code uses.
 Metadata and data responses are cached in SQLite, keyed by the method, the URL and a
 hash of the body ([ADR 0008](adr/0008-http-client.md)). An entry stores the response
 as it arrived, with its retrieval time, so a cached result repeats the original
-provenance, and a query result says whether its data came from the cache. An entry
-is served until the first 08:15 Norwegian time after its request, when the figures
-published at 08:00 are final. A data response requested or received from 05:00 to
-08:15 is not stored, and search results and `/config` are not cached. When SSB
-cannot be reached, a call fails with an error and never falls back to an expired
-entry.
+provenance, and a query result says whether its data came from the cache. A response
+is stored only once the result built from it has been accepted, so an answer that
+cannot be parsed, or a reply with other cells than the selection, is never served
+again. An entry is served until the first 08:15 Norwegian time after its request,
+when the figures published at 08:00 are final. A data response requested or received
+from 05:00 to 08:15 is not stored, and search results and `/config` are not cached.
+When SSB cannot be reached, a call fails with an error and never falls back to an
+expired entry.
 
 `opencited mcp` keeps the cache in `responses.sqlite` in the user's cache directory,
 which `platformdirs` finds for each system, for example `~/.cache/opencited` on
 Linux. `--cache-dir` moves it and `--no-cache` turns it off. The bodies can name the
-staff behind a table, so the directory and the file are readable by their owner
-only. A cache that cannot be read or written is skipped with a warning.
+staff behind a table, so on systems with POSIX permissions the file is readable by
+its owner only, and so is a directory that the cache creates. A cache that cannot be
+read or written is skipped with a warning.
 
 Every request to SSB waits for a slot in a client-side rate limiter: at most 30 in
-any 60 seconds, the limit in SSB's guide, or fewer when a response's
-`x-ratelimit-policy` header states a lower rate ([ADR 0007](adr/0007-ssb-pxwebapi-v2.md),
-decision 3). After HTTP 429 the limiter lets no request through for the seconds in
-`Retry-After`, or for a whole window when the header is missing. A call waits at
-most 10 seconds for a slot. A cached response takes no slot.
+any 60 seconds, the limit in SSB's guide ([ADR 0007](adr/0007-ssb-pxwebapi-v2.md),
+decision 3). The limiter also keeps the policy that a response's
+`x-ratelimit-policy` header states, and a request goes out only when every policy
+allows it, so a header can only make the limiter stricter. SSB's responses state 40
+in 60 seconds. After HTTP 429 the limiter lets no request through for the seconds in
+`Retry-After`, at most an hour, or for a whole window when the header is missing. A
+tool call waits at most 10 seconds for slots in all, and a query, which sends a
+metadata and a data request, checks the revision period again once its data request
+has a slot. A cached response takes no slot. The limiter counts the requests of one
+process, so two servers that share a cache each keep their own count.
 
 ### Transports
 

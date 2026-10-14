@@ -3,7 +3,8 @@
 An entry keeps the response as it arrived, with its retrieval time, so a result built
 from it repeats the original provenance. The caller decides which responses to store
 and until when each one is served. The cache holds whole bodies, which can name the
-staff behind a table, so its directory and file are readable by their owner only.
+staff behind a table. On systems with POSIX permissions the cache file is therefore
+readable by its owner only, and so is a directory that the cache creates for it.
 
 A cache that cannot be read or written is skipped with a warning: a request then goes
 to the source, as it would without a cache.
@@ -49,6 +50,11 @@ def body_hash(body: bytes | None) -> str:
     return hashlib.sha256(body or b"").hexdigest()
 
 
+def stamp(moment: datetime) -> str:
+    """Return a time as stored: in UTC with microseconds, so the texts sort as the times."""
+    return moment.astimezone(UTC).isoformat(timespec="microseconds")
+
+
 class ResponseCache:
     """Stores responses in one SQLite file. ``now`` lets tests set the clock."""
 
@@ -76,6 +82,8 @@ class ResponseCache:
         if not self._ready:
             self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
             self.path.touch(mode=0o600, exist_ok=True)
+            # An existing file keeps the mode it was made with, so it is set here too.
+            self.path.chmod(0o600)
         connection = sqlite3.connect(self.path, timeout=BUSY_SECONDS)
         if not self._ready:
             with connection:
@@ -111,9 +119,7 @@ class ResponseCache:
 
     def _put(self, exchange: Exchange, expires_at: datetime) -> None:
         with closing(self._connect()) as connection, connection:
-            connection.execute(
-                "delete from responses where expires_at <= ?", (self._now().isoformat(),)
-            )
+            connection.execute("delete from responses where expires_at <= ?", (stamp(self._now()),))
             connection.execute(
                 "insert or replace into responses values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
@@ -124,7 +130,7 @@ class ResponseCache:
                     exchange.status,
                     json.dumps(exchange.headers),
                     exchange.content,
-                    exchange.retrieved_at.isoformat(),
-                    expires_at.isoformat(),
+                    stamp(exchange.retrieved_at),
+                    stamp(expires_at),
                 ),
             )
