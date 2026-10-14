@@ -61,7 +61,13 @@ jobs:
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - name: Install
+        run: uv sync --locked
+      - name: Check the release metadata
+        run: uv run --frozen python scripts/check_release.py
       - name: Build
         run: uv build
       - name: Import the built wheel
         run: uv run --isolated --no-project --with dist/*.whl python -c "import opencited; print(opencited.__version__)"
+      - name: Start the server from the wheel and call every tool
+        run: uv run --frozen python scripts/smoke_package.py dist/*.whl

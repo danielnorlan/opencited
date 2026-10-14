@@ -23,7 +23,7 @@ passes on the way.
 | Commit check | `commit-msg` and `pre-push` hooks, and CI | Authors and committers without a GitHub noreply address; trailers and personal data in commit messages; subjects longer than 72 characters, with a full stop or without a capital letter; branch names outside `<issue-number>-<short-slug>` |
 | Pyright and pytest | Locally and in CI | Type errors and failing tests |
 | Live smoke test | `uv run pytest -m live` locally, and the `Nightly` workflow | Nothing: it reports changes in SSB's API that the recorded fixtures cannot show |
-| Package build | Locally and in CI | A wheel that does not build or does not import |
+| Package build | Locally and in CI | A wheel that does not build or does not import, release metadata that disagrees between `pyproject.toml`, `server.json` and the README, and a server that does not start from the wheel in a clean environment |
 | Merge script | `scripts/pull_request.py` | Merging while CI fails; a squash commit with an unexpected author, committer or message |
 
 The commit check runs before anything leaves the machine, because nothing can be

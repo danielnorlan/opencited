@@ -1,0 +1,99 @@
+name: Release
+
+# Builds and checks the distribution files, and publishes them to PyPI with trusted
+# publishing when a GitHub release is published. A run started by hand builds and
+# checks the files and uploads nothing. docs/releasing.md lists the maintainer's steps.
+#
+# The build job holds no publishing credential. The publish job builds the files again
+# from the same commit, with the same pinned uv, and publishes them only when their
+# SHA-256 matches the files that the build job checked: uv's build backend writes
+# fixed timestamps, so a build from the same commit gives the same bytes. This keeps
+# the files out of artifact actions, which the repository does not allow.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      hashes: ${{ steps.hashes.outputs.hashes }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # The whole history, to check that a release commit is on main.
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.0"
+      - name: Install
+        run: uv sync --locked
+      - name: Check the release metadata
+        run: uv run --frozen python scripts/check_release.py
+      - name: Check the release tag and the README
+        if: github.event_name == 'release'
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: uv run --frozen python scripts/check_release.py --tag "$TAG"
+      - name: Check that the release commit is on main
+        if: github.event_name == 'release'
+        run: git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+      - name: Validate server.json against the MCP Registry's schema
+        # scripts/check_release.py has checked the schema's address in server.json.
+        run: uvx check-jsonschema@0.38.2 --schemafile "$(jq -r '."$schema"' server.json)" server.json
+      - name: Build
+        run: uv build
+      - name: Check the distribution files
+        run: uvx twine@7.0.0 check --strict dist/*
+      - name: List what an upload would send
+        run: uv publish --dry-run --trusted-publishing never
+      - name: Start the server from the wheel and call every tool
+        run: uv run --frozen python scripts/smoke_package.py dist/*.whl
+      - name: Record the hashes
+        id: hashes
+        run: |
+          {
+            echo "hashes<<END"
+            sha256sum dist/*
+            echo "END"
+          } >> "$GITHUB_OUTPUT"
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    if: github.event_name == 'release'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment:
+      name: pypi
+      url: https://pypi.org/project/opencited/
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.0"
+      - name: Build
+        run: uv build
+      - name: Check that the files are the ones the build job checked
+        env:
+          HASHES: ${{ needs.build.outputs.hashes }}
+        # The same files with the same hashes, and no other file.
+        run: diff <(sha256sum dist/* | sort) <(printf '%s\n' "$HASHES" | sort)
+      - name: Publish
+        run: uv publish --trusted-publishing always

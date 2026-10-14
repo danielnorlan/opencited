@@ -23,11 +23,13 @@ typecheck: ## Type-check with Pyright in strict mode
 test: ## Run the test suite
 	uv run pytest
 
-package: ## Build the package and import it from the wheel
+package: ## Build the package, check the release metadata and start the server from the wheel
 	rm -rf dist
 	uv build --quiet
 	uv run --isolated --no-project --with dist/*.whl python -c "import opencited"
 	uv run --isolated --no-project --with dist/*.whl opencited --version
+	uv run python scripts/check_release.py
+	uv run python scripts/smoke_package.py dist/*.whl
 
 format: ## Format the code and apply safe lint fixes
 	uv run ruff format
