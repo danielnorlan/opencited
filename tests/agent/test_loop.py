@@ -132,6 +132,8 @@ def test_a_run_that_has_used_its_time_refuses_before_the_next_call(tmp_path: Pat
         limit="time",
         explanation=None,
         report=None,
+        attempts=(),
+        retries=0,
         model=ModelRecord(
             base_url=CONFIG.base_url,
             model=CONFIG.model,
@@ -266,6 +268,7 @@ def test_a_refusal_holds_the_last_report_only_after_a_blocked_answer(
     assert isinstance(result, Refusal)
     assert (result.reason, result.limit) == ("limit", "tokens")
     assert result.report == (blocked if last == "blocked" else None)
+    assert result.attempts == (last,)
 
 
 @pytest.mark.parametrize("cited", [(), ("E1",)])
@@ -286,3 +289,30 @@ def test_a_retry_asks_to_cite_or_sends_the_gate_report(
 
     expected = uncited_message() if not cited else retry_message(blocked)
     assert message == UserMessage(expected)
+
+
+def test_a_released_answer_records_its_attempt(tmp_path: Path) -> None:
+    _, passed = blocked_and_passed()
+
+    async def work(run: Run) -> Answer | Refusal:
+        run.state = RunState().replied(reply("Svar [E1].")).checked(passed, ("E1",))
+        return await run.answer()
+
+    result = with_run(tmp_path, work)
+
+    assert isinstance(result, Answer)
+    assert (result.attempts, result.retries) == (("passed",), 0)
+
+
+def test_a_refusal_after_a_retry_counts_the_retry(tmp_path: Path) -> None:
+    blocked, _ = blocked_and_passed()
+
+    async def work(run: Run) -> Answer | Refusal:
+        state = RunState().replied(reply("Det bodde 12 personer der.")).checked(blocked, ())
+        run.state = state.retrying().replied(reply("REFUSE: no data"))
+        return await run.answer()
+
+    result = with_run(tmp_path, work)
+
+    assert isinstance(result, Refusal)
+    assert (result.attempts, result.retries) == (("blocked",), 1)

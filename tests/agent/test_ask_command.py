@@ -74,6 +74,8 @@ def refusal_of(result: Answer) -> Refusal:
         limit="model calls",
         explanation=None,
         report=None,
+        attempts=(),
+        retries=0,
         model=result.model,
         prompt_version="1",
         usage=result.usage,

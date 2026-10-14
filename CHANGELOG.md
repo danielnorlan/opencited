@@ -31,6 +31,11 @@ Notable changes to OpenCited are recorded here. The format follows
   Norwegian time, and a rate limiter that keeps each process within 30 requests a
   minute and backs off after HTTP 429. `opencited mcp` takes `--cache-dir` and
   `--no-cache`.
+- The evaluation suite's scorer, which decides with the gate's rules whether an answer
+  holds the expected numbers at the required decimals and a ranking answer its label,
+  and its report of correct answers by category and language, wrong refusals and
+  answers, gate blocks, retries and use (spec 0005). Answers and refusals record what
+  became of each reply the gate checked.
 - `opencited ask`, which answers a question with the configured model and prints the
   answer with numbered sources, or with `--json` every record of it (spec 0004). The
   agent's loop sends a versioned system prompt, runs the tools, checks the reply with
