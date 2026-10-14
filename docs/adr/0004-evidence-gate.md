@@ -1,6 +1,6 @@
 # 0004. Evidence gate and deterministic calculation
 
-- Status: Accepted
+- Status: Accepted, decision 2 amended by [ADR 0011](0011-snapshots-and-exact-arithmetic.md)
 - Date: 2026-10-13
 
 ## Context
@@ -16,6 +16,9 @@ a reader can trust that every number in an answer traces back to a source.
 2. Calculations run in DuckDB over stored snapshots of the retrieved data. The
    model writes a typed calculation plan, and the engine turns it into SQL and runs
    it with exact decimals. The SQL is shown to the reader as the calculation.
+   [ADR 0011](0011-snapshots-and-exact-arithmetic.md) amends this decision: DuckDB
+   runs the selections, the arithmetic runs on exact rational numbers in Python, and
+   the result shows every arithmetic step next to the SQL.
 3. Before an answer is released, a deterministic gate reads every number in it and
    matches each one to a provenance record or a calculation result. An answer with
    an unmatched number is blocked. The agent may retry within a budget, and after

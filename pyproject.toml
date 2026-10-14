@@ -21,6 +21,7 @@ classifiers = [
 ]
 dependencies = [
   "anyio>=4.15,<5",
+  "duckdb>=1.5.6,<1.6",
   "httpx2>=2.13,<3",
   "mcp>=2.3,<2.4",
   "platformdirs>=4.13,<5",

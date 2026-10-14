@@ -10,6 +10,10 @@ DNS rebinding.
 SSB's metadata and data responses are cached in the user's cache directory, or in
 ``--cache-dir``, unless ``--no-cache`` is given (ADR 0008).
 
+With ``--snapshot-dir`` or the variable ``OPENCITED_SNAPSHOT_DIR``, every
+``query_table`` result is also kept as a snapshot there (spec 0002). No directory is
+set by default.
+
 ``--replay DIR`` serves the responses recorded in a directory instead of calling SSB,
 without a cache. It exists for tests (ADR 0008), and the server warns when it starts
 with it.
@@ -19,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import cast
@@ -30,12 +35,14 @@ from opencited import __version__
 from opencited.http.cache import ResponseCache
 from opencited.http.replay import replay_transport
 from opencited.mcp import build_server
+from opencited.snapshots import SnapshotStore
 
 logger = logging.getLogger("opencited.cli")
 
 LOOPBACK = ("127.0.0.1", "localhost", "::1")
 DEFAULT_PORT = 8765
 CACHE_FILE = "responses.sqlite"
+SNAPSHOT_DIR = "OPENCITED_SNAPSHOT_DIR"
 # Requests must name a loopback address in Host, and come from a local page if they
 # carry an Origin. The SDK applies the same settings for a loopback host by default;
 # they are set here so that the server does not depend on that default.
@@ -97,6 +104,12 @@ def parse_arguments(arguments: list[str]) -> argparse.Namespace:
     )
     caching.add_argument("--no-cache", action="store_true", help="send every request to SSB")
     serve.add_argument(
+        "--snapshot-dir",
+        type=Path,
+        metavar="DIR",
+        help=f"keep every query result as a snapshot in DIR (default: ${SNAPSHOT_DIR}, or none)",
+    )
+    serve.add_argument(
         "--replay",
         type=directory,
         metavar="DIR",
@@ -113,6 +126,16 @@ def cache_of(options: argparse.Namespace) -> ResponseCache | None:
     return ResponseCache(directory / CACHE_FILE)
 
 
+def snapshots_of(options: argparse.Namespace) -> SnapshotStore | None:
+    directory = cast("Path | None", options.snapshot_dir)
+    if directory is None and os.environ.get(SNAPSHOT_DIR):
+        directory = Path(os.environ[SNAPSHOT_DIR])
+    if directory is None:
+        return None
+    logger.info("Keeping a snapshot of every query result in %s", directory)
+    return SnapshotStore(directory)
+
+
 def main(arguments: list[str] | None = None) -> int:
     options = parse_arguments(sys.argv[1:] if arguments is None else arguments)
     logging.basicConfig(
@@ -120,8 +143,9 @@ def main(arguments: list[str] | None = None) -> int:
     )
     # The HTTP library logs every request at INFO, which buries the server's own log.
     logging.getLogger("httpx2").setLevel(logging.WARNING)
+    snapshots = snapshots_of(options)
     if options.replay is None:
-        server = build_server(cache=cache_of(options))
+        server = build_server(cache=cache_of(options), snapshots=snapshots)
     else:
         logger.warning(
             "Serving the responses recorded in %s instead of calling SSB. They are not "
@@ -130,7 +154,9 @@ def main(arguments: list[str] | None = None) -> int:
         )
         # The recordings were taken outside SSB's revision period, so replaying them is
         # safe at any hour, and the check would only block tests run at those hours.
-        server = build_server(transport=replay_transport(options.replay), revision_period=False)
+        server = build_server(
+            transport=replay_transport(options.replay), revision_period=False, snapshots=snapshots
+        )
     if options.http:
         server.run(
             "streamable-http", host=options.host, port=options.port, transport_security=SECURITY

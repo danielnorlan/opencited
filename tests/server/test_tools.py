@@ -26,6 +26,7 @@ from opencited.http import make_client
 from opencited.http.cache import ResponseCache
 from opencited.http.replay import replay_transport
 from opencited.mcp import build_server
+from opencited.snapshots import SnapshotStore
 from opencited.sources import Language, QueryResult, SearchResult, TableMetadata
 from opencited.sources.ssb import BASE_URL, MAX_SEARCH_LIMIT, SsbClient
 
@@ -377,3 +378,55 @@ def test_a_cached_query_says_so_and_repeats_the_provenance(tmp_path: Path) -> No
     assert first["cached"] is False
     assert second["cached"] is True
     assert second["provenance"] == first["provenance"]
+
+
+def query_through(server_options: dict[str, Any]) -> Json:
+    """Call query_table once on a server built with these options."""
+
+    async def run() -> CallToolResult:
+        server = build_server(transport=REPLAY, revision_period=False, **server_options)
+        async with Client(server) as client:
+            arguments = {"table_id": "05810", "selection": POPULATION, "language": "en"}
+            return await client.call_tool("query_table", arguments)
+
+    return structured(asyncio.run(run()))
+
+
+def test_every_query_result_is_kept_as_a_snapshot(tmp_path: Path) -> None:
+    store = SnapshotStore(tmp_path)
+    content = query_through({"snapshots": store})
+    record = cast("Json", content["provenance"])
+    snapshot = store.read(cast("str", record["response_sha256"]))
+    assert [cell.codes for cell in snapshot.cells] == [
+        tuple(cast("list[str]", cell["codes"]))
+        for cell in cast("list[Json]", content["observations"])
+    ]
+
+
+def test_a_result_from_the_cache_is_kept_as_a_snapshot_too(tmp_path: Path) -> None:
+    def cache() -> ResponseCache:
+        return ResponseCache(
+            tmp_path / "responses.sqlite", now=lambda: datetime(2026, 10, 14, tzinfo=UTC)
+        )
+
+    query_through({"cache": cache()})
+    store = SnapshotStore(tmp_path / "snapshots")
+    content = query_through({"cache": cache(), "snapshots": store})
+    assert content["cached"] is True
+    record = cast("Json", content["provenance"])
+    assert (
+        store.read(cast("str", record["response_sha256"])).manifest.provenance.model_dump(
+            mode="json"
+        )
+        == record
+    )
+
+
+def test_a_snapshot_that_cannot_be_written_leaves_the_result(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    blocked = tmp_path / "a file"
+    blocked.write_text("not a directory", encoding="utf-8")
+    content = query_through({"snapshots": SnapshotStore(blocked)})
+    assert content["observations"]
+    assert "No snapshot of" in caplog.text
