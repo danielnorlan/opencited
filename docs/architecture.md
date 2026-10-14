@@ -380,6 +380,7 @@ change of endpoint, model or key needs no code change.
 | `OPENCITED_MODEL` | The model name | Required |
 | `OPENCITED_MODEL_KEY_VARIABLE` | The name of the variable that holds the API key | Required |
 | `OPENCITED_TEMPERATURE`, `OPENCITED_SEED` | Model settings, recorded in every answer | Not sent |
+| `OPENCITED_MODEL_EXTRA` | A JSON object of extra request fields that an endpoint takes, such as `{"thinking": {"type": "disabled"}}`, recorded in every answer; it may not set the model, the messages, the tools, the temperature or the seed | Not sent |
 | `OPENCITED_PRICE_INPUT`, `OPENCITED_PRICE_OUTPUT` | Prices per million input and output tokens, set together | None |
 | `OPENCITED_MAX_MODEL_CALLS`, `OPENCITED_MAX_TOOL_CALLS`, `OPENCITED_MAX_TOKENS`, `OPENCITED_MAX_SECONDS` | The limits of one question | 12, 20, 100,000 and 300 |
 | `OPENCITED_MAX_COST` | A cost limit in the currency of the prices, which needs prices | None |

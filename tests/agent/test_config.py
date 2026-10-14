@@ -202,3 +202,31 @@ def test_the_configuration_names_the_key_variable_and_never_holds_the_key() -> N
     assert config.key_variable == "A_KEY"
     assert key not in repr(config)
     assert key not in config.model_dump_json()
+
+
+def test_extra_request_fields_are_kept_as_canonical_json() -> None:
+    config = from_environment(
+        ENDPOINT | {"OPENCITED_MODEL_EXTRA": ' { "thinking" : { "type" : "disabled" } } '}
+    )
+
+    assert config.settings.extra == '{"thinking":{"type":"disabled"}}'
+
+
+@pytest.mark.parametrize(
+    ("value", "reason"),
+    [
+        (
+            '{"thinking": ',
+            "the extra request fields are not JSON: Expecting value: line 1 column 13 (char 12)",
+        ),
+        ('["thinking"]', "the extra request fields must be a JSON object"),
+        ('{"model": "another", "messages": []}', "the client sets messages, model itself"),
+        ('{"temperature": 1}', "the client sets temperature itself"),
+    ],
+)
+def test_extra_request_fields_must_be_an_object_the_client_does_not_set(
+    value: str, reason: str
+) -> None:
+    assert failure(ENDPOINT | {"OPENCITED_MODEL_EXTRA": value}) == (
+        f"OPENCITED_MODEL_EXTRA: {reason}"
+    )

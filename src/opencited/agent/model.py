@@ -8,6 +8,7 @@ one model call that the agent counts.
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -282,6 +283,7 @@ class ModelClient:
                 if settings.temperature is not None
                 else omit,
                 seed=settings.seed if settings.seed is not None else omit,
+                extra_body=json.loads(settings.extra) if settings.extra else None,
             )
         except APIStatusError as error:
             failure = self._refused(error)
