@@ -8,6 +8,7 @@ fixtures cover every table and selection the plans read (spec 0005).
 from __future__ import annotations
 
 import asyncio
+import re
 from collections import Counter
 from pathlib import Path
 
@@ -17,6 +18,7 @@ from recorded import FIXTURES
 from opencited.evals.questions import AnswerExpected, Question, load_questions
 from opencited.evals.reference import Reference, reference
 from opencited.http import make_client
+from opencited.http.limiter import RateLimiter
 from opencited.http.replay import replay_transport
 from opencited.snapshots import SnapshotStore
 from opencited.sources.ssb import BASE_URL, SsbClient
@@ -57,3 +59,47 @@ def test_every_reference_plan_runs_against_the_recordings(
     assert result.expectation.outcome == "answer"
     assert result.expectation.numbers
     assert len(result.snapshots) == len(question.expected.queries)
+
+
+def test_every_year_in_a_question_is_a_period_its_queries_fetch() -> None:
+    for question in SET.questions:
+        if not isinstance(question.expected, AnswerExpected):
+            continue
+        periods = {
+            code for query in question.expected.queries for code in query.selection.get("Tid", ())
+        }
+        for year in re.findall(r"(?<![0-9])(?:19|20)[0-9]{2}(?![0-9])", question.text):
+            assert any(code.startswith(year) for code in periods), (question.id, year)
+
+
+class Clock:
+    """A clock that moves only when something sleeps."""
+
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        return self.now
+
+    async def sleep(self, seconds: float) -> None:
+        self.now += seconds
+
+
+def test_the_whole_set_runs_on_one_client_within_ssb_s_rate_limit(tmp_path: Path) -> None:
+    clock = Clock()
+
+    async def run() -> list[Reference]:
+        async with make_client(BASE_URL, transport=replay_transport(FIXTURES)) as http:
+            limiter = RateLimiter(clock=clock, sleep=clock.sleep)
+            client = SsbClient(http, revision_period=False, limiter=limiter)
+            store = SnapshotStore(tmp_path)
+            return [
+                await reference(question, client, store, sleep=clock.sleep)
+                for question in SET.questions
+            ]
+
+    references = asyncio.run(run())
+
+    assert len(references) == len(SET.questions)
+    # More than 30 requests went out, so the run waited on the limit.
+    assert clock.now >= 60

@@ -17,7 +17,7 @@ from typing import Annotated, Any, Literal, Self, cast
 
 from pydantic import Field, StringConstraints, ValidationError, model_validator
 
-from opencited.calc.plan import Plan, RankStep, StepName
+from opencited.calc.plan import MeanStep, Plan, RankStep, Step, StepName, SumStep, ValueStep
 from opencited.evals.score import REFUSED, Category, QuestionId
 from opencited.model import Frozen, TableId
 from opencited.sources import Language
@@ -36,6 +36,35 @@ def plan_steps(steps: list[object]) -> list[dict[str, Any]]:
     if not all(isinstance(step, dict) for step in steps):
         raise ValueError("every step of the plan is an object")
     return cast("list[dict[str, Any]]", steps)
+
+
+# Characters of SSB's selection expressions, such as * and top(3); the codes such an
+# expression covers are known only when the query runs.
+EXPRESSION = re.compile(r"[*?()\[\]]")
+
+
+def read_codes(step: Step) -> dict[str, tuple[str, ...]]:
+    """Return the codes that a step reads from its snapshot, by dimension."""
+    if isinstance(step, ValueStep):
+        return {dimension: (code,) for dimension, code in step.codes.items()}
+    if isinstance(step, SumStep | MeanStep | RankStep):
+        return dict(step.selection)
+    return {}
+
+
+def check_codes(name: str, codes: dict[str, tuple[str, ...]], query: Query) -> None:
+    """Refuse a step that reads a code its query does not fetch, where that can be known."""
+    for dimension, wanted in codes.items():
+        fetched = query.selection.get(dimension)
+        if fetched is None:
+            raise ValueError(f"step {name!r} reads {dimension}, which {query.name} does not select")
+        if any(EXPRESSION.search(code) for code in fetched):
+            continue
+        missing = [code for code in wanted if code not in fetched]
+        if missing:
+            raise ValueError(
+                f"step {name!r} reads {dimension} {', '.join(missing)}, which {query.name} does not fetch"
+            )
 
 
 class Query(Frozen):
@@ -83,11 +112,20 @@ class AnswerExpected(Frozen):
         steps = self.plan.get("steps")
         if not isinstance(steps, list):
             raise ValueError("the plan has no list of steps")
-        read = {step.get("snapshot") for step in plan_steps(cast("list[object]", steps))}
-        read.discard(None)
-        if read != set(names):
+        snapshots = [
+            step["snapshot"]
+            for step in plan_steps(cast("list[object]", steps))
+            if "snapshot" in step
+        ]
+        if not all(isinstance(name, str) for name in snapshots):
+            raise ValueError("a step names its query by a name such as Q1")
+        if set(snapshots) != set(names):
             raise ValueError("the plan must read every query, and only the queries named")
         plan = self.checked_plan(dict.fromkeys(names, PLACEHOLDER))
+        queries = {query.name: query for query in self.queries}
+        for raw, step in zip(cast("list[dict[str, Any]]", steps), plan.steps, strict=True):
+            if "snapshot" in raw:
+                check_codes(step.name, read_codes(step), queries[raw["snapshot"]])
         by_name = {step.name: step for step in plan.steps}
         for number in self.numbers:
             step = by_name.get(number.step)
@@ -98,6 +136,12 @@ class AnswerExpected(Frozen):
                     f"a number of the ranking step {number.step!r} names a position, "
                     "and no other number does"
                 )
+            if (
+                isinstance(step, RankStep)
+                and number.position is not None
+                and number.position > step.count
+            ):
+                raise ValueError(f"the ranking step {number.step!r} has no place {number.position}")
         if self.label is not None and not isinstance(by_name.get(self.label), RankStep):
             raise ValueError(f"the label step {self.label!r} is not a ranking step")
         return self
@@ -155,7 +199,10 @@ def load_questions(path: Path) -> QuestionSet:
         raise QuestionError(f"{path.name}: a question set is named by its version, such as v1")
     questions: list[Question] = []
     seen: set[str] = set()
-    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+    # Lines end at a line feed only; splitlines would also break at U+2028 and U+0085,
+    # which a JSON string may hold.
+    for number, line in enumerate(path.read_text(encoding="utf-8").split("\n"), start=1):
+        line = line.removesuffix("\r")
         if not line.strip():
             continue
         try:

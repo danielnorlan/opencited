@@ -521,19 +521,25 @@ and the outcome it expects. A question with an answer names the queries its refe
 plan reads, as `Q1`, `Q2` and so on, the plan in the form the calculation engine runs,
 the steps whose results the answer must hold with the decimals it must show, and for a
 ranking the ranking step whose first cell gives the label. The schema checks every
-reference when the file is read: the plan reads each query and only those, each
-number names a step of the plan, a ranking number names a place, the label names a
-ranking step whose query is in the question's language, and the category fixes the
-outcome.
+reference when the file is read: the plan reads each query and only those, a step
+reads only dimensions its query selects and codes it fetches where the query names
+them without an expression, each number names a step of the plan, a ranking number
+names a place within the ranking's count, the label names a ranking step whose query
+is in the question's language, and the category fixes the outcome.
 
 `opencited.evals.reference.reference` fetches a question's queries, keeps each as a
 snapshot and runs the plan, so the expected numbers come from data fetched in the same
 run and none is written down. A number of a ranking is the value of the ranked cell at
 its place, and the label is the ranked dimension's label in the first cell; a ranking
 with a tie for first place has no single label and stops the run of that question.
-In CI every reference plan runs against recordings that
-`scripts/record_ssb_fixtures.py --questions evals/questions/v1.jsonl` made, with the
-client's own request code, so the replay finds each one.
+A full run sends more requests than SSB's rate limit allows in a minute, so a query
+that the limit holds back waits as long as the limit says and is sent again, three
+times at most. In CI every reference plan runs against recordings that
+`scripts/record_ssb_fixtures.py --questions evals/questions/v1.jsonl` made with the
+client's selection normalisation, code joining and parameter order, which a test
+compares with the client's request, so the replay finds each one. A test also runs
+the whole set on one client under the rate limit, and checks that each year in a
+question's text is a period its queries fetch.
 
 ### Scorer
 

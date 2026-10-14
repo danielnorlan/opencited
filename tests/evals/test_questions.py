@@ -9,15 +9,25 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Awaitable, Callable
+from decimal import Decimal
 from fractions import Fraction
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from recorded import FIXTURES
 
-from opencited.evals.questions import Question, QuestionError, load_questions
-from opencited.evals.reference import Reference, ReferencePlanError, reference
+from opencited.calc.plan import Plan
+from opencited.calc.result import CalculationResult, RankedCell, ResultUnit, StepResult
+from opencited.evals.questions import NumberRef, Question, QuestionError, load_questions
+from opencited.evals.reference import (
+    Reference,
+    ReferencePlanError,
+    expected_number,
+    label_of,
+    reference,
+)
 from opencited.evals.score import Expectation, ExpectedNumber
 from opencited.http import make_client
 from opencited.http.replay import replay_transport
@@ -205,6 +215,61 @@ def broken(question: dict[str, Any], *path: str | int, value: object) -> dict[st
         ),
         (broken(lookup(), "expected", "plan", "steps", 0, "operation", value="avg"), "operation"),
         (broken(lookup(), "id", value="Lookup 1"), "String should match pattern"),
+        (
+            broken(lookup(), "expected", "plan", "steps", 0, "snapshot", value=["Q1"]),
+            "names its query by a name such as Q1",
+        ),
+        (
+            broken(lookup(), "expected", "plan", "steps", 0, "codes", "Tid", value="1999"),
+            "reads Tid 1999, which Q1 does not fetch",
+        ),
+        (
+            broken(lookup(), "expected", "queries", 0, "selection", "Kjonn", value=None),
+            "reads Kjonn, which Q1 does not select",
+        ),
+        (
+            broken(ranking(), "expected", "numbers", 0, "position", value=2),
+            "has no place 2",
+        ),
+        (
+            broken(
+                lookup(),
+                "expected",
+                "queries",
+                value=[lookup()["expected"]["queries"][0], lookup()["expected"]["queries"][0]],
+            ),
+            "two queries have the same name",
+        ),
+        (
+            broken(
+                lookup(),
+                "expected",
+                "queries",
+                value=[
+                    lookup()["expected"]["queries"][0],
+                    {**lookup()["expected"]["queries"][0], "name": "Q2"},
+                ],
+            ),
+            "must read every query",
+        ),
+        (
+            broken(
+                broken(ranking(), "expected", "label", value="total"),
+                "expected",
+                "plan",
+                "steps",
+                value=[
+                    *ranking()["expected"]["plan"]["steps"],
+                    {
+                        "name": "total",
+                        "operation": "value",
+                        "snapshot": "Q1",
+                        "codes": TOTAL | {"Tid": "2026", "Kjonn": "0", "Alder": "999B"},
+                    },
+                ],
+            ),
+            "is not a ranking step",
+        ),
     ],
 )
 def test_a_question_that_breaks_the_schema_names_its_line(
@@ -277,11 +342,116 @@ def test_a_ranking_place_without_a_cell_is_an_error(tmp_path: Path) -> None:
     question = broken(
         ranking(), "expected", "plan", "steps", 0, "selection", "Alder", value=["999B"]
     )
-    tied = broken(question, "expected", "plan", "steps", 0, "selection", "Kjonn", value=["0"])
-    # A ranking of one cell has no second place.
-    absent = broken(tied, "expected", "numbers", 0, "position", value=2)
+    single = broken(question, "expected", "plan", "steps", 0, "count", value=2)
+    # A ranking of one cell has no second place, though it asks for two.
+    absent = broken(single, "expected", "numbers", 0, "position", value=2)
     absent = broken(absent, "expected", "label", value=None)
     absent = broken(absent, "category", value="lookup")
 
     with pytest.raises(ReferencePlanError, match="0 cells at place 2"):
         run_reference(Question.model_validate_json(json.dumps(absent)), SnapshotStore(tmp_path))
+
+
+def tied(*places: int) -> CalculationResult:
+    """A ranking whose cells have the given places, built from the engine's own types."""
+    cells = tuple(
+        RankedCell(
+            position=place,
+            codes=("0", age),
+            labels=("Begge kjønn", f"{age} år"),
+            value=Decimal(100),
+        )
+        for place, age in zip(places, ("16-44", "45-66", "67-79"), strict=False)
+    )
+    step = StepResult(
+        name="largest",
+        operation="rank",
+        inputs=(),
+        snapshot="0" * 64,
+        sql=(),
+        parameters=(),
+        arithmetic="",
+        exact=None,
+        value=None,
+        decimals=None,
+        unit=ResultUnit(kind="amount", name="personer"),
+        ranked=cells,
+    )
+    return CalculationResult(steps=(step,), snapshots=())
+
+
+def test_a_tie_for_a_place_gives_no_number_and_no_label() -> None:
+    plan = Plan.model_validate_json(
+        json.dumps(
+            {
+                "steps": [
+                    {
+                        "name": "largest",
+                        "operation": "rank",
+                        "snapshot": "0" * 64,
+                        "selection": {"Kjonn": ["0"]},
+                        "by": "Alder",
+                        "order": "highest",
+                        "count": 1,
+                    }
+                ]
+            }
+        )
+    )
+    dimensions = {"0" * 64: ("Kjonn", "Alder")}
+
+    assert label_of(plan, tied(1, 2), dimensions, "largest") == "16-44 år"
+    with pytest.raises(ReferencePlanError, match="2 cells in first place"):
+        label_of(plan, tied(1, 1), dimensions, "largest")
+    with pytest.raises(ReferencePlanError, match="2 cells at place 1"):
+        expected_number(tied(1, 1), NumberRef(step="largest", decimals=0, position=1))
+    assert (
+        expected_number(tied(1, 2), NumberRef(step="largest", decimals=0, position=2)).exact
+        == "100"
+    )
+
+
+def test_codes_of_an_expression_are_known_only_when_the_query_runs(tmp_path: Path) -> None:
+    # The ranking's query selects Tid with top(3), so the 2026 its step reads is allowed.
+    question = Question.model_validate_json(json.dumps(ranking()))
+
+    assert question.id == "ranking-age-en"
+
+
+def test_a_line_separator_inside_a_string_does_not_end_a_line(tmp_path: Path) -> None:
+    text = refusal() | {"text": "Hvor varmt blir det i Oslo\u2028i morgen?"}
+    path = written(tmp_path, text, lookup())
+
+    questions = load_questions(path).questions
+
+    assert questions[0].text == "Hvor varmt blir det i Oslo\u2028i morgen?"
+    assert len(questions) == 2
+
+
+def test_a_query_held_back_by_the_rate_limit_waits_and_is_sent_again() -> None:
+    from opencited.evals.reference import PATIENCE, patiently
+    from opencited.sources import RateLimitedError
+
+    waits: list[float] = []
+    calls: list[int] = []
+
+    async def sleep(seconds: float) -> None:
+        waits.append(seconds)
+
+    def fetch_failing(times: int) -> Callable[[], Awaitable[str]]:
+        async def fetch() -> str:
+            calls.append(1)
+            if len(calls) <= times:
+                raise RateLimitedError("held back", 12 if len(calls) == 1 else None)
+            return "retrieved"
+
+        return fetch
+
+    assert asyncio.run(patiently(cast("Any", fetch_failing(2)), sleep)) == "retrieved"
+    assert waits == [12.0, 60.0]
+    calls.clear()
+    waits.clear()
+    with pytest.raises(RateLimitedError):
+        asyncio.run(patiently(cast("Any", fetch_failing(PATIENCE + 1)), sleep))
+    assert len(calls) == PATIENCE + 1
+    assert len(waits) == PATIENCE

@@ -457,3 +457,76 @@ def test_a_question_set_that_cannot_be_read_stops_the_recorder(
 
     assert recorder.main(["--questions", str(path), "--out", str(tmp_path)]) == 2
     assert "line 1" in capsys.readouterr().err
+
+
+def test_a_query_too_long_for_a_get_request_stops_the_recorder(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Six hundred years make a URL far beyond the client's limit for GET; the plan
+    # reads 2026, which must be among them.
+    years = [*(str(year) for year in range(1400, 2000)), "2026"]
+    path = question_file(tmp_path, question("lookup-a", {**TWO_YEARS, "Tid": years}))
+
+    with pytest.raises(recorder.RecordingError, match="too long for GET"):
+        recorder.question_recordings(path)
+    assert recorder.main(["--questions", str(path), "--out", str(tmp_path)]) == 2
+    assert "too long for GET" in capsys.readouterr().err
+
+
+def sent_by_main(monkeypatch: pytest.MonkeyPatch, arguments: list[str]) -> list[str]:
+    """Run the recorder and return the names it would record, sending nothing."""
+    sent: list[str] = []
+
+    def never(moment: datetime) -> bool:
+        return False
+
+    def keep(
+        client: httpx2.Client, recording: recorder.Recording, out: Path, *, replace: bool
+    ) -> Path:
+        sent.append(recording.name)
+        return out / f"{recording.name}.json"
+
+    monkeypatch.setattr(recorder, "in_avoided_period", never)
+    monkeypatch.setattr(recorder, "record", keep)
+    monkeypatch.setattr(recorder, "PAUSE_SECONDS", 0)
+    assert recorder.main(arguments) == 0
+    return sent
+
+
+def test_only_the_requests_that_no_fixture_answers_are_sent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The first query is recorded in the fixtures; the second, of 2024 alone, is not.
+    path = question_file(
+        tmp_path,
+        question("lookup-a", TWO_YEARS),
+        question("lookup-b", {**TWO_YEARS, "Tid": ["2024", "2026"]}),
+    )
+
+    sent = sent_by_main(monkeypatch, ["--questions", str(path), "--out", str(FIXTURES)])
+
+    assert sent == ["question-lookup-b-q1"]
+
+
+def test_replace_sends_every_request_again(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    path = question_file(tmp_path, question("lookup-a", TWO_YEARS))
+
+    sent = sent_by_main(
+        monkeypatch, ["--questions", str(path), "--out", str(FIXTURES), "--replace"]
+    )
+
+    assert sent == ["metadata-05810-en", "question-lookup-a-q1"]
+
+
+def test_a_fixture_with_an_error_status_does_not_answer_a_request(tmp_path: Path) -> None:
+    # The recording of an unknown table answers its request with HTTP 404.
+    error = next(path for path in ENVELOPES if path.name.startswith("error-metadata-99999-en"))
+    url = str(cast("dict[str, object]", load(error)["request"])["url"])
+    out = tmp_path / "fixtures"
+    out.mkdir()
+    for suffix in (".json", ".body"):
+        source = error.with_suffix(suffix)
+        (out / source.name).write_bytes(source.read_bytes())
+
+    assert response_of(error)["status"] != 200
+    assert ("GET", url) not in recorder.recorded_requests(out)

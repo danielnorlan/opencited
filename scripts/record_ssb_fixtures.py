@@ -15,9 +15,11 @@ fixture. The script waits between requests to stay within SSB's rate limit, and 
 refuses to run in the periods that ADR 0007 keeps scheduled jobs away from.
 
 With ``--questions``, it records what the reference plans of a question set read
-(spec 0005): the metadata and the data of every query, built with the package's own
-request builder so that the replay finds them. A request that a fixture in the
-directory already answers is not sent again.
+(spec 0005): the metadata and the data of every query, with the client's selection
+normalisation, code joining and parameter order, so that the replay finds them; a test
+compares each with the request the client builds. A request that a fixture in the
+directory already answers with HTTP 200 is not sent again, unless ``--replace`` is
+given.
 """
 
 from __future__ import annotations
@@ -610,11 +612,14 @@ def question_recordings(path: Path) -> tuple[Recording, ...]:
 
 
 def recorded_requests(out: Path) -> set[tuple[str, str]]:
-    """Return the method and URL of every request that a fixture in a directory answers."""
+    """Return the method and URL of every request that a fixture answers with HTTP 200."""
     requests: set[tuple[str, str]] = set()
     for path in out.glob("*.json"):
-        request = cast("dict[str, object]", json.loads(path.read_text(encoding="utf-8"))["request"])
-        requests.add((str(request["method"]), str(request["url"])))
+        document = cast("dict[str, object]", json.loads(path.read_text(encoding="utf-8")))
+        request = cast("dict[str, object]", document["request"])
+        response = cast("dict[str, object]", document["response"])
+        if response["status"] == 200:
+            requests.add((str(request["method"]), str(request["url"])))
     return requests
 
 
@@ -654,7 +659,11 @@ def main(arguments: list[str] | None = None) -> int:
         except (ValueError, RecordingError) as error:
             print(f"{options.questions}: {error}", file=sys.stderr)
             return 2
-        done = recorded_requests(out) if out.is_dir() else set[tuple[str, str]]()
+        done = (
+            recorded_requests(out)
+            if out.is_dir() and not options.replace
+            else set[tuple[str, str]]()
+        )
         with httpx2.Client(base_url=BASE_URL) as client:
             available = tuple(
                 item
