@@ -460,9 +460,10 @@ back to the model with the gate report, at most twice, and with what to do about
 kind of failed number: a date or a period is cited with the source result that holds
 it or goes, a value is written as a result gives it, and a four-digit number that
 matched nothing gets both hints, since the gate cannot tell a year from a count. The
-prompt tells the model to write a change with its sign, to name periods as the results name them, to write a date only when a cited
-result gives it, and to cite the source result beside a calculation where it names a
-period or a date, since a calculation holds only the numbers it computes. A reply is
+prompt tells the model to write a change with its sign, to name periods as the
+results name them, to write a date only when a cited result gives it, and to cite
+the source result beside a calculation where it names a period or a date, since a
+calculation holds only the numbers it computes. A reply is
 released only when the gate passes it and its shown markers cite at least one
 result: the gate passes a text without numbers, and an answer that cites nothing does
 not rest on the sources, so it goes back with a request to cite, counted like a
@@ -481,9 +482,7 @@ stays whole while the model has only read metadata, since the table may be the w
 one, and metadata that no query used stays too, since a question over two tables
 often reads both before it queries either. The run keeps every full result, the gate
 reads those, and a spent result can still be cited. Metadata read again after a
-query stays whole until a later query, so a model that reads it again sees it. In
-one run of question set v1 with `deepseek-flash`, the tokens fell from 2,790,142 in
-the published run to 1,651,557.
+query stays whole until a later query, so a model that reads it again sees it.
 
 The decision after each step is `opencited.agent.run.decide`, a plain function of
 the run state, the limits and the prices: call the model, run tools, check an
