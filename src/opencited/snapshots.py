@@ -171,7 +171,8 @@ class SnapshotStore:
             raise SnapshotError(f"the dimension codes {taken} are column names of a snapshot")
         values = [cell.value for cell in result.observations if cell.value is not None]
         scale = max((scale_of(value) for value in values), default=0)
-        if scale > MAX_DIGITS or any(digits(value, scale) > MAX_DIGITS for value in values):
+        # A value takes at least the scale's digits, so this also refuses a scale above 38.
+        if any(digits(value, scale) > MAX_DIGITS for value in values):
             raise SnapshotError(
                 f"a value does not fit DECIMAL({MAX_DIGITS}, {scale}), so no snapshot is written"
             )
