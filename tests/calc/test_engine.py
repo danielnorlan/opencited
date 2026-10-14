@@ -950,7 +950,7 @@ def test_numbers_are_written_in_fixed_point_and_as_ssb_wrote_them(store: Snapsho
     }
     token = str(recorded("data-06743-decimals-no", "80a", "18", "Fangst", "2016"))
     result = run(store, {"name": "catch", "operation": "value", "snapshot": fish, "codes": codes})
-    assert f"catch = {token}" in result.readable()
+    assert f"  catch = {token}" in result.readable().splitlines()
 
 
 def with_float_values(store: SnapshotStore, snapshot: str) -> None:
@@ -971,9 +971,14 @@ def with_float_values(store: SnapshotStore, snapshot: str) -> None:
     (directory / MANIFEST).write_text(json.dumps(data), encoding="utf-8")
 
 
-def test_a_floating_point_column_in_a_snapshot_stops_every_step(store: SnapshotStore) -> None:
+def test_a_snapshot_with_floating_point_values_is_refused_before_any_step(
+    store: SnapshotStore,
+) -> None:
+    # Reading the snapshot refuses the binary numbers, so the engine's own check of the
+    # column types, tested above, guards SQL that a valid snapshot never produces.
     people = store.write(population()).name
     with_float_values(store, people)
     for step in (value("cell", people, "2026"), rank(people, "highest", 2)):
         error = plan_error(store, step)
-        assert "a binary number" in str(error)
+        assert error.step == step["name"]
+        assert "cannot be read" in str(error)
