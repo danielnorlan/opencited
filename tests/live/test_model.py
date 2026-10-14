@@ -3,8 +3,10 @@
 The tests are marked `model` and run only with `pytest -m model`, since each call
 needs a key and costs a little. The default run and the nightly workflow leave them
 out, and without the variables they fail and name the one that is missing. They check
-that the endpoint takes the four tool schemas and reports a model name and usage;
-whether the model answers well is for the evaluation suite (spec 0005).
+that the endpoint takes the four tool schemas and reports a model name and usage, and
+that the agent answers or refuses a question against SSB's live API, with an answer
+that passes the gate again. Whether the model answers well is for the evaluation
+suite (spec 0005).
 """
 
 from __future__ import annotations
@@ -17,7 +19,9 @@ import pytest
 from mcp import Client
 from recorded import FIXTURES
 
+from opencited.agent.answer import Answer, Refusal
 from opencited.agent.config import from_environment
+from opencited.agent.loop import AgentError, ask
 from opencited.agent.model import (
     Completion,
     Message,
@@ -27,6 +31,7 @@ from opencited.agent.model import (
     UserMessage,
 )
 from opencited.agent.tools import Toolbox
+from opencited.gate import Evidence, check
 from opencited.http.replay import replay_transport
 from opencited.mcp import build_server
 from opencited.snapshots import SnapshotStore
@@ -78,3 +83,29 @@ def test_the_endpoint_takes_the_four_tool_schemas(tmp_path: Path) -> None:
 
     assert completion.usage is not None
     assert {call.name for call in completion.tool_calls} <= {tool.name for tool in tools}
+
+
+def test_the_agent_answers_or_refuses_and_an_answer_passes_the_gate_again(
+    tmp_path: Path,
+) -> None:
+    config = from_environment(os.environ)
+    store = SnapshotStore(tmp_path)
+
+    async def run() -> tuple[Answer | Refusal | AgentError, tuple[Evidence, ...]]:
+        async with (
+            Client(build_server(snapshots=store)) as client,
+            ModelClient(config) as model,
+        ):
+            toolbox = await Toolbox.connect(client, store, "no")
+            try:
+                result = await ask("Hvor mange bor i Norge?", "no", model=model, toolbox=toolbox)
+            except AgentError as error:
+                return error, toolbox.evidence
+            return result, toolbox.evidence
+
+    result, evidence = asyncio.run(run())
+
+    assert not isinstance(result, AgentError), str(result)
+    assert result.model.reported
+    if isinstance(result, Answer):
+        assert check(result.text, "no", evidence).passed

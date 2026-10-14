@@ -24,7 +24,7 @@ flowchart LR
 | MCP server | Table search, metadata and data from each source, with a provenance record on every data result | In progress ([spec 0001](specs/0001-ssb-mcp-server.md)) |
 | Calculation engine | Runs typed calculation plans over stored snapshots: DuckDB selects the cells, and the arithmetic uses exact rational numbers | Built; the `calculate` tool comes with the agent ([spec 0002](specs/0002-snapshots-and-calculation.md)) |
 | Evidence gate | Matches every number in an answer to source data or a calculation result, and blocks the answer otherwise | Built; the agent's retry comes with the agent ([spec 0003](specs/0003-evidence-gate.md)) |
-| Agent | Plans, calls tools and drafts the answer, in a loop of its own over a chat completions API | In progress: the model client and the tools are built, and the loop comes next ([spec 0004](specs/0004-agent.md)) |
+| Agent | Plans, calls tools and drafts the answer, in a loop of its own over a chat completions API | Built; not yet measured with a model ([spec 0004](specs/0004-agent.md)) |
 | Evaluation suite | Versioned questions with computed answers, run with Inspect AI | Specification approved ([spec 0005](specs/0005-evaluation-suite.md)) |
 | Table search | Hybrid full-text and vector search over table metadata, in PostgreSQL with pgvector | Planned, M3 |
 | Model gateway | Routes requests between local and hosted models within budgets, using LiteLLM | Planned, M3 |
@@ -49,7 +49,7 @@ lives outside the package, in `evals/`.
 | `opencited.sources.ssb` | The StatBank client: search, metadata, data, queries with provenance, and JSON-stat parsing | M1 |
 | `opencited.snapshots` | Write-once snapshots of query results: the raw body, the provenance record, labels and units, and the cells in Parquet | M2 |
 | `opencited.mcp` | The MCP server and its three tools | M1 |
-| `opencited.cli` | The command line: `opencited mcp` | M1 |
+| `opencited.cli` | The command line: `opencited mcp` (M1) and `opencited ask` (M2) | M1 |
 | `opencited.calc` | Typed calculation plans, the SQL they generate and exact rational arithmetic | M2 |
 | `opencited.gate` | Number extraction from answer text and matching against values and results | M2 |
 | `opencited.agent` | The loop that calls the model and the tools, checks answers and retries | M2 |
@@ -363,9 +363,9 @@ writes is read back with its value and decimals.
 ## Agent (M2)
 
 The agent answers one question in a loop over a chat completions endpoint
-([ADR 0010](adr/0010-agent-loop.md)). The configuration, the model client and the
-tools are built; the loop, its limits and retries, answers, refusals and
-`opencited ask` are planned.
+([ADR 0010](adr/0010-agent-loop.md)). It has not yet run with a model in this
+repository's tests: the tests marked `model` need an endpoint, and the evaluation
+suite that will measure the agent is planned.
 
 ### Configuration
 
@@ -433,6 +433,59 @@ that is not from `query_table`, an ID the run does not have and a query result
 without a snapshot are reported to the model by their evidence IDs, and so are the
 engine's errors. A snapshot that cannot be read is reported without the store's
 reason, which can name a local path.
+
+### Loop
+
+`opencited.agent.loop.ask` sends a fixed system prompt, the question and the four
+tool schemas, runs the tool calls of each reply and returns their results, until the
+model replies without a tool call. The gate checks that reply. A blocked reply goes
+back to the model with the gate report, at most twice. The prompt has a version,
+`opencited.agent.prompt.PROMPT_VERSION`, which every answer records; a test holds the
+hash of the prompt texts for each version, so a change to the texts needs a new
+version.
+
+The decision after each step is `opencited.agent.run.decide`, a plain function of
+the run state, the limits and the prices: call the model, run tools, check an
+answer, retry, release, refuse or fail. The loop only carries the decisions out.
+Each limit counts as reached at its value. The time, token and cost limits are
+checked before every decision, so a run that reaches one stops even with an answer
+in hand; the model call limit is checked before a call, and the tool call limit
+before the tools of a reply run, all of them or none. Tokens come from the usage
+that the endpoint reports, and the cost is computed exactly from the prices. A model
+call or a tool call that runs past the time limit is cancelled.
+
+The model refuses by starting its reply with the line `REFUSE: no data` or
+`REFUSE: outside the sources`, since it gets no tool besides the four. The line
+after it is kept as the model's explanation only when the gate passes it. A reply
+without usage, a reply with neither text nor a tool call, and an endpoint that
+fails stop the run with an error that holds the usage so far; these are faults of
+the endpoint or the model, and spec 0004 lists no refusal for them.
+
+### Answers and refusals
+
+`opencited.agent.answer` holds an answer's text with its markers, the language, a
+citation for each result its markers name, the calculations it cites with every
+step and its SQL, the gate report, the model as configured and as the endpoint named
+it, the settings and prices, the prompt version and the usage: model calls, tool
+calls, tokens, seconds and cost. A citation of a query result holds its provenance
+record and the cells whose values the answer uses, with their codes and labels, read
+from the cells that the gate matched. A refusal holds its reason, the limit it
+reached if any, the model's explanation if it passed the gate, the same records and,
+after a blocked answer, the last gate report. No record holds the API key or the name
+of its variable.
+
+### `opencited ask`
+
+`opencited ask "<question>"` builds the MCP server in the same process, with the
+response cache and a snapshot store in the user's data directory unless
+`--snapshot-dir` or `OPENCITED_SNAPSHOT_DIR` names another, and answers with the
+configured model. The answer takes the language of the question: the language with
+more of its common words in the question wins, each word with æ, ø or å counts as
+Norwegian, and a tie goes to Norwegian; `--language` sets it instead. The command
+prints the answer with its markers turned into numbered sources, and a refusal with
+its reason, in the language of the answer. `--json` prints every record. It exits
+with 0 for an answer, 3 for a refusal, 1 when the run fails and 2 when the
+configuration, the key or the snapshot directory cannot be used.
 
 ## Trust boundaries
 

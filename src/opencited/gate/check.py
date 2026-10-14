@@ -29,6 +29,8 @@ from fractions import Fraction
 from typing import Literal
 from zoneinfo import ZoneInfo
 
+from pydantic import Field
+
 from opencited.calc.arithmetic import round_away
 from opencited.calc.engine import unit_named
 from opencited.calc.result import CalculationResult
@@ -97,6 +99,12 @@ class Finding(Frozen):
     unit: Literal["per cent", "percentage points"] | None = None
     outcome: Outcome
     evidence: str | None = None
+    cell: tuple[str, ...] | None = Field(
+        default=None, description="The codes of the cell that a matched value came from."
+    )
+    step: str | None = Field(
+        default=None, description="The calculation step that a matched value came from."
+    )
     detail: str
 
 
@@ -127,6 +135,8 @@ class Candidate:
     exact: Fraction
     kind: UnitKind
     where: str
+    cell: tuple[str, ...] | None = None
+    step: str | None = None
 
 
 @dataclass
@@ -188,14 +198,15 @@ def hold(holdings: Holdings, evidence: Evidence) -> None:
     if isinstance(evidence, CalculationEvidence):
         for step in evidence.result.steps:
             if step.exact is not None:
-                holdings.values.append(
-                    (name, Candidate(Fraction(step.exact), step.unit.kind, f"step {step.name}"))
-                )
+                where = f"step {step.name}"
+                candidate = Candidate(Fraction(step.exact), step.unit.kind, where, step=step.name)
+                holdings.values.append((name, candidate))
             for cell in step.ranked:
                 where = f"step {step.name}, {', '.join(cell.codes)}"
-                holdings.values.append(
-                    (name, Candidate(Fraction(cell.value), step.unit.kind, where))
+                candidate = Candidate(
+                    Fraction(cell.value), step.unit.kind, where, cell=cell.codes, step=step.name
                 )
+                holdings.values.append((name, candidate))
         return
     result = evidence.result
     if isinstance(result, QueryResult):
@@ -209,9 +220,9 @@ def hold(holdings: Holdings, evidence: Evidence) -> None:
                 continue
             base = units.get(cell.codes[contents[0]]) if contents else None
             kind = unit_named(base).kind
-            holdings.values.append(
-                (name, Candidate(Fraction(cell.value), kind, f"cell {', '.join(cell.codes)}"))
-            )
+            where = f"cell {', '.join(cell.codes)}"
+            candidate = Candidate(Fraction(cell.value), kind, where, cell=cell.codes)
+            holdings.values.append((name, candidate))
         for dimension in result.dimensions:
             for value in dimension.values:
                 if dimension.time:
@@ -353,7 +364,8 @@ def judge(number: Number, holdings: Holdings, cited: bool) -> Finding:
         )
     for name, candidate in holdings.values:
         if allowed(number, candidate.kind) and fits(number, candidate):
-            return finding(number, "value", "matched", candidate.where, name)
+            matched = finding(number, "value", "matched", candidate.where, name)
+            return matched.model_copy(update={"cell": candidate.cell, "step": candidate.step})
     if plain and digits in holdings.labels:
         return finding(
             number,

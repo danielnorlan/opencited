@@ -109,6 +109,8 @@ def test_markers_are_no_findings_and_list_numbers_are_ignored() -> None:
     ]
     assert report.findings[1].evidence == "E1"
     assert report.findings[1].detail.startswith("cell ")
+    assert report.findings[1].cell == result.observations[0].codes
+    assert report.findings[1].step is None
 
 
 def test_the_report_names_each_failed_number_with_its_reason() -> None:
@@ -196,6 +198,8 @@ def test_a_tie_of_an_exact_result_rounds_away_from_zero(
     # 49/20 is 2.45: half-even rounding would give 2.4, the gate's rule gives 2.5.
     report = check(f"It was {written} kg [C1].", "en", [CalculationEvidence("C1", tied(exact))])
     assert report.passed is passes
+    if passes:
+        assert (report.findings[0].step, report.findings[0].cell) == ("mean", None)
 
 
 def test_a_cell_whose_unit_names_per_cent_needs_a_percent_word() -> None:
@@ -229,6 +233,7 @@ def test_the_cells_of_a_ranking_are_values_of_the_calculation(tmp_path: Path) ->
     )
     assert report.passed, report.text()
     assert report.findings[0].detail.startswith("step top, ")
+    assert (report.findings[0].step, report.findings[0].cell) == ("top", second.codes)
 
 
 def test_a_retrieval_just_after_midnight_in_oslo_has_both_dates() -> None:

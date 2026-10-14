@@ -31,6 +31,14 @@ Notable changes to OpenCited are recorded here. The format follows
   Norwegian time, and a rate limiter that keeps each process within 30 requests a
   minute and backs off after HTTP 429. `opencited mcp` takes `--cache-dir` and
   `--no-cache`.
+- `opencited ask`, which answers a question with the configured model and prints the
+  answer with numbered sources, or with `--json` every record of it (spec 0004). The
+  agent's loop sends a versioned system prompt, runs the tools, checks the reply with
+  the evidence gate, retries a blocked reply at most twice, and stops at its limits
+  of model calls, tool calls, tokens, time and cost, deciding each step with a plain
+  function of the run state.
+- Matched values in the gate report name the cell or the calculation step they came
+  from.
 - The agent's model client and tools (spec 0004): the endpoint, the model, its
   settings, prices and limits from `OPENCITED_*` variables; a client for chat
   completions that keeps the API key out of its representation, its errors and its
