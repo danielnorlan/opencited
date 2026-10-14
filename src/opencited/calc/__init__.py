@@ -1,7 +1,7 @@
 """The calculation engine: typed plans over snapshots, with exact arithmetic (spec 0002)."""
 
 from opencited.calc.engine import CalculationError, Engine
-from opencited.calc.plan import Plan, plan_schema
+from opencited.calc.plan import Plan, parse_plan, plan_schema
 from opencited.calc.result import CalculationResult, ResultUnit, StepResult
 
 __all__ = [
@@ -11,5 +11,6 @@ __all__ = [
     "Plan",
     "ResultUnit",
     "StepResult",
+    "parse_plan",
     "plan_schema",
 ]

@@ -8,6 +8,7 @@ type is refused before anything runs.
 
 from __future__ import annotations
 
+import json
 from typing import Annotated, Any, Literal
 
 from pydantic import Field, StringConstraints
@@ -166,5 +167,23 @@ def inputs(step: Step) -> tuple[str, ...]:
 
 
 def plan_schema() -> dict[str, Any]:
-    """Return the JSON schema of a plan, which the calculate tool publishes."""
+    """Return the JSON schema of a plan, for the calculate tool of spec 0004 to publish."""
     return Plan.model_json_schema()
+
+
+def refuse_repeats(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    keys = [key for key, _ in pairs]
+    repeated = sorted({key for key in keys if keys.count(key) > 1})
+    if repeated:
+        raise ValueError(f"the plan names {', '.join(repeated)} more than once in one object")
+    return dict(pairs)
+
+
+def parse_plan(text: str) -> Plan:
+    """Return the plan in a JSON text, refusing an object that repeats a key.
+
+    JSON parsers keep the last of two equal keys, so ``{"Kjonn": ["0"], "Kjonn": ["1"]}``
+    would select "1" without a word.
+    """
+    json.loads(text, object_pairs_hook=refuse_repeats)
+    return Plan.model_validate_json(text)

@@ -14,8 +14,6 @@ from collections.abc import Iterable
 from decimal import Decimal
 from fractions import Fraction
 
-# DuckDB's widest decimal type holds 38 digits, and so may a result.
-MAX_SIGNIFICANT = 38
 HUNDRED = Fraction(100)
 
 
@@ -31,8 +29,7 @@ def mean(values: Iterable[Decimal]) -> Fraction:
 
 
 def quotient(left: Fraction, right: Fraction) -> Fraction:
-    if right == 0:
-        raise ZeroDivisionError("division by zero")
+    """Return ``left / right``; ``Fraction`` raises ZeroDivisionError for a zero divisor."""
     return left / right
 
 
@@ -66,11 +63,6 @@ def exact_decimal(value: Fraction) -> Decimal | None:
         return None
     places = max(twos, fives)
     return Decimal(f"{value.numerator * (10**places // value.denominator)}E-{places}")
-
-
-def significant(value: Decimal) -> int:
-    """Return the significant digits of a decimal as written, at its own scale."""
-    return 0 if value.is_zero() else len(value.as_tuple().digits)
 
 
 def fraction_text(value: Fraction) -> str:

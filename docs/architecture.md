@@ -251,21 +251,26 @@ steps, named by their step names:
 The engine checks the whole plan before it runs any step: unique names, inputs from
 earlier steps that give a single value, snapshots that can be read, codes that exist,
 a code for every dimension and at most 5,000 cells per step. It then loads the
-snapshots into an in-memory DuckDB database, turns off external access and locks the
-configuration, so the SQL it generates, with every code bound as a parameter, can
-read only the loaded tables. A result column of a floating-point type is an error.
+snapshots into an in-memory DuckDB database, from private copies of the Parquet bytes
+whose hashes it checked, turns off external access and locks the configuration, so the
+SQL it generates, with every code bound as a parameter, can read only the loaded
+tables. A result column of a floating-point type is an error.
 
 DuckDB selects and ranks; all arithmetic runs on Python `Fraction` values made from
-the cells' decimals. A step with decimals rounds once, with ties away from zero, and
-later steps use the rounded value; every step also keeps its exact result as a
-fraction. A step fails, with an error that names it, when it reads a missing value,
-divides by zero, gives more than 38 significant digits, or mixes units in `sum`,
-`mean`, `rank`, `add` or `subtract`.
+the cells' values as SSB wrote them. A step with decimals rounds once, with ties away
+from zero, and later steps use the rounded value; every step that gives a value also
+keeps its exact result as a fraction. A step fails, with an error that names it, when
+it reads a missing value, divides by zero, gives a result that needs more than the 38
+digits of DuckDB's widest decimal type, counting its integer digits and its decimals,
+or mixes units in `sum`, `mean`, `rank`, `add` or `subtract`. Numbers in a result
+are written in fixed point.
 
 Each result has a unit kind that the evidence gate can match: an amount, with the
 source's unit; per cent, for `change_percent`, `share_percent` and cells whose unit
 is `prosent`, `per cent`, `percent` or `%`; percentage points, for the difference of
-two per cent values; or a ratio, for the quotient of two values with the same unit.
+two per cent values and cells whose unit is `prosentpoeng` or `percentage points`; or a
+ratio, for the quotient of two values with the same unit. `parse_plan` reads a plan
+from JSON and refuses an object that repeats a key.
 A result lists every step with its operation, inputs, SQL, bound codes, arithmetic
 with the numbers filled in, exact and rounded result and unit, and names every
 snapshot it read with the provenance record. `readable()` writes the steps as text.

@@ -13,7 +13,7 @@ from pydantic import Field
 
 from opencited.model import Frozen, Sha256Hex
 from opencited.provenance import ProvenanceRecord
-from opencited.values import ExactDecimal
+from opencited.values import ExactDecimal, exact_text
 
 FRACTION_PATTERN = r"^-?[0-9]+(/[0-9]+)?$"
 
@@ -22,8 +22,9 @@ class ResultUnit(Frozen):
     """The unit of a result.
 
     ``kind`` says how a number with this unit may be written: as an amount, as per
-    cent, as percentage points or as a ratio. ``name`` is the source's unit for an
-    amount, or the product or quotient of units, and is empty for the other kinds.
+    cent, as percentage points or as a ratio. ``name`` is the source's unit of a cell,
+    of any kind, or the product or quotient of two units, and is empty for a per cent,
+    percentage point or ratio result that a calculation made.
     """
 
     kind: Literal["amount", "per cent", "percentage points", "ratio"]
@@ -87,6 +88,7 @@ class CalculationResult(Frozen):
             lines.append(f"  {step.arithmetic}")
             for cell in step.ranked:
                 lines.append(
-                    f"  {cell.position}. {', '.join(cell.labels)}: {cell.value} {step.unit.text()}"
+                    f"  {cell.position}. {', '.join(cell.labels)}: {exact_text(cell.value)} "
+                    f"{step.unit.text()}"
                 )
         return "\n".join(lines)

@@ -1,16 +1,17 @@
 """The calculation engine: checks a plan, selects cells with DuckDB and computes exactly.
 
 The engine checks the whole plan before it runs any step. It then loads the snapshots
-that the plan names into an in-memory DuckDB database, turns off external access and
-locks the configuration, and only then runs the SQL it generates, with every code bound
-as a parameter. DuckDB selects and ranks cells; all arithmetic runs on exact rational
-numbers in ``opencited.calc.arithmetic`` (ADR 0011).
+that the plan names into an in-memory DuckDB database, from private copies of their
+hashed Parquet bytes, turns off external access and locks the configuration, and only
+then runs the SQL it generates, with every code bound as a parameter. DuckDB selects
+and ranks cells; all arithmetic runs on exact rational numbers in
+``opencited.calc.arithmetic`` (ADR 0011).
 """
 
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from fractions import Fraction
@@ -39,13 +40,24 @@ from opencited.calc.result import (
     SnapshotUse,
     StepResult,
 )
-from opencited.snapshots import OBSERVATIONS, Snapshot, SnapshotError, SnapshotStore, quoted
+from opencited.snapshots import (
+    MAX_DIGITS,
+    Snapshot,
+    SnapshotError,
+    SnapshotStore,
+    digits,
+    private_copy,
+    quoted,
+    scale_of,
+)
+from opencited.values import exact_text
 
 # A step selects at most this many cells, as a query does (spec 0002).
 MAX_CELLS = 5000
-# A unit counts as per cent when its name is one of these, as specs 0002 and 0003 write
-# them, in any case.
+# A cell's unit counts as per cent, or as percentage points, when its name is one of
+# the words that spec 0003 lists for them, or the per cent sign, in any case.
 PER_CENT = frozenset({"prosent", "per cent", "percent", "%"})
+PERCENTAGE_POINTS = frozenset({"prosentpoeng", "percentage points"})
 FLOATING = frozenset({"DOUBLE", "FLOAT", "REAL"})
 # An arithmetic line lists the cells of a sum or a mean when there are at most this many.
 LISTED = 10
@@ -71,6 +83,8 @@ class Outcome:
 
 @dataclass(frozen=True)
 class Row:
+    """A selected cell, with its value as SSB wrote it."""
+
     codes: tuple[str, ...]
     value: Decimal | None
     symbol: str | None
@@ -78,9 +92,12 @@ class Row:
 
 
 def unit_named(name: str | None) -> ResultUnit:
-    """Return the unit of a cell, which is per cent when its name says so."""
-    if name is not None and name.strip().lower() in PER_CENT:
+    """Return the unit of a cell, which is per cent or percentage points when it says so."""
+    word = name.strip().lower() if name is not None else None
+    if word in PER_CENT:
         return ResultUnit(kind="per cent", name=name)
+    if word in PERCENTAGE_POINTS:
+        return ResultUnit(kind="percentage points", name=name)
     return ResultUnit(kind="amount", name=name)
 
 
@@ -88,6 +105,25 @@ def same_unit(left: ResultUnit, right: ResultUnit) -> bool:
     if left.kind != right.kind:
         return False
     return left.kind != "amount" or left.name == right.name
+
+
+def text(value: Decimal) -> str:
+    """Return a value in fixed point, as the evidence gate reads numbers."""
+    return exact_text(value)
+
+
+def checked(value: Decimal, step: str) -> Decimal:
+    """Refuse a result that needs more digits than DuckDB's widest decimal type.
+
+    A value takes its integer digits and its decimals, so this refuses more than 38
+    significant digits, and also a value so small that its decimals pass 38.
+    """
+    needed = digits(value, scale_of(value))
+    if needed > MAX_DIGITS:
+        raise CalculationError(
+            f"gives a result that needs {needed} digits, more than {MAX_DIGITS}", step
+        )
+    return value
 
 
 class Engine:
@@ -99,7 +135,7 @@ class Engine:
     def run(self, plan: Plan) -> CalculationResult:
         """Check a plan, run every step and return the steps with their results."""
         snapshots = self._check(plan)
-        connection, tables = locked(self.store, list(snapshots))
+        connection, tables = locked(snapshots)
         with connection:
             runner = Runner(connection, snapshots, tables)
             steps = tuple(runner.step(step) for step in plan.steps)
@@ -144,24 +180,25 @@ class Engine:
 
 
 def locked(
-    store: SnapshotStore, snapshot_ids: Sequence[str]
+    snapshots: Mapping[str, Snapshot],
 ) -> tuple[duckdb.DuckDBPyConnection, dict[str, str]]:
     """Return an in-memory database with the snapshots loaded, and the table of each.
 
-    The database can read no file and change none of its settings afterwards, so the
-    SQL that the engine generates can only read the loaded tables.
+    Each snapshot is loaded from a private copy of the Parquet bytes that reading it
+    hashed. Afterwards the database can read no file and change none of its settings,
+    so the SQL that the engine generates can only read the loaded tables.
     """
     tables = {
-        snapshot_id: f"snapshot_{index}" for index, snapshot_id in enumerate(snapshot_ids, start=1)
+        snapshot_id: f"snapshot_{index}" for index, snapshot_id in enumerate(snapshots, start=1)
     }
     connection = duckdb.connect(":memory:")
     try:
         for snapshot_id, table in tables.items():
-            path = store.path(snapshot_id) / OBSERVATIONS
-            connection.execute(
-                f"CREATE TABLE {table} AS SELECT * FROM read_parquet(?)",  # noqa: S608 - a generated table name only
-                [str(path)],
-            )
+            with private_copy(snapshots[snapshot_id].parquet) as path:
+                connection.execute(
+                    f"CREATE TABLE {table} AS SELECT * FROM read_parquet(?)",  # noqa: S608 - a generated table name only
+                    [str(path)],
+                )
         connection.execute("SET enable_external_access = false")
         connection.execute("SET lock_configuration = true")
     except BaseException:
@@ -170,28 +207,34 @@ def locked(
     return connection, tables
 
 
-def selection_of(step: Step) -> dict[str, tuple[str, ...]]:
+def selection_of(step: Step, snapshot: Snapshot | None = None) -> dict[str, tuple[str, ...]]:
+    """Return the codes a step selects; a ranking leaving out ``by`` takes all its codes."""
     match step:
         case ValueStep():
             return {code: (value,) for code, value in step.codes.items()}
-        case SumStep() | MeanStep() | RankStep():
+        case SumStep() | MeanStep():
             return dict(step.selection)
+        case RankStep():
+            selection = dict(step.selection)
+            if snapshot is not None and step.by not in selection:
+                for dimension in snapshot.manifest.dimensions:
+                    if dimension.code == step.by:
+                        selection[step.by] = tuple(value.code for value in dimension.values)
+            return selection
         case _:
             return {}
 
 
 def check_selection(step: Step, snapshot: Snapshot) -> None:
     """Refuse a selection that misses a dimension, names an unknown code or is too large."""
-    selection = selection_of(step)
     dimensions = {dimension.code: dimension for dimension in snapshot.manifest.dimensions}
+    if isinstance(step, RankStep) and step.by not in dimensions:
+        raise CalculationError(f"ranks by {step.by!r}, which the snapshot lacks", step.name)
+    selection = selection_of(step, snapshot)
     unknown = sorted(set(selection) - set(dimensions))
     if unknown:
         raise CalculationError(f"names {', '.join(unknown)}, which the snapshot lacks", step.name)
     if isinstance(step, RankStep):
-        if step.by not in dimensions:
-            raise CalculationError(f"ranks by {step.by!r}, which the snapshot lacks", step.name)
-        if step.by not in selection:
-            selection[step.by] = tuple(value.code for value in dimensions[step.by].values)
         loose = [code for code, codes in selection.items() if code != step.by and len(codes) != 1]
         if loose:
             raise CalculationError(
@@ -240,36 +283,33 @@ class Runner:
             case BinaryStep() | DivideStep() | ChangePercentStep() | SharePercentStep():
                 result = self.combine(step)
         if result.value is not None:
-            digits = arithmetic.significant(result.value)
-            if digits > arithmetic.MAX_SIGNIFICANT:
-                raise CalculationError(
-                    f"gives a result with {digits} significant digits, more than "
-                    f"{arithmetic.MAX_SIGNIFICANT}",
-                    step.name,
-                )
             self.outcomes[step.name] = Outcome(result.value, result.unit)
         return result
 
-    def select(
+    def where(
         self, step: ValueStep | SumStep | MeanStep | RankStep
-    ) -> tuple[str, tuple[str, ...], list[Row]]:
-        """Return the SQL, its parameters and the cells that a step selects."""
+    ) -> tuple[list[str], str, list[str]]:
+        """Return the dimension codes, the WHERE clause and the codes it binds."""
         snapshot = self.snapshots[step.snapshot]
-        selection = selection_of(step)
+        selection = selection_of(step, snapshot)
         codes = [dimension.code for dimension in snapshot.manifest.dimensions]
-        if isinstance(step, RankStep) and step.by not in selection:
-            dimension = next(item for item in snapshot.manifest.dimensions if item.code == step.by)
-            selection[step.by] = tuple(value.code for value in dimension.values)
         clauses: list[str] = []
         parameters: list[str] = []
         for code in codes:
             chosen = selection[code]
             clauses.append(f"{quoted(code)} IN ({', '.join('?' * len(chosen))})")
             parameters.extend(chosen)
+        return codes, " AND ".join(clauses), parameters
+
+    def select(
+        self, step: ValueStep | SumStep | MeanStep | RankStep
+    ) -> tuple[str, tuple[str, ...], list[Row]]:
+        """Return the SQL, its parameters and the cells that a step selects."""
+        codes, where, parameters = self.where(step)
         columns = ", ".join(quoted(code) for code in codes)
         sql = (
-            f"SELECT {columns}, value, symbol, unit FROM {self.tables[step.snapshot]} "  # noqa: S608 - quoted names, bound codes
-            f"WHERE {' AND '.join(clauses)} ORDER BY {columns}"
+            f"SELECT {columns}, value_text, symbol, unit FROM {self.tables[step.snapshot]} "  # noqa: S608 - quoted names, bound codes
+            f"WHERE {where} ORDER BY {columns}"
         )
         cursor = self.connection.execute(sql, parameters)
         check_types(cursor, step.name)
@@ -277,13 +317,15 @@ class Runner:
         rows = [
             Row(
                 codes=tuple(cast("Sequence[str]", row[:count])),
-                value=cast("Decimal | None", row[count]),
+                value=Decimal(cast("str", row[count])) if row[count] is not None else None,
                 symbol=cast("str | None", row[count + 1]),
                 unit=cast("str | None", row[count + 2]),
             )
             for row in cursor.fetchall()
         ]
-        expected = math.prod(len(chosen) for chosen in selection.values())
+        expected = math.prod(
+            len(chosen) for chosen in selection_of(step, self.snapshots[step.snapshot]).values()
+        )
         if len(rows) != expected:
             raise CalculationError(
                 f"selected {len(rows)} cells where the snapshot should have {expected}", step.name
@@ -304,25 +346,26 @@ class Runner:
         sql, parameters, rows = self.select(step)
         values = [cast("Decimal", row.value) for row in rows]
         unit = unit_named(rows[0].unit)
-        listed = " + ".join(str(value) for value in values) if len(values) <= LISTED else None
+        listed = " + ".join(text(value) for value in values) if len(values) <= LISTED else None
         decimals: int | None = None
         match step:
             case ValueStep():
                 exact = Fraction(values[0])
-                value = values[0]
-                text = f"{step.name} = {value}"
+                value = checked(values[0], step.name)
+                line = f"{step.name} = {text(value)}"
             case SumStep():
                 exact = arithmetic.total(values)
-                value = cast("Decimal", arithmetic.exact_decimal(exact))
-                text = f"{step.name} = {listed or f'the sum of {len(values)} cells'} = {value}"
+                value = checked(cast("Decimal", arithmetic.exact_decimal(exact)), step.name)
+                summed = listed or f"the sum of {len(values)} cells"
+                line = f"{step.name} = {summed} = {text(value)}"
             case MeanStep():
                 exact = arithmetic.mean(values)
-                value = arithmetic.round_away(exact, step.decimals)
+                value = checked(arithmetic.round_away(exact, step.decimals), step.name)
                 decimals = step.decimals
                 summed = f"({listed})" if listed else f"the sum of {len(values)} cells"
-                text = (
+                line = (
                     f"{step.name} = {summed} / {len(values)} = {arithmetic.fraction_text(exact)}"
-                    f", rounded to {value}"
+                    f", rounded to {text(value)}"
                 )
         return StepResult(
             name=step.name,
@@ -331,7 +374,7 @@ class Runner:
             snapshot=step.snapshot,
             sql=(sql,),
             parameters=(parameters,),
-            arithmetic=text,
+            arithmetic=line,
             exact=arithmetic.fraction_text(exact),
             value=value,
             decimals=decimals,
@@ -341,14 +384,16 @@ class Runner:
     def rank(self, step: RankStep) -> StepResult:
         sql, parameters, rows = self.select(step)
         snapshot = self.snapshots[step.snapshot]
-        codes = [dimension.code for dimension in snapshot.manifest.dimensions]
+        codes, where, _ = self.where(step)
         direction = "DESC" if step.order == "highest" else "ASC"
-        where = sql[sql.index(" WHERE ") : sql.index(" ORDER BY ")]
         columns = ", ".join(quoted(code) for code in codes)
+        # The place is the last column, sorted by its number, so no alias can collide
+        # with a dimension code.
+        window = f"rank() OVER (ORDER BY value {direction})"
+        place = len(codes) + 2
         ranking = (
-            f"SELECT {columns}, value, rank() OVER (ORDER BY value {direction}) AS position "  # noqa: S608 - quoted names, bound codes
-            f"FROM {self.tables[step.snapshot]}{where} QUALIFY position <= ? "
-            f"ORDER BY position, {quoted(step.by)}"
+            f"SELECT {columns}, value_text, {window} FROM {self.tables[step.snapshot]} "  # noqa: S608 - quoted names, bound codes
+            f"WHERE {where} QUALIFY {window} <= ? ORDER BY {place}, {quoted(step.by)}"
         )
         cursor = self.connection.execute(ranking, [*parameters, step.count])
         check_types(cursor, step.name)
@@ -363,11 +408,11 @@ class Runner:
                 labels=tuple(
                     labels[code][cast("str", row[index])] for index, code in enumerate(codes)
                 ),
-                value=cast("Decimal", row[len(codes)]),
+                value=Decimal(cast("str", row[len(codes)])),
             )
             for row in cursor.fetchall()
         )
-        text = (
+        line = (
             f"{step.name} = the {step.count} {step.order} of {len(rows)} cells by {step.by}, "
             f"with ties of the last one: {len(ranked)} cells"
         )
@@ -378,7 +423,7 @@ class Runner:
             snapshot=step.snapshot,
             sql=(sql, ranking),
             parameters=(parameters, (*parameters, str(step.count))),
-            arithmetic=text,
+            arithmetic=line,
             exact=None,
             value=None,
             decimals=None,
@@ -392,6 +437,7 @@ class Runner:
         names = inputs(step)
         first, second = (self.outcomes[name] for name in names)
         a, b = Fraction(first.value), Fraction(second.value)
+        one, two = text(first.value), text(second.value)
         decimals: int | None = None
         try:
             match step:
@@ -402,15 +448,14 @@ class Runner:
                         )
                     adding = step.operation == "add"
                     exact = a + b if adding else a - b
-                    sign = "+" if adding else "-"
                     unit = first.unit
                     if not adding and first.unit.kind == "per cent":
                         unit = ResultUnit(kind="percentage points")
-                    text = f"{step.name} = {first.value} {sign} {second.value}"
+                    line = f"{step.name} = {one} {'+' if adding else '-'} {two}"
                 case BinaryStep():
                     exact = a * b
                     unit = product(first.unit, second.unit, TIMES)
-                    text = f"{step.name} = {first.value} {TIMES} {second.value}"
+                    line = f"{step.name} = {one} {TIMES} {two}"
                 case DivideStep():
                     exact = arithmetic.quotient(a, b)
                     decimals = step.decimals
@@ -419,25 +464,25 @@ class Runner:
                         if same_unit(first.unit, second.unit)
                         else product(first.unit, second.unit, "/")
                     )
-                    text = f"{step.name} = {first.value} / {second.value}"
+                    line = f"{step.name} = {one} / {two}"
                 case ChangePercentStep():
                     exact = arithmetic.change_percent(a, b)
                     decimals = step.decimals
                     unit = ResultUnit(kind="per cent")
-                    text = f"{step.name} = ({second.value} - {first.value}) / {first.value} {TIMES} 100"
+                    line = f"{step.name} = ({two} - {one}) / {one} {TIMES} 100"
                 case SharePercentStep():
                     exact = arithmetic.share_percent(a, b)
                     decimals = step.decimals
                     unit = ResultUnit(kind="per cent")
-                    text = f"{step.name} = {first.value} / {second.value} {TIMES} 100"
+                    line = f"{step.name} = {one} / {two} {TIMES} 100"
         except ZeroDivisionError as error:
             raise CalculationError("divides by zero", step.name) from error
         if decimals is None:
-            value = cast("Decimal", arithmetic.exact_decimal(exact))
-            text = f"{text} = {value}"
+            value = checked(cast("Decimal", arithmetic.exact_decimal(exact)), step.name)
+            line = f"{line} = {text(value)}"
         else:
-            value = arithmetic.round_away(exact, decimals)
-            text = f"{text} = {arithmetic.fraction_text(exact)}, rounded to {value}"
+            value = checked(arithmetic.round_away(exact, decimals), step.name)
+            line = f"{line} = {arithmetic.fraction_text(exact)}, rounded to {text(value)}"
         return StepResult(
             name=step.name,
             operation=step.operation,
@@ -445,7 +490,7 @@ class Runner:
             snapshot=None,
             sql=(),
             parameters=(),
-            arithmetic=text,
+            arithmetic=line,
             exact=arithmetic.fraction_text(exact),
             value=value,
             decimals=decimals,

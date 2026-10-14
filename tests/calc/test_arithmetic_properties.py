@@ -17,7 +17,7 @@ from hypothesis import strategies as st
 from snapshotting import altered, population
 
 from opencited.calc import CalculationError, Engine, Plan, arithmetic
-from opencited.snapshots import SnapshotStore
+from opencited.snapshots import SnapshotStore, digits, scale_of
 
 DIGITS = 38
 CELLS = 63
@@ -45,6 +45,8 @@ def test_rounding_has_ties_away_from_zero_at_the_decimals_asked(
 ) -> None:
     rounded = arithmetic.round_away(value, places)
     assert rounded == away(value, places)
+    # A rounded zero has no sign, which equality of decimals would hide.
+    assert not (rounded.is_zero() and rounded.is_signed())
     assert rounded.as_tuple().exponent == -places
     assert abs(Fraction(rounded) - value) <= Fraction(1, 2 * 10**places)
 
@@ -144,6 +146,7 @@ def test_the_engine_computes_every_operation_exactly(
             "total": "b",
             "decimals": places,
         },
+        {"name": "times", "operation": "multiply", "left": "a", "right": "c"},
     ]
     fa, fb, fc = Fraction(a), Fraction(b), Fraction(c)
     expected = {
@@ -154,12 +157,13 @@ def test_the_engine_computes_every_operation_exactly(
         "quotient": away(fc / fb, places),
         "change": away((fc - fa) / fa * 100, places),
         "share": away(fc / fb * 100, places),
+        "times": fa * fc,
     }
     # A step whose result needs more than 38 digits must fail; the others must match.
     too_wide = [
         name
         for name, number in expected.items()
-        if arithmetic.significant(written(number)) > DIGITS
+        if digits(written(number), scale_of(written(number))) > DIGITS
     ]
     plan = Plan.model_validate_json(json.dumps({"steps": steps}))
     if too_wide:
@@ -171,3 +175,45 @@ def test_the_engine_computes_every_operation_exactly(
         assert Fraction(result.step(name).value or 0) == Fraction(number), name
         if isinstance(number, Decimal):
             assert result.step(name).value == number, name
+
+
+@settings(max_examples=30, deadline=None)
+@given(
+    ages=st.lists(st.integers(-5, 5), min_size=7, max_size=7),
+    order=st.sampled_from(["highest", "lowest"]),
+    count=st.integers(1, 7),
+)
+def test_a_ranking_keeps_the_best_cells_and_their_ties(
+    store: SnapshotStore, ages: list[int], order: str, count: int
+) -> None:
+    # Few distinct values, so that ties are common.
+    base = population()
+    codes = [value.code for value in base.result.dimensions[1].values]
+    numbers = dict(zip(codes, ages, strict=True))
+    values: list[Decimal | None] = [
+        Decimal(numbers[cell.codes[1]])
+        if cell.codes[0] == SEX and cell.codes[3] == "2026"
+        else Decimal(0)
+        for cell in base.result.observations
+    ]
+    snapshot = store.write(altered(base, values=values)).name
+    step: dict[str, Any] = {
+        "name": "ranked",
+        "operation": "rank",
+        "snapshot": snapshot,
+        "selection": {"Kjonn": [SEX], "ContentsCode": [CONTENT], "Tid": ["2026"]},
+        "by": "Alder",
+        "order": order,
+        "count": count,
+    }
+    result = Engine(store).run(Plan.model_validate_json(json.dumps({"steps": [step]})))
+
+    def place(number: int) -> int:
+        ahead = [
+            other for other in ages if (other > number if order == "highest" else other < number)
+        ]
+        return 1 + len(ahead)
+
+    expected = {code: place(number) for code, number in numbers.items() if place(number) <= count}
+    ranked = result.step("ranked").ranked
+    assert {cell.codes[1]: cell.position for cell in ranked} == expected
