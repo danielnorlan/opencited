@@ -60,6 +60,10 @@ EVIDENCE_ID = {
     "description": "The evidence ID of a query_table result, such as E1.",
 }
 
+# The deepest plan step nests five levels: arguments, steps, a step, its selection
+# and a list of codes.
+MAX_DEPTH = 20
+
 type Status = Literal["result", "failed", "refused"]
 
 
@@ -104,6 +108,21 @@ def no_constant(name: str) -> object:
     raise ValueError(f"the arguments hold {name}, which is not a number")
 
 
+def depth(value: object) -> int:
+    """Return how deeply objects and arrays nest in parsed JSON, without recursion."""
+    deepest = 0
+    pending: list[tuple[object, int]] = [(value, 1)]
+    while pending and deepest <= MAX_DEPTH:
+        item, level = pending.pop()
+        if isinstance(item, dict):
+            deepest = max(deepest, level)
+            pending.extend((child, level + 1) for child in cast("dict[str, object]", item).values())
+        elif isinstance(item, list):
+            deepest = max(deepest, level)
+            pending.extend((child, level + 1) for child in cast("list[object]", item))
+    return deepest
+
+
 def arguments_of(text: str) -> dict[str, Any]:
     """Parse a call's arguments, with numbers as decimals or integers and never as floats."""
     try:
@@ -120,6 +139,10 @@ def arguments_of(text: str) -> dict[str, Any]:
     except ValueError as error:
         # A repeated key, NaN or an infinity, or an integer too long to convert.
         raise RefusalError(str(error)) from error
+    if depth(value) > MAX_DEPTH:
+        # Whether the parser refuses deep nesting depends on the Python build, and the
+        # checks after this one walk the arguments recursively.
+        raise RefusalError("the arguments are nested too deeply")
     if not isinstance(value, dict):
         raise RefusalError("the arguments are not a JSON object")
     return cast("dict[str, Any]", value)

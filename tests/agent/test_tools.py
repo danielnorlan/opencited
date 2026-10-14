@@ -387,6 +387,18 @@ def test_a_tool_error_from_the_server_reaches_the_model(tmp_path: Path) -> None:
             "the arguments are nested too deeply",
         ),
         (
+            call("search_tables", '{"query": ' + "[" * 100_000 + "]" * 100_000 + "}"),
+            "the arguments are nested too deeply",
+        ),
+        (
+            call("search_tables", '{"query": ' + "[" * 20 + "]" * 20 + "}"),
+            "the arguments are nested too deeply",
+        ),
+        (
+            call("search_tables", '{"query": ' + "[" * 19 + "]" * 19 + "}"),
+            "query: [[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]] is not of type 'string'",
+        ),
+        (
             call("get_table_metadata", {"table_id": "05810\n"}),
             "the arguments hold a control character, such as a line break",
         ),
