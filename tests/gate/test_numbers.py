@@ -441,7 +441,6 @@ def test_a_blocked_number_is_blocked_whole(language: Language, text: str) -> Non
     ("language", "text", "kind", "found"),
     [
         ("no", "13.\u00a0oktober 2026", "date", datetime.date(2026, 10, 13)),
-        ("en", "2026-10-13T08:00:00Z", "date", datetime.date(2026, 10, 13)),
         ("no", "oktober\u00a02026", "period", "2026M10"),
         ("no", "1.\u00a0kvartal 2023", "period", "2023K1"),
         ("no", "1. kvartal i 2023", "period", "2023K1"),
@@ -519,3 +518,36 @@ def test_the_same_text_gives_the_same_numbers_in_other_processes() -> None:
         for seed in ("0", "1", "2")
     }
     assert len(outputs) == 1
+
+
+@pytest.mark.parametrize("text", ["2026-10-13T08:00:00Z", "2026-02-25T99:99:99+23:59"])
+def test_a_time_of_day_blocks(text: str) -> None:
+    [number] = read_numbers(f"Retrieved {text}.", "en")
+    assert number.kind == "blocked"
+    assert number.text == text
+
+
+def test_a_number_at_a_line_start_counts_as_a_list_number_only_in_order() -> None:
+    found = read_numbers("1. a\n2. b\n4. c\n9999999. d", "en")
+    assert [(number.kind, number.text) for number in found] == [
+        ("list number", "1."),
+        ("list number", "2."),
+        ("number", "4"),
+        ("number", "9999999"),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("language", "text"),
+    [("en", "5.6 million per cent"), ("no", "5,6 mill. %"), ("en", "2 thousand percentage points")],
+)
+def test_a_percent_word_after_a_scale_word_blocks(language: Language, text: str) -> None:
+    [number] = read_numbers(f"It was {text}.", language)
+    assert (number.kind, number.text) == ("blocked", text)
+
+
+def test_a_number_of_more_digits_than_any_source_value_blocks() -> None:
+    text = "0." + "1" * 5000
+    [number] = read_numbers(f"It was {text}.", "en")
+    assert number.kind == "blocked"
+    assert number.text == text

@@ -23,7 +23,7 @@ flowchart LR
 | --- | --- | --- |
 | MCP server | Table search, metadata and data from each source, with a provenance record on every data result | In progress ([spec 0001](specs/0001-ssb-mcp-server.md)) |
 | Calculation engine | Runs typed calculation plans over stored snapshots: DuckDB selects the cells, and the arithmetic uses exact rational numbers | Built; the `calculate` tool comes with the agent ([spec 0002](specs/0002-snapshots-and-calculation.md)) |
-| Evidence gate | Matches every number in an answer to source data or a calculation result, and blocks the answer otherwise | In progress: numbers are read ([spec 0003](specs/0003-evidence-gate.md)) |
+| Evidence gate | Matches every number in an answer to source data or a calculation result, and blocks the answer otherwise | Built; the agent's retry comes with the agent ([spec 0003](specs/0003-evidence-gate.md)) |
 | Agent | Plans, calls tools and drafts the answer, in a loop of its own over a chat completions API | Specification approved ([spec 0004](specs/0004-agent.md)) |
 | Evaluation suite | Versioned questions with computed answers, run with Inspect AI | Specification approved ([spec 0005](specs/0005-evaluation-suite.md)) |
 | Table search | Hybrid full-text and vector search over table metadata, in PostgreSQL with pgvector | Planned, M3 |
@@ -267,9 +267,9 @@ are written in fixed point.
 
 Each result has a unit kind that the evidence gate can match: an amount, with the
 source's unit; per cent, for `change_percent`, `share_percent` and cells whose unit
-is `prosent`, `per cent`, `percent` or `%`; percentage points, for the difference of
-two per cent values and cells whose unit is `prosentpoeng` or `percentage points`; or a
-ratio, for the quotient of two values with the same unit. `parse_plan` reads a plan
+name holds `prosent`, `per cent`, `percent` or `%`; percentage points, for the
+difference of two per cent values and cells whose unit name holds `prosentpoeng` or
+`percentage point`; or a ratio, for the quotient of two values with the same unit. `parse_plan` reads a plan
 from JSON and refuses an object that repeats a key.
 A result lists every step with its operation, inputs, SQL, bound codes, arithmetic
 with the numbers filled in, exact and rounded result and unit, and names every
@@ -307,9 +307,46 @@ Norwegian text, digits grouped by spaces in English text, `billion` in Norwegian
 text, numbers in words with a percent or scale word, compounds and fractions included,
 and words that multiply. Beyond the specification it covers a number joined to
 letters, such as `CO2` or `5G`; a sign or a dash before a number where spec 0003 reads
-no minus sign, such as `x-3` or `–3`; and unit and scale words that the specification
+no minus sign, such as `x-3` or `–3`; unit and scale words that the specification
 does not list, such as `mill` without its point, `mrd`, `bn` or `trillion`, since
-reading the number without them would change its size.
+reading the number without them would change its size; a percent word after a scale
+word; a time of day in a timestamp; and a number of more than 60 digits.
+
+### Matching numbers to evidence
+
+`opencited.gate.check` takes the answer, its language and the evidence of the run:
+each source result, a query, metadata or a search, with an evidence ID such as `E1`,
+and each calculation result with an ID such as `C1`. It splits the answer into blocks,
+paragraphs, list items, table rows and headings, and matches every number of a block
+against the results whose markers the block holds. Since a citation must never reach
+a number outside its block, the split errs towards smaller blocks: a blank line, a
+thematic break such as `---`, a code fence and a change of block quote depth end a
+block, every line that holds a pipe is a table row of its own, and a marker inside an
+HTML comment cites nothing.
+
+A period passes when a cited query result selected it, a date when it is the last
+update or the retrieval date of a cited result in UTC or in Norwegian time, a
+five-digit table ID when it is the ID of a cited result, and a number from the title
+of a cited result, or from the label of a value it selected, when it is written as
+there and has no unit, percent or scale word. A four-digit number that a cited query
+result selected as a period counts as a year. Citation markers are not findings, and
+the numbers of an ordered list are ignored when they count up from 1; any other
+number at the start of a line is read as a number.
+
+Every other number is a value. It fails in a block that cites no result. It passes
+when a cited result holds a value `v` that, divided by any scale word and rounded with
+ties away from zero to the decimals written, equals the number; for a calculation, `v`
+is the step's exact result, and the values of the cells it ranked count too. A number
+with a percent word matches only per cent values, one with a percentage point word
+only percentage point values, and any other number only values that are not per cent,
+so the sign and the unit must both fit. A citation of an evidence ID that the run does
+not have fails. The rule checks which value a number may be and leaves what the number
+refers to to the evaluation suite, so `5.6 million in 2026` passes when any cited
+value rounds to 5.6 million.
+
+The report lists every number with its position, kind and value, and the evidence and
+cell or step it matched, or the reason it failed; the answer passes when nothing
+failed. `Report.text()` writes the failures for the agent to send back to the model.
 
 `opencited.values.format_number` writes decimals for each language with their scale:
 in Norwegian with no-break spaces between groups, a decimal comma and the minus sign
