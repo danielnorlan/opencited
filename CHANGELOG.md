@@ -31,6 +31,9 @@ Notable changes to OpenCited are recorded here. The format follows
   Norwegian time, and a rate limiter that keeps each process within 30 requests a
   minute and backs off after HTTP 429. `opencited mcp` takes `--cache-dir` and
   `--no-cache`.
+- For periods and dates, a cited calculation counts as citing the query results its
+  steps read, so "fra 2025 til 2026 [C1]" passes, and a day and month without a year,
+  such as "per 1. januar", passes when a cited query result's label names that day.
 - Question set v2 with 43 questions over ten more tables, among them prices, wages,
   the national accounts, crime, marriages, income and employment, and 12 questions
   that should be refused, each with the reason the sources cannot answer it.

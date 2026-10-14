@@ -551,3 +551,35 @@ def test_a_number_of_more_digits_than_any_source_value_blocks() -> None:
     [number] = read_numbers(f"It was {text}.", "en")
     assert number.kind == "blocked"
     assert number.text == text
+
+
+@pytest.mark.parametrize(
+    ("language", "text", "day"),
+    [
+        ("no", "Tallene gjelder befolkningen per 1. januar.", (1, 1)),
+        ("no", "Tallene gjelder befolkningen per 1 januar.", (1, 1)),
+        ("no", "Per 1. Januar var det slik.", (1, 1)),
+        ("en", "The figures are for 1 January.", (1, 1)),
+        ("no", "Skuddårsdagen 29. februar.", (2, 29)),
+    ],
+)
+def test_a_day_and_month_without_a_year_is_a_day(
+    language: Language, text: str, day: tuple[int, int]
+) -> None:
+    [number] = read_numbers(text, language)
+
+    assert (number.kind, number.day) == ("day", day)
+
+
+def test_a_day_with_its_year_stays_a_date_and_a_month_with_its_year_a_period() -> None:
+    kinds = [number.kind for number in read_numbers("1. januar 2026 og januar 2026.", "no")]
+
+    assert kinds == ["date", "period"]
+
+
+def test_a_day_that_no_year_has_blocks_and_an_english_month_needs_its_capital() -> None:
+    [blocked] = read_numbers("Per 31. februar.", "no")
+    [number] = read_numbers("On 1 january.", "en")
+
+    assert (blocked.kind, blocked.reason) == ("blocked", "a date that does not exist")
+    assert number.kind == "number"

@@ -186,21 +186,28 @@ class Holdings:
     # Days that a query result gives for its figures: a day and month in a label, in a
     # year the result selected, such as 1 January 2026 for "Befolkning 1. januar".
     reference_dates: dict[date, str] = field(default_factory=dict[date, str])
+    # The same days without a year, as (month, day), such as (1, 1).
+    reference_days: dict[tuple[int, int], str] = field(default_factory=dict[tuple[int, int], str])
 
     def add(self, other: Holdings) -> None:
         """Add what another cited result holds; the first holder of each item is kept."""
         self.values.extend(other.values)
-        for mine, theirs in (
-            (self.periods, other.periods),
-            (self.tables, other.tables),
-            (self.labels, other.labels),
-        ):
-            for key, holder in theirs.items():
-                mine.setdefault(key, holder)
+        for key, holder in other.tables.items():
+            self.tables.setdefault(key, holder)
+        for key, holder in other.labels.items():
+            self.labels.setdefault(key, holder)
+        self.add_times(other)
+
+    def add_times(self, other: Holdings) -> None:
+        """Add the periods and dates that another result holds, and nothing else."""
+        for key, holder in other.periods.items():
+            self.periods.setdefault(key, holder)
         for day, holder in other.dates.items():
             self.dates.setdefault(day, holder)
         for day, holder in other.reference_dates.items():
             self.reference_dates.setdefault(day, holder)
+        for mark, holder in other.reference_days.items():
+            self.reference_days.setdefault(mark, holder)
 
 
 def day_months(text: str) -> set[tuple[int, int]]:
@@ -213,6 +220,16 @@ def day_months(text: str) -> set[tuple[int, int]]:
     return {(month, day) for month, day in found if 1 <= month <= 12 and 1 <= day <= 31}
 
 
+def label_days(result: QueryResult) -> set[tuple[int, int]]:
+    """Return the days and months that the labels of a query result's values name."""
+    return {
+        mark
+        for dimension in result.dimensions
+        for value in dimension.values
+        for mark in day_months(value.label)
+    }
+
+
 def reference_dates(result: QueryResult) -> set[date]:
     """Return the dates that a query result gives as the days of its figures.
 
@@ -220,12 +237,7 @@ def reference_dates(result: QueryResult) -> set[date]:
     no recorded query result's title names a day, and the gate blocks what it cannot
     trace to the result.
     """
-    marks = {
-        mark
-        for dimension in result.dimensions
-        for value in dimension.values
-        for mark in day_months(value.label)
-    }
+    marks = label_days(result)
     years = {
         int(value.code)
         for dimension in result.dimensions
@@ -318,6 +330,8 @@ def hold(holdings: Holdings, evidence: Evidence) -> None:
             holdings.dates.setdefault(day, name)
         for day in sorted(reference_dates(result)):
             holdings.reference_dates.setdefault(day, name)
+        for mark in sorted(label_days(result)):
+            holdings.reference_days.setdefault(mark, name)
     elif isinstance(result, TableMetadata):
         language = language_of(result.url)
         holdings.tables.setdefault(result.table_id, name)
@@ -436,6 +450,22 @@ def judge(number: Number, holdings: Holdings, cited: bool) -> Finding:
                 "a date that no cited result has as its update or retrieval date, or as the "
                 "day of its figures",
             )
+        case "day":
+            source = holdings.reference_days.get(number.day) if number.day is not None else None
+            if source is None:
+                return finding(
+                    number,
+                    "date",
+                    "failed",
+                    "a day and month that no cited query result's label names",
+                )
+            return finding(
+                number,
+                "date",
+                "passed",
+                "a day and month that a cited query result's label names",
+                source,
+            )
         case "period":
             source = holdings.periods.get(number.period or "")
             if source is None:
@@ -526,6 +556,19 @@ def check(answer: str, language: Language, evidence: Sequence[Evidence]) -> Repo
     # A marker in an HTML comment is not shown, so it cites nothing.
     hidden = hidden_spans(text)
     holdings_of = {name: held(item) for name, item in known.items()}
+    # For periods and dates, a calculation also counts as citing every query result
+    # that its steps read (spec 0003, Numbers that are not values, item 6).
+    responses = {
+        item.result.provenance.response_sha256: name
+        for name, item in known.items()
+        if isinstance(item, SourceEvidence) and isinstance(item.result, QueryResult)
+    }
+    for name, item in known.items():
+        if isinstance(item, CalculationEvidence):
+            for use in item.result.snapshots:
+                source = responses.get(use.provenance.response_sha256)
+                if source is not None:
+                    holdings_of[name].add_times(holdings_of[source])
     findings: list[Finding] = []
     for block in blocks(text):
         inside = [number for number in numbers if block.start <= number.position < block.end]

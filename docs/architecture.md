@@ -339,9 +339,14 @@ that the label of a value a cited query result selected names, such as "Befolkni
 five-digit table ID when it is the ID of a cited result, and a number from the title
 of a cited result, or from the label of a value it selected, when it is written as
 there and has no unit, percent or scale word. A four-digit number that a cited query
-result selected as a period counts as a year. Citation markers are not findings, and
-the numbers of an ordered list are ignored when they count up from 1; any other
-number at the start of a line is read as a number.
+result selected as a period counts as a year. A day and month without a year, such
+as "per 1. januar" or "1 January", passes when the label of a value that a cited
+query result selected names that day. For periods and dates, a cited calculation also
+counts as citing every query result whose snapshot its steps read, found by the
+response hash in the snapshot's provenance; it gives no other number of those
+results. Citation markers are not findings, and the numbers of an ordered list are
+ignored when they count up from 1; any other number at the start of a line is read
+as a number.
 
 Every other number is a value. It fails in a block that cites no result. It passes
 when a cited result holds a value `v` that, divided by any scale word and rounded with
@@ -462,8 +467,9 @@ it or goes, a value is written as a result gives it, and a four-digit number tha
 matched nothing gets both hints, since the gate cannot tell a year from a count. The
 prompt tells the model to write a change with its sign, to name periods as the
 results name them, to write a date only when a cited result gives it, and to cite
-the source result beside a calculation where it names a period or a date, since a
-calculation holds only the numbers it computes. When a question rests on a claim
+the source result beside a calculation where it names a period or a date; the gate
+also passes those through the calculation, but a citation of the source shows the
+reader where they come from. When a question rests on a claim
 that the results contradict, the prompt asks for the results' figures and for no
 number from the question that no result holds, such as a threshold it names. A reply
 is released only when the gate passes it and its shown markers cite at least one
