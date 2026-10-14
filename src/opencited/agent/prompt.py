@@ -17,7 +17,7 @@ from opencited.gate import Finding, Report
 from opencited.gate.check import UNSELECTED_YEAR
 from opencited.sources import Language
 
-PROMPT_VERSION = "4"
+PROMPT_VERSION = "5"
 
 LANGUAGES: dict[Language, str] = {"no": "Norwegian (bokmål)", "en": "English"}
 
@@ -52,6 +52,9 @@ is not about statistics that SSB publishes, reply with a first line that reads \
 exactly "REFUSE: outside the sources", then one sentence.
 8. Write the answer in {language}. Answer the question first, then add only what the \
 reader needs to understand the numbers.
+9. If the question rests on a claim that the results contradict, say so and give the \
+figures that the results hold. Do not repeat a number from the question that no \
+result holds, such as a threshold the question names.
 """
 
 RETRY = """\

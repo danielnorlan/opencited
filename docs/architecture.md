@@ -463,8 +463,10 @@ matched nothing gets both hints, since the gate cannot tell a year from a count.
 prompt tells the model to write a change with its sign, to name periods as the
 results name them, to write a date only when a cited result gives it, and to cite
 the source result beside a calculation where it names a period or a date, since a
-calculation holds only the numbers it computes. A reply is
-released only when the gate passes it and its shown markers cite at least one
+calculation holds only the numbers it computes. When a question rests on a claim
+that the results contradict, the prompt asks for the results' figures and for no
+number from the question that no result holds, such as a threshold it names. A reply
+is released only when the gate passes it and its shown markers cite at least one
 result: the gate passes a text without numbers, and an answer that cites nothing does
 not rest on the sources, so it goes back with a request to cite, counted like a
 blocked reply. The prompt has a version,
