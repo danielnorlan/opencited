@@ -12,8 +12,10 @@ import re
 from collections.abc import Sequence
 from typing import Literal
 
+from pydantic import Field
+
 from opencited.agent.config import ModelConfig, Prices, Settings
-from opencited.agent.run import LimitName, RefusalReason, RunState, cost
+from opencited.agent.run import Attempt, LimitName, RefusalReason, RunState, cost
 from opencited.calc.result import CalculationResult
 from opencited.gate import CalculationEvidence, Evidence, Report, SourceEvidence, cited_ids
 from opencited.model import Frozen, TableId
@@ -82,6 +84,7 @@ class Answer(Frozen):
     citations: tuple[Citation, ...]
     calculations: tuple[CalculationCitation, ...]
     report: Report
+    attempts: tuple[Attempt, ...] = Field(description="What became of each checked reply.")
     model: ModelRecord
     prompt_version: str
     usage: RunUsage
@@ -96,6 +99,7 @@ class Refusal(Frozen):
     limit: LimitName | None
     explanation: str | None
     report: Report | None
+    attempts: tuple[Attempt, ...] = Field(description="What became of each checked reply.")
     model: ModelRecord
     prompt_version: str
     usage: RunUsage
@@ -195,6 +199,7 @@ def answer_of(
     language: Language,
     text: str,
     report: Report,
+    attempts: Sequence[Attempt],
     evidence: Sequence[Evidence],
     model: ModelRecord,
     prompt_version: str,
@@ -221,6 +226,7 @@ def answer_of(
         citations=tuple(citations),
         calculations=tuple(calculations),
         report=report,
+        attempts=tuple(attempts),
         model=model,
         prompt_version=prompt_version,
         usage=usage,

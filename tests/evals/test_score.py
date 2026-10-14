@@ -1,0 +1,387 @@
+"""The scorer and its report, on example answers built from recorded fixture values.
+
+Each case has the verdict it must get and the rule of spec 0005 it tests. Every number
+that an answer must hold is formatted from the evidence by the project's formatter;
+numbers that must not count are written by hand, as their case says. The expected
+numbers come from the engine's results, never from a hand-written value.
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from decimal import Decimal
+from fractions import Fraction
+
+import pytest
+from answering import CONFIG, Evidences, evidences
+
+from opencited.agent.answer import Answer, Refusal, RunUsage, answer_of, model_record, usage_of
+from opencited.agent.run import Attempt, RunState
+from opencited.calc.arithmetic import round_away
+from opencited.calc.engine import Engine
+from opencited.calc.plan import Plan
+from opencited.calc.result import CalculationResult
+from opencited.evals.report import Group, QuestionUse, Rate, report_of
+from opencited.evals.score import (
+    Category,
+    Expectation,
+    ExpectedNumber,
+    Failure,
+    NumberFound,
+    Verdict,
+    score,
+)
+from opencited.gate import CalculationEvidence, Evidence, check
+from opencited.snapshots import SnapshotStore
+from opencited.sources import Language
+from opencited.values import format_number
+
+USAGE = RunUsage(
+    model_calls=4,
+    tool_calls=5,
+    input_tokens=20_000,
+    output_tokens=700,
+    seconds=Decimal("38.500"),
+    cost=Decimal("0.005894"),
+)
+
+
+@dataclass(frozen=True)
+class World:
+    found: Evidences
+    ranking: CalculationResult
+    evidence: tuple[Evidence, ...]
+
+    def population(self) -> ExpectedNumber:
+        value = self.found.value("2026")
+        return ExpectedNumber(step="after", exact=str(Fraction(value)), kind="amount", decimals=0)
+
+    def growth(self, decimals: int = 2) -> ExpectedNumber:
+        exact = self.found.calculation.step("growth").exact
+        assert exact is not None
+        return ExpectedNumber(step="growth", exact=exact, kind="per cent", decimals=decimals)
+
+    def top(self) -> tuple[ExpectedNumber, str, Decimal]:
+        cell = self.ranking.step("largest").ranked[0]
+        number = ExpectedNumber(
+            step="largest", exact=str(Fraction(cell.value)), kind="amount", decimals=0
+        )
+        return number, cell.labels[1], cell.value
+
+
+@pytest.fixture(scope="module")
+def world(tmp_path_factory: pytest.TempPathFactory) -> World:
+    store = SnapshotStore(tmp_path_factory.mktemp("snapshots"))
+    found = evidences(store)
+    snapshot_id = found.query.provenance.response_sha256
+    ages = [value.code for value in found.query.dimensions[1].values if value.code != "999B"]
+    step = {
+        "name": "largest",
+        "operation": "rank",
+        "snapshot": snapshot_id,
+        "selection": {
+            "Kjonn": ["0"],
+            "Alder": ages,
+            "ContentsCode": ["Personer"],
+            "Tid": ["2026"],
+        },
+        "by": "Alder",
+        "order": "highest",
+        "count": 1,
+    }
+    ranking = Engine(store).run(Plan.model_validate_json(json.dumps({"steps": [step]})))
+    evidence = (*found.evidence, CalculationEvidence("C2", ranking))
+    return World(found, ranking, evidence)
+
+
+def answered(
+    world: World, text: str, language: Language, attempts: tuple[Attempt, ...] = ("passed",)
+) -> Answer:
+    return answer_of(
+        question="A question of the test",
+        language=language,
+        text=text,
+        report=check(text, language, world.evidence),
+        attempts=attempts,
+        evidence=world.evidence,
+        model=model_record(CONFIG, ["a-model-2026-10-01"]),
+        prompt_version="1",
+        usage=USAGE,
+    )
+
+
+def refused(language: Language, reason: str = "no data") -> Refusal:
+    return Refusal.model_validate(
+        {
+            "question": "A question of the test",
+            "language": language,
+            "reason": reason,
+            "detail": "the model refused",
+            "limit": None,
+            "explanation": None,
+            "report": None,
+            "attempts": (),
+            "model": model_record(CONFIG, ["a-model-2026-10-01"]),
+            "prompt_version": "1",
+            "usage": usage_of(
+                RunState(model_calls=2, input_tokens=4_000, output_tokens=90), CONFIG.prices
+            ),
+        }
+    )
+
+
+def expect(
+    question_id: str,
+    language: Language,
+    category: Category,
+    numbers: tuple[ExpectedNumber, ...] = (),
+    label: str | None = None,
+) -> Expectation:
+    outcome = "refusal" if category in ("unanswerable", "out of scope") else "answer"
+    return Expectation(
+        question_id=question_id,
+        language=language,
+        category=category,
+        outcome=outcome,
+        numbers=numbers,
+        label=label,
+    )
+
+
+def test_an_answer_with_the_expected_number_is_correct(world: World) -> None:
+    value = format_number(world.found.value("2026"), "en")
+    result = answered(world, f"In 2026, {value} people lived in Norway [E1].", "en")
+
+    verdict = score(
+        expect("lookup-1", "en", "lookup", (world.population(),)), result, world.evidence
+    )
+
+    assert verdict == Verdict(
+        question_id="lookup-1",
+        language="en",
+        category="lookup",
+        expected="answer",
+        outcome="answer",
+        correct=True,
+        reason=None,
+        passes_gate=True,
+        numbers=(NumberFound(step="after", text=value),),
+        label_found=None,
+        attempts=("passed",),
+        usage=USAGE,
+    )
+
+
+def test_a_number_with_a_scale_word_shows_too_few_decimals(world: World) -> None:
+    # 5.6 million fits the value under the gate's rule, but shows it to a tenth of a
+    # million, and the question asks for whole persons. Written by hand on purpose.
+    result = answered(world, "About 5.6 million people lived in Norway in 2026 [E1].", "en")
+
+    verdict = score(
+        expect("lookup-2", "en", "lookup", (world.population(),)), result, world.evidence
+    )
+
+    assert verdict.passes_gate is True
+    assert verdict.numbers == (NumberFound(step="after", text=None),)
+    assert verdict.correct is False
+
+
+@pytest.mark.parametrize(
+    ("decimals", "required", "correct"), [(2, 2, True), (3, 2, True), (1, 2, False), (0, 0, True)]
+)
+def test_a_change_needs_its_decimals_or_more(
+    world: World, decimals: int, required: int, correct: bool
+) -> None:
+    exact = Fraction(world.growth().exact)
+    written = format_number(round_away(exact, decimals), "no")
+    result = answered(world, f"Folketallet økte med {written} prosent fra 2025 [C1] [E1].", "no")
+
+    verdict = score(
+        expect("change-1", "no", "change", (world.growth(required),)), result, world.evidence
+    )
+
+    assert verdict.passes_gate is True
+    assert verdict.correct is correct
+    # A number's text holds its unit word.
+    assert verdict.numbers[0].text == (f"{written} prosent" if correct else None)
+
+
+def test_a_per_cent_value_needs_a_per_cent_word(world: World) -> None:
+    written = format_number(world.found.step("growth"), "no")
+    result = answered(world, f"Folketallet økte med {written} fra 2025 [C1] [E1].", "no")
+
+    verdict = score(expect("change-2", "no", "change", (world.growth(),)), result, world.evidence)
+
+    assert verdict.numbers == (NumberFound(step="growth", text=None),)
+    assert verdict.passes_gate is False
+    assert verdict.correct is False
+
+
+def test_an_answer_that_fails_the_gate_again_is_wrong(world: World) -> None:
+    value = format_number(world.found.value("2026"), "en")
+    # The 42 is in no result, written by hand so that the gate blocks it.
+    text = f"In 2026, {value} people lived in Norway, and 42 of them were counted twice [E1]."
+    result = answered(world, text, "en")
+
+    verdict = score(
+        expect("lookup-3", "en", "lookup", (world.population(),)), result, world.evidence
+    )
+
+    assert verdict.numbers == (NumberFound(step="after", text=value),)
+    assert verdict.passes_gate is False
+    assert verdict.correct is False
+
+
+@pytest.mark.parametrize(("upper", "correct"), [(True, True), (False, False)])
+def test_a_ranking_answer_needs_the_label_in_any_case(
+    world: World, upper: bool, correct: bool
+) -> None:
+    number, label, value = world.top()
+    # The label in capitals, or a text without it.
+    shown = label.upper() if upper else "the largest group"
+    text = f"The largest age group in 2026 was {shown} with {format_number(value, 'en')} people [C2] [E1]."
+    result = answered(world, text, "en")
+
+    verdict = score(expect("ranking-1", "en", "ranking", (number,), label), result, world.evidence)
+
+    assert verdict.label_found is correct
+    assert verdict.correct is correct
+    assert verdict.numbers[0].text == format_number(value, "en")
+
+
+def test_a_question_that_should_be_refused_is_correct_when_refused(world: World) -> None:
+    verdict = score(expect("unanswerable-1", "no", "unanswerable"), refused("no"), world.evidence)
+
+    assert (verdict.outcome, verdict.correct, verdict.reason) == ("refusal", True, "no data")
+    assert verdict.usage is not None
+
+
+def test_an_answer_to_a_question_that_should_be_refused_is_wrong(world: World) -> None:
+    value = format_number(world.found.value("2026"), "no")
+    result = answered(world, f"I 2026 bodde det {value} personer i Norge [E1].", "no")
+
+    verdict = score(expect("out-of-scope-1", "no", "out of scope"), result, world.evidence)
+
+    assert (verdict.outcome, verdict.correct, verdict.passes_gate) == ("answer", False, True)
+
+
+def test_a_refusal_of_a_question_with_an_answer_is_wrong(world: World) -> None:
+    verdict = score(
+        expect("lookup-4", "no", "lookup", (world.population(),)),
+        refused("no", "gate blocked"),
+        world.evidence,
+    )
+
+    assert (verdict.outcome, verdict.correct, verdict.reason) == ("refusal", False, "gate blocked")
+
+
+def test_a_run_that_failed_is_wrong_and_keeps_its_message(world: World) -> None:
+    failure = Failure(message="the endpoint could not be reached: Connection error.", usage=None)
+
+    verdict = score(expect("sum-1", "en", "sum", (world.population(),)), failure, world.evidence)
+
+    assert (verdict.outcome, verdict.correct, verdict.reason) == ("failure", False, failure.message)
+
+
+def test_the_same_answers_and_data_give_the_same_verdicts(world: World) -> None:
+    value = format_number(world.found.value("2026"), "en")
+    expectation = expect("lookup-5", "en", "lookup", (world.population(),))
+
+    verdicts = [
+        score(
+            expectation,
+            answered(world, f"In 2026, {value} people lived in Norway [E1].", "en"),
+            world.evidence,
+        )
+        for _ in range(3)
+    ]
+
+    assert verdicts[0] == verdicts[1] == verdicts[2]
+
+
+@pytest.mark.parametrize(
+    ("fields", "message"),
+    [
+        ({"category": "lookup", "outcome": "answer"}, "expects at least one number"),
+        (
+            {"category": "unanswerable", "outcome": "refusal", "label": "Oslo"},
+            "expects no number or label",
+        ),
+        (
+            {"category": "lookup", "outcome": "answer", "question_id": "Lookup 1"},
+            "String should match pattern",
+        ),
+    ],
+)
+def test_an_expectation_must_fit_its_outcome(fields: dict[str, object], message: str) -> None:
+    with pytest.raises(ValueError, match=message):
+        Expectation.model_validate({"question_id": "q-1", "language": "no", **fields})
+
+
+def test_the_report_counts_by_category_language_and_outcome(world: World) -> None:
+    value = format_number(world.found.value("2026"), "en")
+    growth = format_number(world.found.step("growth"), "no")
+    good = answered(
+        world, f"In 2026, {value} people lived in Norway [E1].", "en", ("blocked", "passed")
+    )
+    rounded = answered(world, "About 5.6 million people lived in Norway in 2026 [E1].", "en")
+    change = answered(
+        world,
+        f"Folketallet økte med {growth} prosent fra 2025 [C1] [E1].",
+        "no",
+        ("uncited", "blocked", "passed"),
+    )
+    verdicts = [
+        score(expect("lookup-1", "en", "lookup", (world.population(),)), good, world.evidence),
+        score(expect("lookup-2", "en", "lookup", (world.population(),)), rounded, world.evidence),
+        score(expect("change-1", "no", "change", (world.growth(),)), change, world.evidence),
+        score(
+            expect("lookup-3", "no", "lookup", (world.population(),)),
+            refused("no", "limit"),
+            world.evidence,
+        ),
+        score(expect("unanswerable-1", "no", "unanswerable"), refused("no"), world.evidence),
+        score(expect("out-of-scope-1", "en", "out of scope"), good, world.evidence),
+        score(
+            expect("sum-1", "en", "sum", (world.population(),)),
+            Failure(message="stopped", usage=None),
+            world.evidence,
+        ),
+    ]
+
+    report = report_of(verdicts)
+
+    assert report.questions == 7
+    assert report.correct == Rate(count=3, total=7, rate=Decimal("0.4286"))
+    assert report.by_category == (
+        Group(name="lookup", correct=Rate(count=1, total=3, rate=Decimal("0.3333"))),
+        Group(name="change", correct=Rate(count=1, total=1, rate=Decimal("1.0000"))),
+        Group(name="sum", correct=Rate(count=0, total=1, rate=Decimal("0.0000"))),
+        Group(name="unanswerable", correct=Rate(count=1, total=1, rate=Decimal("1.0000"))),
+        Group(name="out of scope", correct=Rate(count=0, total=1, rate=Decimal("0.0000"))),
+    )
+    assert report.by_language == (
+        Group(name="no", correct=Rate(count=2, total=3, rate=Decimal("0.6667"))),
+        Group(name="en", correct=Rate(count=1, total=4, rate=Decimal("0.2500"))),
+    )
+    assert report.refused_with_answer == Rate(count=1, total=5, rate=Decimal("0.2000"))
+    assert report.answered_should_refuse == Rate(count=1, total=2, rate=Decimal("0.5000"))
+    assert report.failures == 1
+    # Runs with a checked reply: lookup-1, lookup-2, change-1 and out-of-scope-1.
+    assert report.first_attempt_blocked == Rate(count=3, total=4, rate=Decimal("0.7500"))
+    assert report.retries == 1 + 0 + 2 + 1
+    assert report.usage[0] == QuestionUse(
+        question_id="lookup-1", tokens=20_700, cost=Decimal("0.005894"), seconds=Decimal("38.500")
+    )
+    assert report.usage[-1] == QuestionUse(
+        question_id="sum-1", tokens=None, cost=None, seconds=None
+    )
+    assert report_of(verdicts) == report
+
+
+def test_a_rate_of_nothing_is_none() -> None:
+    report = report_of([])
+
+    assert report.correct == Rate(count=0, total=0, rate=None)
+    assert report.by_category == ()

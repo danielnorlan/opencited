@@ -293,3 +293,23 @@ def test_a_reply_of_invisible_characters_fails_the_run() -> None:
     assert decide(state, LIMITS, None) == Fail(
         "the model replied with neither text nor a tool call"
     )
+
+
+def test_each_check_records_what_became_of_the_reply(reports: tuple[Report, Report]) -> None:
+    passed, blocked = reports
+    answer = reply("Svar [E1].")
+
+    state = (
+        RunState()
+        .replied(answer)
+        .checked(blocked, ("E1",))
+        .retrying()
+        .replied(answer)
+        .checked(passed, ())
+        .retrying()
+        .replied(answer)
+        .checked(passed, ("E1",))
+    )
+
+    assert state.attempts == ("blocked", "uncited", "passed")
+    assert state.checks == 3

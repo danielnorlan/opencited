@@ -132,6 +132,7 @@ def test_a_run_that_has_used_its_time_refuses_before_the_next_call(tmp_path: Pat
         limit="time",
         explanation=None,
         report=None,
+        attempts=(),
         model=ModelRecord(
             base_url=CONFIG.base_url,
             model=CONFIG.model,
@@ -266,6 +267,7 @@ def test_a_refusal_holds_the_last_report_only_after_a_blocked_answer(
     assert isinstance(result, Refusal)
     assert (result.reason, result.limit) == ("limit", "tokens")
     assert result.report == (blocked if last == "blocked" else None)
+    assert result.attempts == (last,)
 
 
 @pytest.mark.parametrize("cited", [(), ("E1",)])

@@ -36,6 +36,9 @@ PER_MILLION = 6
 type Phase = Literal["ready", "replied", "checked"]
 type RefusalReason = Literal["no data", "outside the sources", "gate blocked", "limit"]
 type LimitName = Literal["time", "tokens", "cost", "model calls", "tool calls"]
+# What became of each reply the gate checked: released, blocked, or sent back since it
+# cited no result.
+type Attempt = Literal["passed", "blocked", "uncited"]
 
 
 @dataclass(frozen=True)
@@ -58,6 +61,7 @@ class RunState:
     reply: Completion | None = None
     report: Report | None = None
     cited: tuple[str, ...] = ()
+    attempts: tuple[Attempt, ...] = ()
 
     @property
     def tokens(self) -> int:
@@ -83,7 +87,15 @@ class RunState:
 
     def checked(self, report: Report, cited: tuple[str, ...]) -> RunState:
         """Record the gate's report on the reply, and the evidence IDs its markers cite."""
-        return replace(self, phase="checked", checks=self.checks + 1, report=report, cited=cited)
+        attempt: Attempt = "blocked" if not report.passed else "passed" if cited else "uncited"
+        return replace(
+            self,
+            phase="checked",
+            checks=self.checks + 1,
+            report=report,
+            cited=cited,
+            attempts=(*self.attempts, attempt),
+        )
 
     def retrying(self) -> RunState:
         return replace(self, phase="ready", reply=None)
@@ -225,6 +237,7 @@ def after_check(state: RunState) -> Decision:
 
 __all__ = [
     "MAX_RETRIES",
+    "Attempt",
     "CallModel",
     "CheckAnswer",
     "Decision",

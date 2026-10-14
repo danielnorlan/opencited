@@ -282,6 +282,18 @@ def allowed(number: Number, kind: UnitKind) -> bool:
     return kind != "per cent"
 
 
+def fits_value(number: Number, exact: Fraction, kind: UnitKind) -> bool:
+    """Return whether a number may be a value, by the gate's rules for unit and rounding.
+
+    The evaluation suite's scorer reads expected numbers with this rule.
+    """
+    return (
+        number.value is not None
+        and allowed(number, kind)
+        and fits(number, Candidate(exact, kind, ""))
+    )
+
+
 def why_not(number: Number, holdings: Holdings) -> str:
     """Return the most helpful reason why a value matched no cited value."""
     candidates = [candidate for _, candidate in holdings.values]

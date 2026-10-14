@@ -25,7 +25,7 @@ flowchart LR
 | Calculation engine | Runs typed calculation plans over stored snapshots: DuckDB selects the cells, and the arithmetic uses exact rational numbers | Built, with the agent's `calculate` tool ([spec 0002](specs/0002-snapshots-and-calculation.md)) |
 | Evidence gate | Matches every number in an answer to source data or a calculation result, and blocks the answer otherwise | Built, with the agent's retry ([spec 0003](specs/0003-evidence-gate.md)) |
 | Agent | Plans, calls tools and drafts the answer, in a loop of its own over a chat completions API | Built; not yet measured with a model ([spec 0004](specs/0004-agent.md)) |
-| Evaluation suite | Versioned questions with computed answers, run with Inspect AI | Specification approved ([spec 0005](specs/0005-evaluation-suite.md)) |
+| Evaluation suite | Versioned questions with computed answers, run with Inspect AI | In progress: the scorer is built ([spec 0005](specs/0005-evaluation-suite.md)) |
 | Table search | Hybrid full-text and vector search over table metadata, in PostgreSQL with pgvector | Planned, M3 |
 | Model gateway | Routes requests between local and hosted models within budgets, using LiteLLM | Planned, M3 |
 | Tracing | OpenTelemetry traces, viewed in Langfuse | Planned, M3 |
@@ -504,6 +504,36 @@ with 0 for an answer, 3 for a refusal, 1 when the run fails, with what the run u
 and 2 when the configuration, the key or the snapshot directory cannot be used. An
 error inside the package also ends with one line and exit 1, and its traceback is
 logged at debug level.
+
+## Evaluation suite (M2)
+
+The suite measures how often the agent answers correctly, refuses when it should and
+is blocked by the gate ([spec 0005](specs/0005-evaluation-suite.md)). The scorer and
+its report are built, in `opencited.evals`, which imports nothing from Inspect
+([ADR 0012](adr/0012-inspect-evaluations.md)). The question set, its reference
+plans and the Inspect task are planned.
+
+### Scorer
+
+`opencited.evals.score.score` takes what a question expects, the agent's answer,
+refusal or failure, and the evidence of the run, and asks no model. A question with an
+answer expects the results of steps of its reference plan, each with the decimals the
+answer must show at least, and a ranking question also a label. The answer is correct
+when the agent released it, it passes the gate again with the run's evidence, it
+holds each expected number, and a ranking answer holds the label without regard to
+case. A number holds an expected one when it may be that value under the gate's rules
+for unit and rounding and shows at least the required decimals in the value's own
+unit; a scale word lowers what it shows, so "5,6 millioner" shows a count to a tenth
+of a million. A question that should be refused is correct when the agent refused,
+and the verdict keeps the reason.
+
+Answers and refusals record what became of each reply the gate checked: passed,
+blocked, or sent back because it cited no result. `opencited.evals.report.report_of`
+counts the verdicts: correct answers in all and by category and language, refusals of
+questions that have an answer, answers to questions that should be refused, failed
+runs, runs whose first checked reply was not released, retries, and the tokens, cost
+and time of each question. Rates are exact fractions rounded once to four decimals,
+so the same verdicts give the same report.
 
 ## Trust boundaries
 
