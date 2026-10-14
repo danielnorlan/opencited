@@ -27,6 +27,7 @@ TEXTS = {
     "2": "fa4ea61be2406c0ade156a6d602532dbd5cb00c668d5e9420b73143461639ae3",
     "3": "bd2e50b1ca5f176e535cd4d35c0172c4037f629a7b04482ac5ef779b46a7a29c",
     "4": "a8363ff1724fddd369a4b97b469fe7869b9e41aab8941f96e112762ad04fdb12",
+    "5": "66a5ab9223ea05c878bcd3f6b449af974e99a420b00e897b5d626680379d8a49",
 }
 
 
@@ -52,6 +53,12 @@ def test_the_prompt_names_the_language_of_the_answer_and_nothing_else_differs() 
     assert "Write the answer in Norwegian (bokmål)." in norwegian
     assert "Write the answer in English." in english
     assert norwegian.replace("Norwegian (bokmål)", "English") == english
+
+
+def test_the_prompt_keeps_numbers_from_a_false_premise_out_of_answers() -> None:
+    text = system_prompt("en")
+
+    assert "Do not repeat a number from the question that no result holds" in text
 
 
 def test_the_prompt_teaches_the_citation_markers_and_the_refusal_lines() -> None:

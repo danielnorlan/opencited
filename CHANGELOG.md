@@ -31,6 +31,9 @@ Notable changes to OpenCited are recorded here. The format follows
   Norwegian time, and a rate limiter that keeps each process within 30 requests a
   minute and backs off after HTTP 429. `opencited mcp` takes `--cache-dir` and
   `--no-cache`.
+- Version 5 of the system prompt asks the model, when a question rests on a claim
+  that the results contradict, to say so with the results' figures and not to repeat
+  a number from the question that no result holds.
 - Later model calls get a short note instead of a search result once a query has
   given a result, and instead of a table's metadata once that table was queried, so
   the metadata of a large table no longer rides along in every call. Version 4 of
