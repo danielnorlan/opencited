@@ -41,6 +41,7 @@ from opencited.agent.prompt import (
     uncited_message,
 )
 from opencited.agent.run import (
+    Attempt,
     CallModel,
     CheckAnswer,
     Decline,
@@ -69,9 +70,17 @@ class AgentError(Exception):
     ``usage`` is None when the fault came before the run could count anything.
     """
 
-    def __init__(self, message: str, usage: RunUsage | None) -> None:
+    def __init__(
+        self,
+        message: str,
+        usage: RunUsage | None,
+        attempts: tuple[Attempt, ...] = (),
+        retries: int = 0,
+    ) -> None:
         super().__init__(message)
         self.usage = usage
+        self.attempts = attempts
+        self.retries = retries
 
 
 class Run:
@@ -110,6 +119,9 @@ class Run:
     def usage(self) -> RunUsage:
         return usage_of(self.state, self.config.prices)
 
+    def error(self, message: str) -> AgentError:
+        return AgentError(message, self.usage(), self.state.attempts, self.state.retries)
+
     def record(self) -> ModelRecord:
         return model_record(self.config, self.reported)
 
@@ -123,7 +135,7 @@ class Run:
             else:
                 failure = None
             if failure is not None:
-                raise AgentError(failure, self.usage())
+                raise self.error(failure)
         if reply is None:
             self.state = self.state.at(self.elapsed(), timed_out=True)
             return
@@ -159,6 +171,7 @@ class Run:
             explanation=explanation,
             report=last if last is not None and not last.passed else None,
             attempts=self.state.attempts,
+            retries=self.state.retries,
             model=self.record(),
             prompt_version=PROMPT_VERSION,
             usage=self.usage(),
@@ -190,6 +203,7 @@ class Run:
                         text=decision.text,
                         report=decision.report,
                         attempts=self.state.attempts,
+                        retries=self.state.retries,
                         evidence=self.toolbox.evidence,
                         model=self.record(),
                         prompt_version=PROMPT_VERSION,
@@ -209,7 +223,7 @@ class Run:
                 case Refuse():
                     return self.refusal(decision.reason, decision.detail, limit=decision.limit)
                 case Fail():
-                    raise AgentError(decision.message, self.usage())
+                    raise self.error(decision.message)
 
 
 async def ask(

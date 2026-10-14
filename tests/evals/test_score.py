@@ -30,6 +30,7 @@ from opencited.evals.score import (
     Failure,
     NumberFound,
     Verdict,
+    has_label,
     score,
 )
 from opencited.gate import CalculationEvidence, Evidence, check
@@ -37,6 +38,8 @@ from opencited.snapshots import SnapshotStore
 from opencited.sources import Language
 from opencited.values import format_number
 
+# A number of the schema tests, which run no plan.
+NUMBER = {"step": "after", "exact": "5627400", "kind": "amount", "decimals": 0}
 USAGE = RunUsage(
     model_calls=4,
     tool_calls=5,
@@ -104,6 +107,8 @@ def answered(
         text=text,
         report=check(text, language, world.evidence),
         attempts=attempts,
+        # Each attempt but the last went back to the model.
+        retries=len(attempts) - 1,
         evidence=world.evidence,
         model=model_record(CONFIG, ["a-model-2026-10-01"]),
         prompt_version="1",
@@ -122,6 +127,7 @@ def refused(language: Language, reason: str = "no data") -> Refusal:
             "explanation": None,
             "report": None,
             "attempts": (),
+            "retries": 0,
             "model": model_record(CONFIG, ["a-model-2026-10-01"]),
             "prompt_version": "1",
             "usage": usage_of(
@@ -169,6 +175,7 @@ def test_an_answer_with_the_expected_number_is_correct(world: World) -> None:
         numbers=(NumberFound(step="after", text=value),),
         label_found=None,
         attempts=("passed",),
+        retries=0,
         usage=USAGE,
     )
 
@@ -304,6 +311,20 @@ def test_the_same_answers_and_data_give_the_same_verdicts(world: World) -> None:
     ("fields", "message"),
     [
         ({"category": "lookup", "outcome": "answer"}, "expects at least one number"),
+        ({"category": "lookup", "outcome": "refusal"}, "expects the other outcome"),
+        ({"category": "unanswerable", "outcome": "answer"}, "expects the other outcome"),
+        (
+            {"category": "ranking", "outcome": "answer", "numbers": (NUMBER,)},
+            "a ranking question expects a label",
+        ),
+        (
+            {"category": "lookup", "outcome": "answer", "numbers": (NUMBER,), "label": "Oslo"},
+            "a ranking question expects a label, and no other",
+        ),
+        (
+            {"category": "ranking", "outcome": "answer", "numbers": (NUMBER,), "label": ""},
+            "at least 1 character",
+        ),
         (
             {"category": "unanswerable", "outcome": "refusal", "label": "Oslo"},
             "expects no number or label",
@@ -369,7 +390,8 @@ def test_the_report_counts_by_category_language_and_outcome(world: World) -> Non
     assert report.answered_should_refuse == Rate(count=1, total=2, rate=Decimal("0.5000"))
     assert report.failures == 1
     # Runs with a checked reply: lookup-1, lookup-2, change-1 and out-of-scope-1.
-    assert report.first_attempt_blocked == Rate(count=3, total=4, rate=Decimal("0.7500"))
+    assert report.first_attempt_blocked == Rate(count=2, total=4, rate=Decimal("0.5000"))
+    assert report.first_attempt_uncited == Rate(count=1, total=4, rate=Decimal("0.2500"))
     assert report.retries == 1 + 0 + 2 + 1
     assert report.usage[0] == QuestionUse(
         question_id="lookup-1", tokens=20_700, cost=Decimal("0.005894"), seconds=Decimal("38.500")
@@ -385,3 +407,141 @@ def test_a_rate_of_nothing_is_none() -> None:
 
     assert report.correct == Rate(count=0, total=0, rate=None)
     assert report.by_category == ()
+
+
+@pytest.mark.parametrize(
+    ("label", "text", "found"),
+    [
+        ("1 years", "The group 21 years was largest.", False),
+        ("Trøndelag", "Sør-Trøndelag had the most.", False),
+        ("Trøndelag", "Trøndelag had the most.", True),
+        ("20-24 years", "The group 20\u201324 years was largest.", True),
+        ("65 år", "Gruppen 65\u00a0år var størst.", True),
+        ("Ålesund", "A\u030alesund had the most.", True),
+        ("A\u030alesund", "Ålesund had the most.", True),
+        ("Oslo", "Osloregionen had the most.", False),
+        ("Oslo", "<!-- Oslo --> Bergen had the most.", False),
+        # The documented limit: a label that begins another one still counts.
+        ("Troms", "Troms og Finnmark had the most.", True),
+    ],
+)
+def test_a_label_counts_only_as_a_whole_in_the_shown_text(
+    label: str, text: str, found: bool
+) -> None:
+    assert has_label(text, label) is found
+
+
+def test_every_expected_number_must_be_in_the_answer(world: World) -> None:
+    value = format_number(world.found.value("2026"), "no")
+    result = answered(world, f"I 2026 bodde det {value} personer i Norge [E1].", "no")
+    expectation = expect("change-3", "no", "change", (world.population(), world.growth()))
+
+    verdict = score(expectation, result, world.evidence)
+
+    assert [item.text for item in verdict.numbers] == [value, None]
+    assert verdict.correct is False
+
+
+def test_a_number_with_the_other_sign_does_not_hold_the_value(world: World) -> None:
+    written = format_number(-world.found.step("growth"), "no")
+    result = answered(world, f"Folketallet endret seg med {written} prosent [C1] [E1].", "no")
+
+    verdict = score(expect("change-4", "no", "change", (world.growth(),)), result, world.evidence)
+
+    assert verdict.numbers == (NumberFound(step="growth", text=None),)
+    assert verdict.correct is False
+
+
+def test_another_cited_value_is_not_the_expected_one(world: World) -> None:
+    earlier = format_number(world.found.value("2025"), "no")
+    result = answered(world, f"Det bodde {earlier} personer i Norge [E1].", "no")
+
+    verdict = score(
+        expect("lookup-6", "no", "lookup", (world.population(),)), result, world.evidence
+    )
+
+    assert verdict.passes_gate is True
+    assert verdict.numbers == (NumberFound(step="after", text=None),)
+    assert verdict.correct is False
+
+
+def test_periods_and_numbers_in_comments_are_not_values(world: World) -> None:
+    value = format_number(world.found.value("2026"), "no")
+    # An expected value equal to a year, written by hand to show that a period that the
+    # gate passes is not a value.
+    year = ExpectedNumber(step="year", exact="2026", kind="amount", decimals=0)
+    result = answered(world, f"Tallet gjelder 2026 [E1]. <!-- {value} [E1] -->", "no")
+
+    verdict = score(
+        expect("lookup-7", "no", "lookup", (year, world.population())), result, world.evidence
+    )
+
+    assert verdict.passes_gate is True
+    assert verdict.numbers == (
+        NumberFound(step="year", text=None),
+        NumberFound(step="after", text=None),
+    )
+
+
+def test_the_counts_do_not_depend_on_the_order_of_the_verdicts(world: World) -> None:
+    value = format_number(world.found.value("2026"), "en")
+    good = answered(
+        world, f"In 2026, {value} people lived in Norway [E1].", "en", ("blocked", "passed")
+    )
+    verdicts = [
+        score(expect("lookup-1", "en", "lookup", (world.population(),)), good, world.evidence),
+        score(expect("unanswerable-1", "no", "unanswerable"), refused("no"), world.evidence),
+        score(
+            expect("change-1", "no", "change", (world.growth(),)),
+            refused("no", "limit"),
+            world.evidence,
+        ),
+    ]
+
+    forward, backward = report_of(verdicts), report_of(verdicts[::-1])
+
+    assert forward.model_copy(update={"usage": ()}) == backward.model_copy(update={"usage": ()})
+    assert forward.usage == backward.usage[::-1]
+
+
+def test_a_refusal_keeps_its_attempts_and_retries(world: World) -> None:
+    refusal = refused("no", "gate blocked").model_copy(
+        update={"attempts": ("blocked", "uncited", "blocked"), "retries": 2}
+    )
+
+    verdict = score(
+        expect("lookup-8", "no", "lookup", (world.population(),)), refusal, world.evidence
+    )
+
+    assert (verdict.attempts, verdict.retries) == (("blocked", "uncited", "blocked"), 2)
+
+
+def test_a_number_that_the_gate_did_not_match_does_not_hold_the_value(world: World) -> None:
+    value = format_number(world.found.value("2026"), "no")
+    result = answered(world, f"I 2026 bodde det {value} personer i Norge.", "no")
+
+    verdict = score(
+        expect("lookup-9", "no", "lookup", (world.population(),)), result, world.evidence
+    )
+
+    assert verdict.passes_gate is False
+    assert verdict.numbers == (NumberFound(step="after", text=None),)
+
+
+def test_a_failed_run_keeps_its_attempts_and_the_report_counts_recorded_retries(
+    world: World,
+) -> None:
+    failure = Failure(message="stopped", usage=None, attempts=("blocked",), retries=1)
+    refusal = refused("no").model_copy(update={"attempts": ("blocked",), "retries": 1})
+
+    verdicts = [
+        score(expect("sum-2", "en", "sum", (world.population(),)), failure, world.evidence),
+        score(expect("lookup-10", "no", "lookup", (world.population(),)), refusal, world.evidence),
+    ]
+
+    assert (verdicts[0].attempts, verdicts[0].retries) == (("blocked",), 1)
+    # Each run sent its blocked reply back once, and then stopped without a new check.
+    assert report_of(verdicts).retries == 2
+    assert report_of(verdicts).first_attempt_blocked == Rate(
+        count=2, total=2, rate=Decimal("1.0000")
+    )

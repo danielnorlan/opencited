@@ -84,7 +84,8 @@ class Answer(Frozen):
     citations: tuple[Citation, ...]
     calculations: tuple[CalculationCitation, ...]
     report: Report
-    attempts: tuple[Attempt, ...] = Field(description="What became of each checked reply.")
+    attempts: tuple[Attempt, ...] = Field(description="What the gate made of each reply.")
+    retries: int = Field(description="Replies sent back for a correction.")
     model: ModelRecord
     prompt_version: str
     usage: RunUsage
@@ -99,7 +100,8 @@ class Refusal(Frozen):
     limit: LimitName | None
     explanation: str | None
     report: Report | None
-    attempts: tuple[Attempt, ...] = Field(description="What became of each checked reply.")
+    attempts: tuple[Attempt, ...] = Field(description="What the gate made of each reply.")
+    retries: int = Field(description="Replies sent back for a correction.")
     model: ModelRecord
     prompt_version: str
     usage: RunUsage
@@ -200,6 +202,7 @@ def answer_of(
     text: str,
     report: Report,
     attempts: Sequence[Attempt],
+    retries: int,
     evidence: Sequence[Evidence],
     model: ModelRecord,
     prompt_version: str,
@@ -227,6 +230,7 @@ def answer_of(
         calculations=tuple(calculations),
         report=report,
         attempts=tuple(attempts),
+        retries=retries,
         model=model,
         prompt_version=prompt_version,
         usage=usage,

@@ -520,20 +520,26 @@ refusal or failure, and the evidence of the run, and asks no model. A question w
 answer expects the results of steps of its reference plan, each with the decimals the
 answer must show at least, and a ranking question also a label. The answer is correct
 when the agent released it, it passes the gate again with the run's evidence, it
-holds each expected number, and a ranking answer holds the label without regard to
-case. A number holds an expected one when it may be that value under the gate's rules
-for unit and rounding and shows at least the required decimals in the value's own
-unit; a scale word lowers what it shows, so "5,6 millioner" shows a count to a tenth
-of a million. A question that should be refused is correct when the agent refused,
-and the verdict keeps the reason.
+holds each expected number, and a ranking answer holds the label. A number holds an
+expected one when the gate matched it as a value, it may be that value under the
+gate's rules for unit and rounding, and it shows at least the required decimals in the
+value's own unit; a scale word lowers what it shows, so "5,6 millioner" shows a count
+to a tenth of a million. Periods, dates, table IDs, label numbers and numbers in HTML
+comments do not count. A label counts when it stands in the shown text as a whole,
+ignoring case and the kind of dash and space, and may not run on into a letter, a
+digit or a hyphen; a label that begins another one, such as "Troms" in "Troms og
+Finnmark", still counts. A question that should be refused is correct when the agent
+refused, and the verdict keeps the reason. A question's category fixes its outcome,
+and only a ranking question expects a label.
 
-Answers and refusals record what became of each reply the gate checked: passed,
-blocked, or sent back because it cited no result. `opencited.evals.report.report_of`
-counts the verdicts: correct answers in all and by category and language, refusals of
-questions that have an answer, answers to questions that should be refused, failed
-runs, runs whose first checked reply was not released, retries, and the tokens, cost
-and time of each question. Rates are exact fractions rounded once to four decimals,
-so the same verdicts give the same report.
+Answers, refusals and failed runs record what the gate made of each reply it checked,
+passed, blocked, or passed without a citation, and how many replies went back to the
+model. `opencited.evals.report.report_of` counts the verdicts: correct answers in all
+and by category and language, refusals of questions that have an answer, answers to
+questions that should be refused, failed runs, runs whose first checked reply the gate
+blocked or that cited nothing, retries, and the tokens, cost and time of each
+question. Rates are exact fractions rounded once to four decimals, so the same
+verdicts give the same report in any order.
 
 ## Trust boundaries
 

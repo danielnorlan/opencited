@@ -138,6 +138,7 @@ def answer(store: SnapshotStore, language: Language = "no") -> tuple[Answer, Evi
         text=text,
         report=report,
         attempts=("passed",),
+        retries=0,
         evidence=found.evidence,
         model=model_record(CONFIG, ["a-model-2026-10-01", "a-model-2026-10-01"]),
         prompt_version="1",

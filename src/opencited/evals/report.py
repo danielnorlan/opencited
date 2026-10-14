@@ -50,7 +50,10 @@ class ScoreReport(Frozen):
     answered_should_refuse: Rate = Field(description="Answers to questions that should be refused.")
     failures: int = Field(description="Runs that stopped with an error.")
     first_attempt_blocked: Rate = Field(
-        description="Runs whose first checked reply the gate did not release."
+        description="Runs with a checked reply whose first one the gate blocked."
+    )
+    first_attempt_uncited: Rate = Field(
+        description="Runs with a checked reply whose first one the gate passed but cited nothing."
     )
     retries: int = Field(description="Replies sent back for a correction, in all runs.")
     usage: tuple[QuestionUse, ...]
@@ -101,8 +104,9 @@ def report_of(verdicts: Sequence[Verdict]) -> ScoreReport:
         refused_with_answer=share(with_answer, lambda item: item.outcome == "refusal"),
         answered_should_refuse=share(should_refuse, lambda item: item.outcome == "answer"),
         failures=sum(1 for item in verdicts if item.outcome == "failure"),
-        first_attempt_blocked=share(checked, lambda item: item.attempts[0] != "passed"),
-        retries=sum(len(item.attempts) - 1 for item in checked),
+        first_attempt_blocked=share(checked, lambda item: item.attempts[0] == "blocked"),
+        first_attempt_uncited=share(checked, lambda item: item.attempts[0] == "uncited"),
+        retries=sum(item.retries for item in verdicts),
         usage=tuple(use_of(item) for item in verdicts),
     )
 

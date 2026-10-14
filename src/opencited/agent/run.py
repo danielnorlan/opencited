@@ -36,8 +36,9 @@ PER_MILLION = 6
 type Phase = Literal["ready", "replied", "checked"]
 type RefusalReason = Literal["no data", "outside the sources", "gate blocked", "limit"]
 type LimitName = Literal["time", "tokens", "cost", "model calls", "tool calls"]
-# What became of each reply the gate checked: released, blocked, or sent back since it
-# cited no result.
+# What the gate made of each reply it checked: passed and citing a result, blocked, or
+# passed without citing one. A passed attempt can still end in a refusal when a limit is
+# reached before the release.
 type Attempt = Literal["passed", "blocked", "uncited"]
 
 
@@ -62,6 +63,7 @@ class RunState:
     report: Report | None = None
     cited: tuple[str, ...] = ()
     attempts: tuple[Attempt, ...] = ()
+    retries: int = 0
 
     @property
     def tokens(self) -> int:
@@ -98,7 +100,7 @@ class RunState:
         )
 
     def retrying(self) -> RunState:
-        return replace(self, phase="ready", reply=None)
+        return replace(self, phase="ready", reply=None, retries=self.retries + 1)
 
 
 @dataclass(frozen=True)
