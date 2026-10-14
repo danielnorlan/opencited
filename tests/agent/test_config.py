@@ -107,9 +107,11 @@ def test_the_endpoint_the_model_and_the_key_variable_are_required(
         "OPENCITED_MAX_SECONDS",
     ],
 )
-@pytest.mark.parametrize("value", ["12.5", "twelve", "1e3", "1_000"])
+@pytest.mark.parametrize("value", ["12.5", "twelve", "1e3", "1_000", "9" * 19, "9" * 5000])
 def test_a_whole_number_must_be_written_in_digits(name: str, value: str) -> None:
-    assert failure(ENDPOINT | {name: value}) == (f"{name} must be a whole number, not {value!r}")
+    assert failure(ENDPOINT | {name: value}) == (
+        f"{name} must be a whole number of at most 18 digits, not {value!r}"
+    )
 
 
 @pytest.mark.parametrize(
@@ -170,9 +172,23 @@ def test_the_base_url_holds_no_secret_and_has_a_web_scheme(url: str, reason: str
 
     assert message.startswith("OPENCITED_MODEL_URL: ")
     assert reason in message
+    assert url not in message
 
 
-@pytest.mark.parametrize("name", ["1KEY", "A-KEY", "A KEY", "$A_KEY"])
+def test_a_refused_url_is_in_no_error_chain() -> None:
+    url = "ftp://name:secret@localhost/v1?key=secret"
+
+    with pytest.raises(ConfigurationError) as caught:
+        from_environment(ENDPOINT | {"OPENCITED_MODEL_URL": url})
+
+    assert "secret" not in str(caught.value)
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
+
+
+@pytest.mark.parametrize(
+    "name", ["1KEY", "A-KEY", "A KEY", "$A_KEY", "lower_case", "gsk_Abc123", "K" * 65]
+)
 def test_the_key_variable_is_a_variable_name(name: str) -> None:
     message = failure(ENDPOINT | {"OPENCITED_MODEL_KEY_VARIABLE": name})
 

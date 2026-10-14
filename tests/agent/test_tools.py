@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -18,10 +18,11 @@ from typing import Any, cast
 import httpx2
 import pytest
 from mcp import Client
-from mcp.types import Tool
+from mcp.types import CallToolResult, Tool
 from recorded import FIXTURES
 from snapshotting import CATCH, POPULATION, SYMBOLS
 
+from opencited.agent import tools
 from opencited.agent.model import ToolCall, ToolSchema, tool_param
 from opencited.agent.tools import (
     CALCULATE,
@@ -385,6 +386,18 @@ def test_a_tool_error_from_the_server_reaches_the_model(tmp_path: Path) -> None:
             call("search_tables", "[" * 100_000 + "]" * 100_000),
             "the arguments are nested too deeply",
         ),
+        (
+            call("get_table_metadata", {"table_id": "05810\n"}),
+            "the arguments hold a control character, such as a line break",
+        ),
+        (
+            query("05810", {"Tid\t": ["2026"]}, "en"),
+            "the arguments hold a control character, such as a line break",
+        ),
+        (
+            query("05810", {"Tid": ["2026\r"]}, "en"),
+            "the arguments hold a control character, such as a line break",
+        ),
     ],
 )
 def test_a_call_that_does_not_match_a_published_schema_is_not_run(
@@ -405,7 +418,10 @@ def engine_run(store: SnapshotStore, steps: Sequence[dict[str, Any]]) -> Calcula
     return Engine(store).run(Plan.model_validate_json(json.dumps({"steps": steps})))
 
 
-def test_calculate_replaces_evidence_ids_with_snapshot_ids(tmp_path: Path) -> None:
+@pytest.mark.parametrize("language", ["no", "en"])
+def test_calculate_replaces_evidence_ids_with_snapshot_ids(
+    tmp_path: Path, language: Language
+) -> None:
     rank = {
         "name": "largest",
         "operation": "rank",
@@ -423,7 +439,7 @@ def test_calculate_replaces_evidence_ids_with_snapshot_ids(tmp_path: Path) -> No
         "decimals": 2,
     }
     steps = [total("E1", "2025"), total("E1", "2026"), change, rank]
-    result = run(tmp_path, POPULATION_EN, calculate(*steps))
+    result = run(tmp_path, POPULATION_EN, calculate(*steps), language=language)
     query_outcome, outcome = result.outcomes
     snapshot_id = cast("QueryResult", cast("SourceEvidence", query_outcome.evidence).result)
     snapshot_id = snapshot_id.provenance.response_sha256
@@ -439,11 +455,17 @@ def test_calculate_replaces_evidence_ids_with_snapshot_ids(tmp_path: Path) -> No
     for item, step in zip(shown["steps"], expected.steps, strict=True):
         assert item["value"] == (exact_text(step.value) if step.value is not None else None)
         if step.value is not None:
-            assert item["formatted"] == format_number(step.value, "no")
+            assert item["formatted"] == format_number(step.value, language)
         assert [cell["formatted"] for cell in item["ranked"]] == [
-            format_number(cell.value, "no") for cell in step.ranked
+            format_number(cell.value, language) for cell in step.ranked
         ]
-    assert shown["steps"][1]["formatted"] == f"5{NO_BREAK_SPACE}627{NO_BREAK_SPACE}400"
+    assert (
+        shown["steps"][1]["formatted"]
+        == {
+            "no": f"5{NO_BREAK_SPACE}627{NO_BREAK_SPACE}400",
+            "en": "5,627,400",
+        }[language]
+    )
     assert len(shown["steps"][3]["ranked"]) == 2
 
 
@@ -480,8 +502,23 @@ def test_an_engine_error_names_the_evidence_id_and_not_the_snapshot(tmp_path: Pa
     outcome = result.outcomes[1]
 
     assert outcome.status == "failed"
-    assert outcome.text.startswith("The tool failed: Step 'total_2026' reads snapshot E1, ")
-    assert "the cells of snapshot E1 have changed" in outcome.text
+    assert outcome.text == (
+        "The tool failed: Step 'total_2026' reads the snapshot of E1, which cannot be read"
+    )
+
+
+def test_a_local_path_in_a_store_error_stays_out_of_the_tool_message(tmp_path: Path) -> None:
+    def lock(store: SnapshotStore) -> None:
+        [directory] = [path for path in store.directory.iterdir() if path.is_dir()]
+        (directory / "snapshot.json").chmod(0)
+
+    result = run(tmp_path, POPULATION_EN, lock, calculate(total("E1", "2026")))
+    outcome = result.outcomes[1]
+
+    assert outcome.text == (
+        "The tool failed: Step 'total_2026' reads the snapshot of E1, which cannot be read"
+    )
+    assert str(tmp_path) not in outcome.text
     assert not SHA256.search(outcome.text)
 
 
@@ -494,15 +531,82 @@ def test_an_engine_error_about_codes_reaches_the_model(tmp_path: Path) -> None:
     )
 
 
-def test_a_plan_that_the_schema_lets_through_is_still_checked_by_the_models(
-    tmp_path: Path,
+def test_the_plan_model_checks_a_plan_after_the_schema(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # The schema's pattern ends in $, which a JSON schema validator in Python lets
-    # match before a final line break; the plan model does not.
-    step = total("E1", "2026") | {"name": "total\n"}
+    # The schema and the plan model agree on every plan found so far; the model still
+    # refuses a plan if they ever differ. Here the schema check is skipped.
+    def unchecked(schema: ToolSchema, arguments: Mapping[str, Any]) -> None:
+        return None
+
+    monkeypatch.setattr(tools, "check_arguments", unchecked)
+    step = total("E1", "2026") | {"name": "total 2026"}
     result = run(tmp_path, POPULATION_EN, calculate(step))
     outcome = result.outcomes[1]
 
     assert outcome.status == "refused"
-    assert outcome.text.startswith("The call was not run: the plan is not valid: ")
+    assert outcome.text.startswith(
+        "The call was not run: the plan is not valid: steps/0/value/name: String should "
+        "match pattern '^[A-Za-z][A-Za-z0-9_]{0,39}$'"
+    )
     assert result.evidence[-1].evidence_id == "E1"
+
+
+def test_two_query_results_in_one_plan_keep_their_own_snapshots(tmp_path: Path) -> None:
+    catch = {
+        "name": "catch_2016",
+        "operation": "value",
+        "snapshot": "E2",
+        "codes": {
+            "FiskeslagSamiske": "80a",
+            "SamiskeElver": "18",
+            "ContentsCode": "Fangst",
+            "Tid": "2016",
+        },
+    }
+    steps = [total("E1", "2026"), catch]
+    result = run(tmp_path, POPULATION_EN, query("06743", CATCH, "no"), calculate(*steps))
+    first, second = (
+        cast("QueryResult", cast("SourceEvidence", outcome.evidence).result)
+        for outcome in result.outcomes[:2]
+    )
+    expected = engine_run(
+        result.store,
+        [
+            steps[0] | {"snapshot": first.provenance.response_sha256},
+            steps[1] | {"snapshot": second.provenance.response_sha256},
+        ],
+    )
+
+    assert first.provenance.response_sha256 != second.provenance.response_sha256
+    assert result.outcomes[2].evidence == CalculationEvidence("C1", expected)
+    shown = view(result.outcomes[2])
+    assert [(step["read"], step["value"]) for step in shown["steps"]] == [
+        ("E1", "5627400"),
+        ("E2", "10205"),
+    ]
+
+
+class Answering:
+    """An MCP client stand-in whose every call returns the same result."""
+
+    def __init__(self, result: CallToolResult) -> None:
+        self.result = result
+
+    async def call_tool(self, name: str, arguments: dict[str, Any]) -> CallToolResult:
+        return self.result
+
+
+@pytest.mark.parametrize("content", [None, {"total": "many", "tables": []}])
+def test_a_server_result_that_cannot_be_read_fails_the_call(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, content: dict[str, Any] | None
+) -> None:
+    client = Answering(CallToolResult(content=[], structured_content=content))
+    toolbox = Toolbox(cast("Client", client), listed_tools(), SnapshotStore(tmp_path), "no")
+
+    outcome = asyncio.run(toolbox.run(SEARCH))
+
+    assert outcome.status == "failed"
+    assert outcome.text == "The tool failed: the result of search_tables could not be read"
+    assert toolbox.evidence == ()
+    assert "The result of search_tables could not be read" in caplog.text

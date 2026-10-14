@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import copy
 import json
-from collections.abc import Mapping, Sequence
+import logging
+import unicodedata
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Literal, cast
@@ -32,9 +34,11 @@ from opencited.calc.engine import CalculationError, Engine
 from opencited.calc.plan import Plan, plan_schema
 from opencited.calc.result import CalculationResult
 from opencited.gate import CalculationEvidence, Evidence, SourceEvidence
-from opencited.snapshots import SnapshotStore
+from opencited.snapshots import SnapshotError, SnapshotStore
 from opencited.sources import Language, QueryResult, SearchResult, TableMetadata
 from opencited.values import format_number
+
+logger = logging.getLogger("opencited.agent")
 
 SERVER_TOOLS: Mapping[str, type[QueryResult | TableMetadata | SearchResult]] = {
     "search_tables": SearchResult,
@@ -127,10 +131,31 @@ def check_arguments(schema: ToolSchema, arguments: Mapping[str, Any]) -> None:
     unknown = sorted(set(arguments) - set(properties))
     if unknown:
         raise RefusalError(f"{schema.name} takes no argument {', '.join(unknown)}")
+    if any(controlled(text) for text in texts(arguments)):
+        # In Python a pattern's $ also matches before a final line break, so
+        # "05810\n" would match the table ID pattern ^[0-9]{5}$. No argument needs one.
+        raise RefusalError("the arguments hold a control character, such as a line break")
     try:
         validate(arguments, schema.parameters)
     except jsonschema.ValidationError as error:
         raise RefusalError(explain(error, schema.parameters)) from error
+
+
+def texts(value: object) -> Iterator[str]:
+    """Yield every string in parsed JSON, keys included."""
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for key, item in cast("dict[str, object]", value).items():
+            yield key
+            yield from texts(item)
+    elif isinstance(value, list):
+        for item in cast("list[object]", value):
+            yield from texts(item)
+
+
+def controlled(text: str) -> bool:
+    return any(unicodedata.category(char) == "Cc" for char in text)
 
 
 def validate(instance: object, schema: Mapping[str, Any]) -> None:
@@ -299,7 +324,12 @@ class Toolbox:
         if called.is_error:
             raise ToolFailureError(error_text(called))
         model = SERVER_TOOLS[name]
-        result = model.model_validate_json(json.dumps(called.structured_content))
+        try:
+            result = model.model_validate_json(json.dumps(called.structured_content))
+        except ValidationError as error:
+            # A fault of the server or of this package, which the model cannot mend.
+            logger.warning("The result of %s could not be read: %s", name, error)
+            raise ToolFailureError(f"the result of {name} could not be read") from error
         evidence_id = self._next_id("E")
         self._sources[evidence_id] = result
         return SourceEvidence(evidence_id, result), source_view(evidence_id, result, self.language)
@@ -320,12 +350,21 @@ class Toolbox:
         try:
             plan = Plan.model_validate_json(json.dumps(arguments, default=str))
         except ValidationError as error:
-            raise RefusalError(f"the plan is not valid: {error}") from error
+            reasons = "; ".join(
+                f"{located(problem['loc'], problem['msg'])}" for problem in error.errors()
+            )
+            raise RefusalError(f"the plan is not valid: {reasons}") from error
         try:
             result = await anyio.to_thread.run_sync(self.engine.run, plan)
         except CalculationError as error:
             message = str(error)
             for snapshot_id, evidence_id in names.items():
+                if isinstance(error.__cause__, SnapshotError) and snapshot_id in message:
+                    # The store's reason can name a local path, which stays here.
+                    message = (
+                        f"Step {error.step!r} reads the snapshot of {evidence_id}, which "
+                        "cannot be read"
+                    )
                 message = message.replace(snapshot_id, evidence_id)
             raise ToolFailureError(message) from error
         evidence_id = self._next_id("C")

@@ -12,7 +12,7 @@ import os
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from types import TracebackType
-from typing import Any, Literal, Self
+from typing import Any, Literal, Self, cast
 
 import httpx2
 from openai import APIConnectionError, APIStatusError, AsyncOpenAI, OpenAIError, omit
@@ -32,6 +32,7 @@ from opencited.http import USER_AGENT
 TIMEOUT = httpx2.Timeout(120.0, connect=10.0)
 # Headers that the SDK reads from this variable and adds to every request.
 CUSTOM_HEADERS = "OPENAI_CUSTOM_HEADERS"
+MAX_DETAIL = 300
 
 
 class ModelError(Exception):
@@ -62,7 +63,7 @@ class Completion:
 
     text: str | None
     tool_calls: tuple[ToolCall, ...]
-    finish_reason: str
+    finish_reason: str | None
     model: str
     usage: Usage | None
 
@@ -144,8 +145,14 @@ def message_param(message: Message) -> ChatCompletionMessageParam:
             return param
 
 
-def completion_of(response: ChatCompletion) -> Completion:
-    """Return the first choice of a response, with its tool calls and usage."""
+def completion_of(response: object) -> Completion:
+    """Return the first choice of a response, with its tool calls and usage.
+
+    The SDK builds its models without validating them, so a field the endpoint left
+    out or filled with another type is checked here.
+    """
+    if not isinstance(response, ChatCompletion):
+        raise ModelError("the endpoint did not answer with a chat completion; check the base URL")
     if not response.choices:
         raise ModelError("the endpoint returned no choices")
     choice = response.choices[0]
@@ -156,17 +163,38 @@ def completion_of(response: ChatCompletion) -> Completion:
         else:
             calls.append(ToolCall(call.id, call.custom.name, call.custom.input, kind="custom"))
     usage = response.usage
+    used: Usage | None = None
+    if usage is not None:
+        tokens_in, tokens_out = (
+            cast("object", usage.prompt_tokens),
+            cast("object", usage.completion_tokens),
+        )
+        if isinstance(tokens_in, int) and isinstance(tokens_out, int):
+            used = Usage(tokens_in, tokens_out)
+    finish = cast("object", choice.finish_reason)
     return Completion(
         text=choice.message.content,
         tool_calls=tuple(calls),
-        finish_reason=choice.finish_reason,
+        finish_reason=finish if isinstance(finish, str) else None,
         model=response.model,
-        usage=Usage(usage.prompt_tokens, usage.completion_tokens) if usage else None,
+        usage=used,
     )
 
 
 def without(text: str, secret: str) -> str:
     return text.replace(secret, "[key]") if secret else text
+
+
+def detail_of(error: APIStatusError, key: str) -> str:
+    """Return the message in an error body, without the key and at most 300 characters.
+
+    The SDK's own message holds the body's repr, which escapes characters and so can
+    hide the key from a plain replacement; the message field itself does not.
+    """
+    body = cast("object", error.body)
+    if isinstance(body, dict):
+        body = cast("dict[str, object]", body).get("message")
+    return without(body, key)[:MAX_DETAIL] if isinstance(body, str) else ""
 
 
 class ModelClient:
@@ -179,9 +207,13 @@ class ModelClient:
         environ: Mapping[str, str] = os.environ,
         transport: httpx2.AsyncBaseTransport | None = None,
     ) -> None:
-        key = environ.get(config.key_variable, "")
+        key = environ.get(config.key_variable, "").strip()
         if not key:
             raise ModelError(f"the API key variable {config.key_variable} is not set")
+        if any(char.isspace() or not char.isprintable() for char in key):
+            raise ModelError(
+                f"the API key in {config.key_variable} holds spaces or control characters"
+            )
         if os.environ.get(CUSTOM_HEADERS) is not None:
             raise ModelError(
                 f"{CUSTOM_HEADERS} is set, and the SDK would send its headers to "
@@ -229,6 +261,8 @@ class ModelClient:
     ) -> Completion:
         """Send the conversation and the tools, and return the first choice of the reply."""
         settings = self.config.settings
+        # The failure is raised after the except blocks, so that no error chain holds
+        # the SDK's exception and with it the request and its key.
         try:
             response = await self._client.chat.completions.create(
                 model=self.config.model,
@@ -242,22 +276,26 @@ class ModelClient:
                 seed=settings.seed if settings.seed is not None else omit,
             )
         except APIStatusError as error:
-            if error.status_code in (401, 403):
-                raise ModelError(
-                    f"the endpoint refused the key in {self.config.key_variable} "
-                    f"(HTTP {error.status_code})"
-                ) from None
-            raise ModelError(
-                f"the endpoint answered with HTTP {error.status_code}: "
-                f"{without(error.message, self._key)}"
-            ) from None
+            failure = self._refused(error)
         except APIConnectionError as error:
-            raise ModelError(
-                f"the endpoint could not be reached: {without(str(error), self._key)}"
-            ) from None
-        except OpenAIError as error:
-            raise ModelError(f"the request failed: {without(str(error), self._key)}") from None
-        return completion_of(response)
+            failure = f"the endpoint could not be reached: {without(str(error), self._key)}"
+        except (OpenAIError, ValueError) as error:
+            # ValueError: a body that is declared as JSON and is not.
+            failure = f"the answer could not be read: {without(str(error), self._key)}"
+        else:
+            return completion_of(response)
+        raise ModelError(failure)
+
+    def _refused(self, error: APIStatusError) -> str:
+        if error.status_code in (401, 403):
+            return (
+                f"the endpoint refused the key in {self.config.key_variable} "
+                f"(HTTP {error.status_code})"
+            )
+        detail = detail_of(error, self._key)
+        return f"the endpoint answered with HTTP {error.status_code}" + (
+            f": {detail}" if detail else ""
+        )
 
 
 __all__ = [

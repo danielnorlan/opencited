@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import Annotated, Self
 from urllib.parse import urlsplit
 
@@ -32,8 +32,10 @@ MAX_TOKENS = "OPENCITED_MAX_TOKENS"
 MAX_SECONDS = "OPENCITED_MAX_SECONDS"
 MAX_COST = "OPENCITED_MAX_COST"
 
-VARIABLE_NAME = r"^[A-Za-z_][A-Za-z0-9_]*$"
-WHOLE = re.compile(r"-?[0-9]+")
+# Upper case and short, so that a key pasted in place of the name is refused before
+# any message repeats it.
+VARIABLE_NAME = r"^[A-Z_][A-Z0-9_]{0,63}$"
+WHOLE = re.compile(r"-?[0-9]{1,18}")
 DECIMAL = re.compile(r"[0-9]+(\.[0-9]+)?")
 
 VARIABLES: dict[tuple[str, ...], str] = {
@@ -99,7 +101,8 @@ class ModelConfig(Frozen):
         # URL is logged, so the key travels only in its own variable.
         parts = urlsplit(url)
         if parts.scheme not in ("http", "https") or not parts.hostname:
-            raise ValueError(f"the base URL must be an http or https URL, not {url!r}")
+            # The URL is not repeated, since it may hold a secret.
+            raise ValueError("the base URL must be an http or https URL with a host")
         if parts.username is not None or parts.password is not None:
             raise ValueError("the base URL may not hold a user name or password")
         if parts.query or parts.fragment:
@@ -125,7 +128,9 @@ def whole(environ: Mapping[str, str], name: str) -> int | None:
     if not value:
         return None
     if not WHOLE.fullmatch(value):
-        raise ConfigurationError(f"{name} must be a whole number, not {value!r}")
+        raise ConfigurationError(
+            f"{name} must be a whole number of at most 18 digits, not {value!r}"
+        )
     return int(value)
 
 
@@ -135,10 +140,7 @@ def decimal(environ: Mapping[str, str], name: str) -> Decimal | None:
         return None
     if not DECIMAL.fullmatch(value):
         raise ConfigurationError(f"{name} must be a decimal number such as 0.28, not {value!r}")
-    try:
-        return Decimal(value)
-    except InvalidOperation as error:
-        raise ConfigurationError(f"{name} cannot be read as a decimal: {value!r}") from error
+    return Decimal(value)
 
 
 def from_environment(environ: Mapping[str, str]) -> ModelConfig:
@@ -164,9 +166,10 @@ def from_environment(environ: Mapping[str, str]) -> ModelConfig:
     try:
         return ModelConfig.model_validate(values)
     except ValidationError as error:
-        raise ConfigurationError(
-            "; ".join(explain(problem) for problem in error.errors())
-        ) from error
+        reasons = "; ".join(explain(problem) for problem in error.errors())
+    # Raised outside the except block, so that no error chain holds Pydantic's error,
+    # which repeats each value it refused.
+    raise ConfigurationError(reasons)
 
 
 def present(**values: object) -> dict[str, object]:

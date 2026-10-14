@@ -389,24 +389,36 @@ The configuration holds the name of the key variable and never the key.
 `opencited.agent.model.ModelClient` sends a conversation and the tool schemas to the
 endpoint through the `openai` SDK over an `httpx2` client, and returns the reply's
 text, its tool calls, the model name that the endpoint reports and the usage it
-reports. It reads the key when it is made and keeps it inside the SDK client: no
-representation, error or log holds it, and an error from the endpoint is reported
-with the key taken out, or for HTTP 401 and 403 with only the variable's name. The
-SDK retries nothing, so every request is one model call that the agent counts. The
-SDK would read an organisation, a project and extra headers from `OPENAI_*`
+reports. It reads the key when it is made, drops space around it, refuses a key
+with spaces or control characters inside, and keeps it inside the SDK client. Its
+representation and its logs hold no key. An error from the endpoint is reported by
+its status and the message field of its body with the key taken out, or for HTTP 401
+and 403 by the variable's name alone, and it is raised with no error chain, since the
+SDK's exception holds the request with its key. A response that is not a chat
+completion, such as a web page at a wrong base URL, is an error, and a usage without
+both token counts counts as no usage.
+
+The SDK retries nothing, so every request is one model call that the agent counts.
+The SDK would read an organisation, a project and extra headers from `OPENAI_*`
 variables and send them to any endpoint; the client sends no organisation or
-project, and refuses to start while `OPENAI_CUSTOM_HEADERS` is set.
+project, and refuses to start while `OPENAI_CUSTOM_HEADERS` is set. The SDK sends its
+version and the platform it runs on in `X-Stainless-*` headers, and the HTTP client
+uses the proxy that `HTTPS_PROXY` or `HTTP_PROXY` names. Over `http://` the key
+travels unencrypted, so plain HTTP suits an endpoint on the same machine or network.
 
 ### Tools
 
 `opencited.agent.tools.Toolbox` gives the model the three tools of the MCP server,
 called through the official MCP client, and `calculate`, and no other tool that a
 server may list. It runs only calls to these four tools whose arguments are a JSON
-object, name no argument outside the schema and match the published schema; numbers
-in arguments are parsed as integers or decimals, never as floats. A call that does
-not match is not run, and the model gets the reason with the path to the part that
-does not match. For a step of a plan, the reason is why the step does not match the
-operation it names.
+object, name no argument outside the schema, hold no control character and match
+the published schema; numbers in arguments are parsed as integers or decimals, never
+as floats. Control characters are refused because a pattern's `$` in Python also
+matches before a final line break, so `05810` followed by one would match the table
+ID pattern. A call that does not match is not run, and the model gets the reason with
+the path to the part that does not match. For a step of a plan, the reason is why
+the step does not match the operation it names. A server result that does not fit
+its model fails the call and is logged.
 
 Every result gets an evidence ID: `E1`, `E2` and so on for source results, and `C1`,
 `C2` and so on for calculations. A call that fails gets none. The toolbox keeps the
@@ -419,7 +431,8 @@ step names a snapshot. Before the engine runs, the toolbox replaces each ID with
 snapshot ID of that query result, and the engine runs in a worker thread. A result
 that is not from `query_table`, an ID the run does not have and a query result
 without a snapshot are reported to the model by their evidence IDs, and so are the
-engine's errors.
+engine's errors. A snapshot that cannot be read is reported without the store's
+reason, which can name a local path.
 
 ## Trust boundaries
 
