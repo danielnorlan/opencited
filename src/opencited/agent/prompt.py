@@ -17,7 +17,7 @@ from opencited.gate import Finding, Report
 from opencited.gate.check import UNSELECTED_YEAR
 from opencited.sources import Language
 
-PROMPT_VERSION = "3"
+PROMPT_VERSION = "4"
 
 LANGUAGES: dict[Language, str] = {"no": "Norwegian (bokmål)", "en": "English"}
 
@@ -83,6 +83,19 @@ class ModelRefusal:
     explanation: str
 
 
+# What the model gets in later calls instead of a source result it has used (#51).
+SPENT_NOTES: dict[str, str] = {
+    "search": (
+        "The search results, left out of later calls since a table was queried. Call "
+        "search_tables again to read them."
+    ),
+    "metadata": (
+        "The metadata of table {table_id}, left out of later calls since the table was "
+        "queried. Call get_table_metadata again to read it."
+    ),
+}
+
+
 def system_prompt(language: Language) -> str:
     return SYSTEM_PROMPT.format(language=LANGUAGES[language])
 
@@ -144,6 +157,7 @@ def refusal_in(text: str) -> ModelRefusal | None:
 
 __all__ = [
     "PROMPT_VERSION",
+    "SPENT_NOTES",
     "ModelRefusal",
     "refusal_in",
     "retry_message",

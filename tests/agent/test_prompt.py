@@ -26,6 +26,7 @@ TEXTS = {
     "1": "0cbf90b1b19623329bbf09b56bd3223ad1cdcb9b31a98afd6b8c932b8411fea2",
     "2": "fa4ea61be2406c0ade156a6d602532dbd5cb00c668d5e9420b73143461639ae3",
     "3": "bd2e50b1ca5f176e535cd4d35c0172c4037f629a7b04482ac5ef779b46a7a29c",
+    "4": "a8363ff1724fddd369a4b97b469fe7869b9e41aab8941f96e112762ad04fdb12",
 }
 
 
@@ -38,6 +39,7 @@ def test_a_change_to_the_prompt_texts_needs_a_new_version() -> None:
             repr(prompt.LANGUAGES),
             prompt.REFUSAL.pattern,
             repr(prompt.HINTS),
+            repr(prompt.SPENT_NOTES),
         ]
     )
 

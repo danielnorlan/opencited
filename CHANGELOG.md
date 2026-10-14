@@ -31,6 +31,10 @@ Notable changes to OpenCited are recorded here. The format follows
   Norwegian time, and a rate limiter that keeps each process within 30 requests a
   minute and backs off after HTTP 429. `opencited mcp` takes `--cache-dir` and
   `--no-cache`.
+- Later model calls get a short note instead of a search result once a query has
+  given a result, and instead of a table's metadata once that table was queried, so
+  the metadata of a large table no longer rides along in every call. Version 4 of
+  the prompt texts holds the notes.
 - The first published run of the evaluation suite, in `evals/results/`: question set
   v1 with DeepSeek's `deepseek-flash`, 27 of 44 correct, with all 15 released answers
   correct. Decision records 0010 and 0012 are accepted.
