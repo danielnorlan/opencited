@@ -10,7 +10,9 @@ renamed into place when complete, so a reader sees either no snapshot or a whole
 The store never changes a snapshot: a later response with the same body finds it in
 place, and the snapshot keeps the provenance of the first retrieval. Reading checks
 that the body hashes to the ID and that the Parquet file hashes to the SHA-256 that
-the manifest records.
+the manifest records. DuckDB then reads the hashed bytes from a private copy, so a
+file that changes after the check, or a directory name that DuckDB would take as a
+glob pattern, cannot change what is read.
 
 The Parquet file has one text column per dimension code, ``value_text`` with the value
 in fixed point as SSB writes it, ``value`` as ``DECIMAL(38, s)`` where ``s`` is the
@@ -26,7 +28,10 @@ import hashlib
 import json
 import os
 import shutil
+import tempfile
 import uuid
+from collections.abc import Generator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
@@ -43,7 +48,7 @@ from opencited.values import ExactDecimal, exact_text
 BODY = "response.json"
 MANIFEST = "snapshot.json"
 OBSERVATIONS = "observations.parquet"
-# The rows on their way to DuckDB, removed before the snapshot is placed.
+# The rows on their way to DuckDB, in a private temporary directory.
 ROWS = "cells.jsonl"
 # The columns after the dimension codes. No dimension code may take one, nor the
 # column that DuckDB adds when it reads the row numbers. DuckDB compares column names
@@ -96,8 +101,20 @@ class Cell(Frozen):
 
 @dataclass(frozen=True)
 class Snapshot:
+    """A snapshot as read: its manifest, its cells, and the Parquet file's hashed bytes."""
+
     manifest: Manifest
     cells: tuple[Cell, ...]
+    parquet: bytes
+
+
+@contextmanager
+def private_copy(data: bytes, name: str = OBSERVATIONS) -> Generator[Path]:
+    """Yield a path, in a new temporary directory, to a file that holds ``data``."""
+    with tempfile.TemporaryDirectory(prefix="opencited-") as directory:
+        path = Path(directory) / name
+        path.write_bytes(data)
+        yield path
 
 
 def digits(value: Decimal, scale: int) -> int:
@@ -229,14 +246,15 @@ class SnapshotStore:
             or manifest.provenance.response_sha256 != snapshot_id
         ):
             raise SnapshotError(f"the manifest of snapshot {snapshot_id} names another snapshot")
-        observations = directory / OBSERVATIONS
         try:
-            if sha256_file(observations) != manifest.observations_sha256:
+            parquet = (directory / OBSERVATIONS).read_bytes()
+            if hashlib.sha256(parquet).hexdigest() != manifest.observations_sha256:
                 raise SnapshotError(f"the cells of snapshot {snapshot_id} have changed")
-            cells = read_cells(observations, manifest)
+            with private_copy(parquet) as path:
+                cells = read_cells(path, manifest)
         except (OSError, duckdb.Error, ValidationError) as error:
             raise SnapshotError(f"snapshot {snapshot_id} cannot be read: {error}") from error
-        return Snapshot(manifest, cells)
+        return Snapshot(manifest, cells, parquet)
 
 
 def place(temporary: Path, final: Path) -> Path:
@@ -261,13 +279,11 @@ def write_cells(directory: Path, retrieval: QueryRetrieval, codes: list[str], sc
         (index for index, dimension in enumerate(result.dimensions) if dimension.contents), None
     )
     units = {unit.code: unit.base for unit in retrieval.metadata.units}
-    rows = directory / ROWS
-    with rows.open("w", encoding="utf-8") as file:
-        for position, cell in enumerate(result.observations):
-            text = exact_text(cell.value) if cell.value is not None else None
-            unit = units.get(cell.codes[contents]) if contents is not None else None
-            line = [str(position), *cell.codes, text, cell.symbol, unit]
-            file.write(json.dumps(line) + "\n")
+    lines: list[str] = []
+    for position, cell in enumerate(result.observations):
+        text = exact_text(cell.value) if cell.value is not None else None
+        unit = units.get(cell.codes[contents]) if contents is not None else None
+        lines.append(json.dumps([str(position), *cell.codes, text, cell.symbol, unit]))
     decimal = f"DECIMAL({MAX_DIGITS}, {scale})"
     columns = [f"{quoted(code)} VARCHAR" for code in codes]
     columns += ["value_text VARCHAR", f"value {decimal}", "symbol VARCHAR", "unit VARCHAR"]
@@ -280,7 +296,12 @@ def write_cells(directory: Path, retrieval: QueryRetrieval, codes: list[str], sc
         f"row[{len(codes) + 3}]",
         f"row[{len(codes) + 4}]",
     ]
-    with duckdb.connect() as connection:
+    # The rows go to a private file, since DuckDB takes glob characters in the store's
+    # own path as a pattern.
+    with (
+        private_copy("\n".join(lines).encode("utf-8"), ROWS) as rows,
+        duckdb.connect() as connection,
+    ):
         connection.execute(f"CREATE TABLE cells ({', '.join(columns)})")
         connection.execute(
             f"INSERT INTO cells SELECT {', '.join(fields)} FROM read_json(?, format = "  # noqa: S608 - list positions and a fixed decimal type only
@@ -291,7 +312,6 @@ def write_cells(directory: Path, retrieval: QueryRetrieval, codes: list[str], sc
         # COPY takes no parameter for its file; the path is the store's own, quoted.
         target = str(directory / OBSERVATIONS).replace("'", "''")
         connection.execute(f"COPY cells TO '{target}' (FORMAT parquet)")
-    rows.unlink()
 
 
 def read_cells(path: Path, manifest: Manifest) -> tuple[Cell, ...]:
