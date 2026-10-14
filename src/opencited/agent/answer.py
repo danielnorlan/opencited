@@ -15,12 +15,13 @@ from typing import Literal
 from opencited.agent.config import ModelConfig, Prices, Settings
 from opencited.agent.run import LimitName, RefusalReason, RunState, cost
 from opencited.calc.result import CalculationResult
-from opencited.gate import CalculationEvidence, Evidence, Report, SourceEvidence
+from opencited.gate import CalculationEvidence, Evidence, Report, SourceEvidence, cited_ids
 from opencited.model import Frozen, TableId
 from opencited.provenance import ProvenanceRecord
 from opencited.sources import Language, QueryResult, TableMetadata
 from opencited.values import ExactDecimal
 
+# A citation marker, as the gate reads it; render.py numbers the sources with it.
 MARKER = re.compile(r"\[((?:E|C)[1-9][0-9]*)\]")
 
 
@@ -100,11 +101,6 @@ class Refusal(Frozen):
     usage: RunUsage
 
 
-def cited(text: str) -> list[str]:
-    """Return the evidence IDs that a text cites, in the order they first appear."""
-    return list(dict.fromkeys(match[1] for match in MARKER.finditer(text)))
-
-
 def usage_of(state: RunState, prices: Prices | None) -> RunUsage:
     return RunUsage(
         model_calls=state.model_calls,
@@ -127,17 +123,25 @@ def model_record(config: ModelConfig, reported: Sequence[str]) -> ModelRecord:
 
 
 def cells_used(result: QueryResult, evidence_id: str, report: Report) -> tuple[CellUse, ...]:
+    """Return every cell of a result that a matched number of the answer fits.
+
+    The gate checks which values a number may be, so a number that fits several cells,
+    such as one rounded to millions, lists them all.
+    """
     labels = [{value.code: value.label for value in dim.values} for dim in result.dimensions]
     values = {cell.codes: cell.value for cell in result.observations}
     used: dict[tuple[str, ...], CellUse] = {}
     for finding in report.findings:
-        codes = finding.cell
-        if finding.outcome != "matched" or finding.evidence != evidence_id or codes is None:
-            continue
-        value = values.get(codes)
-        if value is not None and codes not in used:
-            names = tuple(table.get(code, code) for table, code in zip(labels, codes, strict=True))
-            used[codes] = CellUse(codes=codes, labels=names, value=value)
+        for match in finding.matches:
+            codes = match.cell
+            if match.evidence != evidence_id or codes is None or codes in used:
+                continue
+            value = values.get(codes)
+            if value is not None:
+                names = tuple(
+                    table.get(code, code) for table, code in zip(labels, codes, strict=True)
+                )
+                used[codes] = CellUse(codes=codes, labels=names, value=value)
     return tuple(used.values())
 
 
@@ -175,12 +179,14 @@ def citation_of(item: SourceEvidence, report: Report) -> Citation:
 
 
 def steps_used(item: CalculationEvidence, report: Report) -> tuple[str, ...]:
+    """Return every step of a calculation that a matched number of the answer fits."""
     steps = [
-        finding.step
+        match.step
         for finding in report.findings
-        if finding.outcome == "matched" and finding.evidence == item.evidence_id
+        for match in finding.matches
+        if match.evidence == item.evidence_id and match.step is not None
     ]
-    return tuple(dict.fromkeys(step for step in steps if step is not None))
+    return tuple(dict.fromkeys(steps))
 
 
 def answer_of(
@@ -198,7 +204,7 @@ def answer_of(
     known = {item.evidence_id: item for item in evidence}
     citations: list[Citation] = []
     calculations: list[CalculationCitation] = []
-    for evidence_id in cited(text):
+    for evidence_id in cited_ids(text, language):
         item = known.get(evidence_id)
         if isinstance(item, SourceEvidence):
             citations.append(citation_of(item, report))
@@ -230,7 +236,6 @@ __all__ = [
     "Refusal",
     "RunUsage",
     "answer_of",
-    "cited",
     "model_record",
     "usage_of",
 ]

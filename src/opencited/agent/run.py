@@ -9,6 +9,10 @@ A limit counts as reached at its value, and the time, token and cost limits are
 checked before every decision, so a run that reaches one stops even with an answer
 in hand. The model call limit is checked before a model call, and the tool call limit
 before the tools of a reply run, all of them or none.
+
+An answer is released only when the gate passes it and it cites at least one result.
+The gate passes a text without numbers, and an answer that cites nothing does not
+rest on the sources. Such an answer gets a retry as a blocked one does.
 """
 
 from __future__ import annotations
@@ -25,6 +29,8 @@ from opencited.values import exact_text
 
 # A blocked answer goes back to the model at most this many times.
 MAX_RETRIES = 2
+# Finish reasons of a reply whose text the endpoint did not finish.
+CUT_OFF = frozenset({"length", "content_filter"})
 PER_MILLION = 6
 
 type Phase = Literal["ready", "replied", "checked"]
@@ -51,6 +57,7 @@ class RunState:
     checks: int = 0
     reply: Completion | None = None
     report: Report | None = None
+    cited: tuple[str, ...] = ()
 
     @property
     def tokens(self) -> int:
@@ -74,8 +81,9 @@ class RunState:
     def ran(self, calls: int) -> RunState:
         return replace(self, phase="ready", tool_calls=self.tool_calls + calls, reply=None)
 
-    def checked(self, report: Report) -> RunState:
-        return replace(self, phase="checked", checks=self.checks + 1, report=report)
+    def checked(self, report: Report, cited: tuple[str, ...]) -> RunState:
+        """Record the gate's report on the reply, and the evidence IDs its markers cite."""
+        return replace(self, phase="checked", checks=self.checks + 1, report=report, cited=cited)
 
     def retrying(self) -> RunState:
         return replace(self, phase="ready", reply=None)
@@ -102,9 +110,10 @@ class CheckAnswer:
 
 @dataclass(frozen=True)
 class Retry:
-    """Send the gate report back and ask for a corrected answer."""
+    """Ask for a corrected answer: with the gate report, or because nothing was cited."""
 
     report: Report
+    uncited: bool = False
 
 
 @dataclass(frozen=True)
@@ -190,8 +199,10 @@ def after_reply(state: RunState, limits: Limits) -> Decision:
         if state.tool_calls + len(reply.tool_calls) > limits.tool_calls:
             return Refuse("limit", f"the limit of {limits.tool_calls} tool calls", "tool calls")
         return RunTools(reply.tool_calls)
+    if reply.finish_reason in CUT_OFF:
+        return Fail(f"the endpoint cut the reply off (finish reason {reply.finish_reason})")
     text = reply.text or ""
-    if not text.strip():
+    if not any(char.isprintable() and not char.isspace() for char in text):
         return Fail("the model replied with neither text nor a tool call")
     refusal = refusal_in(text)
     if refusal is not None:
@@ -203,11 +214,13 @@ def after_check(state: RunState) -> Decision:
     report, reply = state.report, state.reply
     if report is None or reply is None:
         raise ValueError("a checked state holds the reply and its report")
-    if report.passed:
+    released = report.passed and bool(state.cited)
+    if released:
         return Release(reply.text or "", report)
     if state.checks > MAX_RETRIES:
-        return Refuse("gate blocked", f"the gate blocked {state.checks} answers in a row")
-    return Retry(report)
+        detail = f"{state.checks} answers in a row were blocked by the gate or cited no result"
+        return Refuse("gate blocked", detail)
+    return Retry(report, uncited=report.passed)
 
 
 __all__ = [

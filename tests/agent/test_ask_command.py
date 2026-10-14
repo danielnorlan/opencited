@@ -7,6 +7,7 @@ endpoint that cannot be reached; no test here calls a model.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -129,8 +130,11 @@ def test_a_run_that_fails_exits_with_1_and_the_reason(
     assert cli.main(replaying("Hvor mange bor i Norge?")) == 1
     captured = capsys.readouterr()
     assert captured.out == ""
-    assert captured.err.endswith(
-        "opencited: the run failed: the endpoint could not be reached: Connection error.\n"
+    [line] = captured.err.splitlines()
+    assert re.fullmatch(
+        r"opencited: the run failed: the endpoint could not be reached: Connection error\. "
+        r"\(after 0 model calls, 0 tool calls, 0 tokens, [0-9]+\.[0-9]{3} s\)",
+        line,
     )
     assert KEY not in captured.err
 
@@ -225,3 +229,30 @@ def test_the_user_s_data_directory_holds_the_default_snapshots() -> None:
     expected = platformdirs.user_data_path("opencited", appauthor=False) / "snapshots"
 
     assert DEFAULT_SNAPSHOT_DIR() == expected
+
+
+def test_an_unexpected_error_is_one_line_and_exit_1(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    configure(monkeypatch)
+
+    async def broken(
+        question: str, language: Language, *, model: ModelClient, toolbox: Toolbox
+    ) -> Answer:
+        raise RuntimeError("a fault in the package")
+
+    monkeypatch.setattr(cli, "ask", broken)
+
+    assert cli.main(replaying("Hvor mange bor i Norge?")) == 1
+    assert capsys.readouterr().err.splitlines() == [
+        "opencited: the run failed: an unexpected error: RuntimeError: a fault in the package"
+    ]
+
+
+def test_an_error_in_a_group_is_named_by_the_error_inside() -> None:
+    group = ExceptionGroup("unhandled errors in a task group", [RuntimeError("inside")])
+
+    error = cli.unexpected(ExceptionGroup("outer", [group]))
+
+    assert str(error) == "an unexpected error: RuntimeError: inside"
+    assert error.usage is None

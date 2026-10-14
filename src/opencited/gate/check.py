@@ -41,6 +41,7 @@ from opencited.sources import QueryResult, SearchResult, TableMetadata
 from opencited.values import ExactDecimal
 
 OSLO = ZoneInfo("Europe/Oslo")
+COMMENT = re.compile(r"<!--.*?(?:-->|$)", re.DOTALL)
 SOURCE_ID = re.compile(r"E[1-9][0-9]*")
 CALCULATION_ID = re.compile(r"C[1-9][0-9]*")
 
@@ -82,6 +83,14 @@ class CalculationEvidence:
 type Evidence = SourceEvidence | CalculationEvidence
 
 
+class Match(Frozen):
+    """A value of a cited result that a number fits: a cell, a step, or a ranked cell."""
+
+    evidence: str
+    cell: tuple[str, ...] | None = None
+    step: str | None = None
+
+
 class Finding(Frozen):
     """One number of the answer, and what the gate made of it.
 
@@ -99,11 +108,13 @@ class Finding(Frozen):
     unit: Literal["per cent", "percentage points"] | None = None
     outcome: Outcome
     evidence: str | None = None
-    cell: tuple[str, ...] | None = Field(
-        default=None, description="The codes of the cell that a matched value came from."
-    )
-    step: str | None = Field(
-        default=None, description="The calculation step that a matched value came from."
+    matches: tuple[Match, ...] = Field(
+        default=(),
+        description=(
+            "Every value of the cited results that a matched number fits, the first one "
+            "being the one that evidence and detail name. The gate checks which values a "
+            "number may be, so it lists them all."
+        ),
     )
     detail: str
 
@@ -362,10 +373,18 @@ def judge(number: Number, holdings: Holdings, cited: bool) -> Finding:
         return finding(
             number, "table ID", "passed", f"the ID of table {digits}", holdings.tables[digits]
         )
-    for name, candidate in holdings.values:
-        if allowed(number, candidate.kind) and fits(number, candidate):
-            matched = finding(number, "value", "matched", candidate.where, name)
-            return matched.model_copy(update={"cell": candidate.cell, "step": candidate.step})
+    fitting = [
+        (name, candidate)
+        for name, candidate in holdings.values
+        if allowed(number, candidate.kind) and fits(number, candidate)
+    ]
+    if fitting:
+        name, candidate = fitting[0]
+        matches = tuple(
+            Match(evidence=holder, cell=item.cell, step=item.step) for holder, item in fitting
+        )
+        matched = finding(number, "value", "matched", candidate.where, name)
+        return matched.model_copy(update={"matches": matches})
     if plain and digits in holdings.labels:
         return finding(
             number,
@@ -377,6 +396,28 @@ def judge(number: Number, holdings: Holdings, cited: bool) -> Finding:
     return finding(number, "value", "failed", why_not(number, holdings))
 
 
+def hidden_spans(text: str) -> list[tuple[int, int]]:
+    """Return the spans of HTML comments, whose markers are not shown and cite nothing."""
+    return [match.span() for match in COMMENT.finditer(text)]
+
+
+def cited_ids(answer: str, language: Language) -> list[str]:
+    """Return the evidence IDs that an answer's shown markers cite, in order of first use.
+
+    These are the markers that the gate counts: a marker in an HTML comment cites
+    nothing.
+    """
+    text = normalise(answer)
+    hidden = hidden_spans(text)
+    names = [
+        number.text[1:-1]
+        for number in read_numbers(text, language)
+        if number.kind == "marker"
+        and not any(start <= number.position < end for start, end in hidden)
+    ]
+    return list(dict.fromkeys(names))
+
+
 def check(answer: str, language: Language, evidence: Sequence[Evidence]) -> Report:
     """Return the gate's report on an answer and the evidence of its run."""
     text = normalise(answer)
@@ -385,7 +426,7 @@ def check(answer: str, language: Language, evidence: Sequence[Evidence]) -> Repo
         raise ValueError("two results of the run have the same evidence ID")
     numbers = read_numbers(text, language)
     # A marker in an HTML comment is not shown, so it cites nothing.
-    hidden = [match.span() for match in re.finditer(r"<!--.*?(?:-->|$)", text, re.DOTALL)]
+    hidden = hidden_spans(text)
     holdings_of = {name: held(item) for name, item in known.items()}
     findings: list[Finding] = []
     for block in blocks(text):

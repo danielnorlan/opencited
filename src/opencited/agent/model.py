@@ -59,7 +59,10 @@ class Usage:
 
 @dataclass(frozen=True)
 class Completion:
-    """A reply: its text, its tool calls, and the model and usage the endpoint reports."""
+    """A reply: its text, its tool calls, and the model and usage the endpoint reports.
+
+    ``model`` is empty when the endpoint names no model.
+    """
 
     text: str | None
     tool_calls: tuple[ToolCall, ...]
@@ -157,11 +160,14 @@ def completion_of(response: object) -> Completion:
         raise ModelError("the endpoint returned no choices")
     choice = response.choices[0]
     calls: list[ToolCall] = []
-    for call in choice.message.tool_calls or ():
-        if call.type == "function":
-            calls.append(ToolCall(call.id, call.function.name, call.function.arguments))
-        else:
-            calls.append(ToolCall(call.id, call.custom.name, call.custom.input, kind="custom"))
+    try:
+        for call in choice.message.tool_calls or ():
+            if call.type == "function":
+                calls.append(ToolCall(call.id, call.function.name, call.function.arguments))
+            else:
+                calls.append(ToolCall(call.id, call.custom.name, call.custom.input, kind="custom"))
+    except AttributeError:
+        raise ModelError("the endpoint returned a tool call that could not be read") from None
     usage = response.usage
     used: Usage | None = None
     if usage is not None:
@@ -171,12 +177,12 @@ def completion_of(response: object) -> Completion:
         )
         if isinstance(tokens_in, int) and isinstance(tokens_out, int):
             used = Usage(tokens_in, tokens_out)
-    finish = cast("object", choice.finish_reason)
+    finish, model = cast("object", choice.finish_reason), cast("object", response.model)
     return Completion(
         text=choice.message.content,
         tool_calls=tuple(calls),
         finish_reason=finish if isinstance(finish, str) else None,
-        model=response.model,
+        model=model if isinstance(model, str) else "",
         usage=used,
     )
 

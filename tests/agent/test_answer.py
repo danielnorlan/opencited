@@ -5,9 +5,11 @@ from __future__ import annotations
 import json
 from decimal import Decimal
 from pathlib import Path
+from typing import cast
 
 import pytest
-from answering import CONFIG, answer, evidences
+from answering import CONFIG, TOTAL, answer, evidences
+from snapshotting import catch, population, retrieve
 
 from opencited.agent.answer import (
     Answer,
@@ -18,14 +20,16 @@ from opencited.agent.answer import (
     Refusal,
     RunUsage,
     answer_of,
-    cited,
     model_record,
     usage_of,
 )
 from opencited.agent.run import RunState
-from opencited.gate import check
+from opencited.calc.engine import Engine
+from opencited.calc.plan import Plan
+from opencited.gate import CalculationEvidence, Evidence, SourceEvidence, check
 from opencited.snapshots import SnapshotStore
 from opencited.sources import Language, QueryResult, TableMetadata
+from opencited.values import format_number
 
 
 def label(query: QueryResult, dimension: str, code: str) -> str:
@@ -127,14 +131,6 @@ def test_a_search_result_is_cited_without_a_table(tmp_path: Path) -> None:
     assert result.usage.cost is None
 
 
-def test_markers_are_cited_once_in_the_order_they_first_appear() -> None:
-    assert cited("A [E2] and [C1], then [E2] and [E10]; not E3 or [X1] or [E0].") == [
-        "E2",
-        "C1",
-        "E10",
-    ]
-
-
 def test_an_answer_and_a_refusal_hold_no_float_and_read_back_the_same(tmp_path: Path) -> None:
     result, _, report = answer(SnapshotStore(tmp_path))
     refusal = Refusal(
@@ -160,3 +156,136 @@ def test_an_answer_and_a_refusal_hold_no_float_and_read_back_the_same(tmp_path: 
         assert type(item).model_validate_json(text) == item
     assert Answer.model_validate_json(result.model_dump_json()).kind == "answer"
     assert json.loads(refusal.model_dump_json())["kind"] == "refusal"
+
+
+def test_each_citation_lists_only_its_own_cells_and_steps(tmp_path: Path) -> None:
+    store = SnapshotStore(tmp_path)
+    found = evidences(store)
+    retrieval = catch()
+    second = Engine(store).run(
+        Plan.model_validate_json(
+            json.dumps(
+                {
+                    "steps": [
+                        {
+                            "name": "earlier",
+                            "operation": "value",
+                            "snapshot": store.write(population()).name,
+                            "codes": TOTAL | {"Tid": "2025"},
+                        }
+                    ]
+                }
+            )
+        )
+    )
+    evidence = (
+        *found.evidence,
+        SourceEvidence("E4", retrieval.result),
+        CalculationEvidence("C2", second),
+    )
+    caught = next(
+        cell
+        for cell in retrieval.result.observations
+        if cell.codes == ("80a", "18", "Fangst", "2016")
+    )
+    assert caught.value is not None
+    text = (
+        f"I 2026 bodde det {format_number(found.value('2026'), 'no')} personer i Norge [E1].\n\n"
+        f"Året før var det {format_number(found.value('2025'), 'no')} [C2], og veksten var "
+        f"{format_number(found.step('growth'), 'no')} prosent [C1].\n\n"
+        f"Fangsten var {format_number(caught.value, 'no')} kg i 2016 [E4]."
+    )
+    report = check(text, "no", evidence)
+    assert report.passed, report.text()
+
+    result = answer_of(
+        question="Hvor mange bor i Norge?",
+        language="no",
+        text=text,
+        report=report,
+        evidence=evidence,
+        model=model_record(CONFIG, []),
+        prompt_version="1",
+        usage=usage_of(RunState(), None),
+    )
+
+    assert [
+        (item.evidence_id, [cell.codes for cell in item.cells]) for item in result.citations
+    ] == [
+        ("E1", [("0", "999B", "Personer", "2026")]),
+        ("E4", [("80a", "18", "Fangst", "2016")]),
+    ]
+    # The value of 2025 fits a step of each calculation its paragraph cites.
+    assert [(item.evidence_id, item.steps) for item in result.calculations] == [
+        ("C2", ("earlier",)),
+        ("C1", ("before", "growth")),
+    ]
+
+
+def test_two_queries_of_one_table_each_list_the_cells_cited_with_them(tmp_path: Path) -> None:
+    found = evidences(SnapshotStore(tmp_path))
+    selection = {"Kjonn": ["0"], "Alder": ["999B"], "ContentsCode": ["Personer"]}
+    norwegian = retrieve("05810", selection | {"Tid": ["2025", "2026"]}, "no").result
+    evidence = (*found.evidence, SourceEvidence("E4", norwegian))
+    text = (
+        f"I 2026 bodde det {format_number(found.value('2026'), 'no')} personer i Norge [E1].\n\n"
+        f"I 2025 bodde det {format_number(found.value('2025'), 'no')} personer i Norge [E4]."
+    )
+    report = check(text, "no", evidence)
+    assert report.passed, report.text()
+
+    result = answer_of(
+        question="Hvor mange bor i Norge?",
+        language="no",
+        text=text,
+        report=report,
+        evidence=evidence,
+        model=model_record(CONFIG, []),
+        prompt_version="1",
+        usage=usage_of(RunState(), None),
+    )
+
+    assert [
+        (item.evidence_id, [cell.codes for cell in item.cells]) for item in result.citations
+    ] == [
+        ("E1", [("0", "999B", "Personer", "2026")]),
+        ("E4", [("0", "999B", "Personer", "2025")]),
+    ]
+
+
+def released(found_evidence: tuple[object, ...], text: str) -> Answer:
+    evidence = cast("tuple[Evidence, ...]", found_evidence)
+    report = check(text, "no", evidence)
+    assert report.passed, report.text()
+    return answer_of(
+        question="Hvor mange bor i Norge?",
+        language="no",
+        text=text,
+        report=report,
+        evidence=evidence,
+        model=model_record(CONFIG, []),
+        prompt_version="1",
+        usage=usage_of(RunState(), None),
+    )
+
+
+def test_a_number_that_fits_several_cells_lists_every_one(tmp_path: Path) -> None:
+    found = evidences(SnapshotStore(tmp_path))
+
+    result = released(found.evidence, "Det bor om lag 5,6 millioner personer i Norge [E1].")
+
+    assert [cell.codes for cell in result.citations[0].cells] == [
+        ("0", "999B", "Personer", year) for year in ("2024", "2025", "2026")
+    ]
+
+
+def test_a_marker_in_an_html_comment_cites_nothing(tmp_path: Path) -> None:
+    found = evidences(SnapshotStore(tmp_path))
+    value = format_number(found.value("2026"), "no")
+
+    result = released(
+        found.evidence, f"I 2026 bodde det {value} personer i Norge [E1]. <!-- [E3] [C1] -->"
+    )
+
+    assert [item.evidence_id for item in result.citations] == ["E1"]
+    assert result.calculations == ()

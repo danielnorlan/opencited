@@ -34,7 +34,12 @@ from opencited.agent.model import (
     ToolMessage,
     UserMessage,
 )
-from opencited.agent.prompt import PROMPT_VERSION, retry_message, system_prompt
+from opencited.agent.prompt import (
+    PROMPT_VERSION,
+    retry_message,
+    system_prompt,
+    uncited_message,
+)
 from opencited.agent.run import (
     CallModel,
     CheckAnswer,
@@ -50,7 +55,7 @@ from opencited.agent.run import (
     decide,
 )
 from opencited.agent.tools import Toolbox
-from opencited.gate import Report, check
+from opencited.gate import Report, check, cited_ids
 from opencited.sources import Language
 
 MILLISECOND = Decimal("0.001")
@@ -59,9 +64,12 @@ type Clock = Callable[[], int]
 
 
 class AgentError(Exception):
-    """A run that stopped on a fault of the endpoint or the model, with what it used."""
+    """A run that stopped on a fault of the endpoint or the model, with what it used.
 
-    def __init__(self, message: str, usage: RunUsage) -> None:
+    ``usage`` is None when the fault came before the run could count anything.
+    """
+
+    def __init__(self, message: str, usage: RunUsage | None) -> None:
         super().__init__(message)
         self.usage = usage
 
@@ -119,7 +127,8 @@ class Run:
         if reply is None:
             self.state = self.state.at(self.elapsed(), timed_out=True)
             return
-        self.reported.append(reply.model)
+        if reply.model:
+            self.reported.append(reply.model)
         self.messages.append(AssistantMessage(reply.text, reply.tool_calls))
         self.state = self.state.replied(reply)
 
@@ -165,9 +174,13 @@ class Run:
                     await self.run_tools(decision)
                 case CheckAnswer():
                     report = check(decision.text, self.language, self.toolbox.evidence)
-                    self.state = self.state.checked(report)
+                    cited = tuple(cited_ids(decision.text, self.language))
+                    self.state = self.state.checked(report, cited)
                 case Retry():
-                    self.messages.append(UserMessage(retry_message(decision.report)))
+                    message = (
+                        uncited_message() if decision.uncited else retry_message(decision.report)
+                    )
+                    self.messages.append(UserMessage(message))
                     self.state = self.state.retrying()
                 case Release():
                     return answer_of(

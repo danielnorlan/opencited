@@ -37,8 +37,8 @@ Notable changes to OpenCited are recorded here. The format follows
   the evidence gate, retries a blocked reply at most twice, and stops at its limits
   of model calls, tool calls, tokens, time and cost, deciding each step with a plain
   function of the run state.
-- Matched values in the gate report name the cell or the calculation step they came
-  from.
+- The gate report lists, for each matched number, every value of the cited results
+  that it fits, with the cell or the calculation step.
 - The agent's model client and tools (spec 0004): the endpoint, the model, its
   settings, prices and limits from `OPENCITED_*` variables; a client for chat
   completions that keeps the API key out of its representation, its errors and its

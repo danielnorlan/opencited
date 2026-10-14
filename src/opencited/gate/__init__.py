@@ -4,9 +4,11 @@ from opencited.gate.check import (
     CalculationEvidence,
     Evidence,
     Finding,
+    Match,
     Report,
     SourceEvidence,
     check,
+    cited_ids,
 )
 from opencited.gate.numbers import Number, normalise, read_numbers
 
@@ -14,10 +16,12 @@ __all__ = [
     "CalculationEvidence",
     "Evidence",
     "Finding",
+    "Match",
     "Number",
     "Report",
     "SourceEvidence",
     "check",
+    "cited_ids",
     "normalise",
     "read_numbers",
 ]

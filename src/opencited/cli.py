@@ -55,6 +55,7 @@ from opencited.mcp import build_server
 from opencited.snapshots import SnapshotError, SnapshotStore
 from opencited.sources import Language
 from opencited.sources.ssb import SsbClient
+from opencited.values import exact_text
 
 logger = logging.getLogger("opencited.cli")
 
@@ -211,12 +212,40 @@ async def answer(
     The error is returned, since raised inside the MCP client's task group it would
     leave wrapped in an exception group.
     """
-    async with Client(server) as client, model:
-        toolbox = await Toolbox.connect(client, store, language)
-        try:
-            return await ask(question, language, model=model, toolbox=toolbox)
-        except AgentError as error:
-            return error
+    try:
+        async with Client(server) as client, model:
+            try:
+                toolbox = await Toolbox.connect(client, store, language)
+                return await ask(question, language, model=model, toolbox=toolbox)
+            except AgentError as error:
+                return error
+            except Exception as error:
+                return unexpected(error)
+    except Exception as error:
+        # Raised while the client or the server starts or stops, maybe in a group.
+        return unexpected(error)
+
+
+def unexpected(error: Exception) -> AgentError:
+    """Return a fault of this package as a run error; the traceback is logged for debugging."""
+    logger.debug("The run stopped on an unexpected error", exc_info=error)
+    first: BaseException = error
+    while isinstance(first, BaseExceptionGroup):
+        group = cast("BaseExceptionGroup[BaseException]", first)
+        first = group.exceptions[0]
+    return AgentError(f"an unexpected error: {type(first).__name__}: {first}", None)
+
+
+def spent(error: AgentError) -> str:
+    """Return what a failed run used, for its error line."""
+    usage = error.usage
+    if usage is None:
+        return ""
+    cost = f", cost {exact_text(usage.cost)}" if usage.cost is not None else ""
+    return (
+        f" (after {usage.model_calls} model calls, {usage.tool_calls} tool calls, "
+        f"{usage.input_tokens + usage.output_tokens:,} tokens, {exact_text(usage.seconds)} s{cost})"
+    )
 
 
 def ask_command(options: argparse.Namespace) -> int:
@@ -235,7 +264,7 @@ def ask_command(options: argparse.Namespace) -> int:
     server = server_of(options, store)
     result = anyio.run(answer, question, language, model, server, store)
     if isinstance(result, AgentError):
-        print(f"opencited: the run failed: {result}", file=sys.stderr)
+        print(f"opencited: the run failed: {result}{spent(result)}", file=sys.stderr)
         return 1
     print(result.model_dump_json(indent=2) if options.json else text_of(result))
     return 0 if isinstance(result, Answer) else 3

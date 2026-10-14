@@ -343,6 +343,10 @@ class Toolbox:
     async def _call(
         self, name: str, arguments: dict[str, Any]
     ) -> tuple[SourceEvidence, dict[str, Any]]:
+        if "language" not in arguments:
+            # Titles and labels then come in the language of the answer, unless the model
+            # asks for the other one.
+            arguments = {**arguments, "language": self.language}
         called = await self.client.call_tool(name, arguments)
         if called.is_error:
             raise ToolFailureError(error_text(called))
@@ -378,7 +382,8 @@ class Toolbox:
             )
             raise RefusalError(f"the plan is not valid: {reasons}") from error
         try:
-            result = await anyio.to_thread.run_sync(self.engine.run, plan)
+            # Abandoned when the run's time is up; the thread then finishes on its own.
+            result = await anyio.to_thread.run_sync(self.engine.run, plan, abandon_on_cancel=True)
         except CalculationError as error:
             message = str(error)
             for snapshot_id, evidence_id in names.items():

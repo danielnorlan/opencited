@@ -5,10 +5,12 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from answering import answer
+from answering import CONFIG, answer, evidences
 
-from opencited.agent.answer import Refusal
+from opencited.agent.answer import Refusal, answer_of, model_record, usage_of
 from opencited.agent.render import text_of
+from opencited.agent.run import RunState
+from opencited.gate import check
 from opencited.snapshots import SnapshotStore
 from opencited.sources import Language
 from opencited.values import format_number
@@ -28,7 +30,8 @@ def test_markers_become_numbered_sources_in_norwegian(tmp_path: Path) -> None:
             f"I 2026 bodde det {after} personer i Norge [2], ifølge tabell 05810 [3].",
             "",
             "Kilder:",
-            "[1] Beregning fra tabell 05810, steg growth. Stegene med SQL står i --json.",
+            f"[1] Beregning fra tabell 05810, {record.table_url}, hentet {moment} UTC. "
+            "Steg: growth. Stegene med SQL står i --json.",
             f"[2] Statistics Norway (SSB), tabell 05810: {record.table_title}. "
             f"{record.table_url}, hentet {moment} UTC",
             "[3] Tabell 05810: Population, by sex and age 1845-2026. "
@@ -47,7 +50,8 @@ def test_markers_become_numbered_sources_in_english(tmp_path: Path) -> None:
     assert lines[0].endswith("from 2025 to 2026 [1] [2].")
     assert lines[4:] == [
         "Sources:",
-        "[1] Calculation from table 05810, step growth. The steps with their SQL are in --json.",
+        f"[1] Calculation from table 05810, {record.table_url}, retrieved {moment} UTC. "
+        "Steps: growth. The steps with their SQL are in --json.",
         f"[2] Statistics Norway (SSB), table 05810: {record.table_title}. "
         f"{record.table_url}, retrieved {moment} UTC",
         "[3] Table 05810: Population, by sex and age 1845-2026. "
@@ -136,3 +140,28 @@ def test_the_model_s_explanation_follows_its_refusal(tmp_path: Path) -> None:
         "Ikke besvart: Kildene har ingen data for spørsmålet.\n"
         "Begrunnelse fra modellen: Jeg fant ingen tabell over dette."
     )
+
+
+def test_sources_are_numbered_in_the_order_the_text_first_cites_them(tmp_path: Path) -> None:
+    store = SnapshotStore(tmp_path)
+    found = evidences(store)
+    text = (
+        f"I 2026 bodde det {format_number(found.value('2026'), 'no')} personer i Norge [E1]. "
+        f"Veksten var {format_number(found.step('growth'), 'no')} prosent [C1]."
+    )
+    result = answer_of(
+        question="Hvor mange bor i Norge?",
+        language="no",
+        text=text,
+        report=check(text, "no", found.evidence),
+        evidence=found.evidence,
+        model=model_record(CONFIG, []),
+        prompt_version="1",
+        usage=usage_of(RunState(), None),
+    )
+
+    lines = text_of(result).splitlines()
+
+    assert lines[0].endswith("personer i Norge [1]. Veksten var 0,59 prosent [2].")
+    assert lines[3].startswith("[1] Statistics Norway (SSB), tabell 05810:")
+    assert lines[4].startswith("[2] Beregning fra tabell 05810, https://www.ssb.no/")

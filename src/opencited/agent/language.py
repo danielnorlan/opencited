@@ -2,9 +2,10 @@
 
 The answer uses the language of the question unless the caller sets one. The rule is
 plain and gives the same result each time: the language with more of its common words
-in the question wins, every word with æ, ø or å counts as Norwegian, and a tie goes
-to Norwegian, since the sources are Norwegian. A word with æ, ø or å only counts once,
-so a Norwegian place name does not make an English question Norwegian.
+in the question wins, every word with æ, ø or å counts as one Norwegian word, and a
+tie goes to Norwegian, since the sources are Norwegian. An English question that names
+more places with æ, ø or å than it has common English words is read as Norwegian;
+`--language` sets the language for such a question.
 """
 
 from __future__ import annotations
@@ -66,6 +67,18 @@ NORWEGIAN = frozenset(
         "totalt",
         "sammenlignet",
         "i",
+        "vekst",
+        "ledighet",
+        "arbeidsledighet",
+        "sysselsatte",
+        "inntekt",
+        "pris",
+        "priser",
+        "innvandrere",
+        "husholdninger",
+        "bor",
+        "bodde",
+        "fikk",
     ]
 )
 ENGLISH = frozenset(
@@ -115,6 +128,20 @@ ENGLISH = frozenset(
         "total",
         "compared",
         "in",
+        "rate",
+        "growth",
+        "unemployment",
+        "employed",
+        "employment",
+        "income",
+        "price",
+        "prices",
+        "immigrants",
+        "households",
+        "live",
+        "lived",
+        "births",
+        "deaths",
     ]
 )
 WORD = re.compile(r"[^\W\d_]+")

@@ -7,7 +7,8 @@ every record; this text names each source and where to find it.
 
 from __future__ import annotations
 
-from opencited.agent.answer import MARKER, Answer, CalculationCitation, Citation, Refusal, cited
+from opencited.agent.answer import MARKER, Answer, CalculationCitation, Citation, Refusal
+from opencited.gate import cited_ids
 from opencited.sources import Language
 
 WORDS: dict[Language, dict[str, str]] = {
@@ -18,7 +19,7 @@ WORDS: dict[Language, dict[str, str]] = {
         "retrieved": "hentet",
         "search": "Søk i Statistikkbanken",
         "calculation": "Beregning fra",
-        "steps": "steg",
+        "Steps": "Steg",
         "details": "Stegene med SQL står i --json.",
         "unanswered": "Ikke besvart",
         "reasons": "Begrunnelse fra modellen",
@@ -30,7 +31,7 @@ WORDS: dict[Language, dict[str, str]] = {
         "retrieved": "retrieved",
         "search": "A search of StatBank",
         "calculation": "Calculation from",
-        "steps": "step",
+        "Steps": "Steps",
         "details": "The steps with their SQL are in --json.",
         "unanswered": "Not answered",
         "reasons": "The model's reason",
@@ -71,13 +72,16 @@ LIMITS: dict[Language, dict[str, str]] = {
 def source_line(item: Citation | CalculationCitation, language: Language) -> str:
     words = WORDS[language]
     if isinstance(item, CalculationCitation):
-        tables = sorted({use.provenance.table_id for use in item.result.snapshots})
-        steps = ", ".join(item.steps)
-        named = f", {words['steps']} {steps}" if steps else ""
-        return (
-            f"{words['calculation']} {words['table']} {', '.join(tables)}{named}. "
-            f"{words['details']}"
+        # Each table the calculation read, with its link and retrieval time, so that the
+        # printed sources link to the data even when the answer cites only the calculation.
+        tables = "; ".join(
+            f"{words['table']} {use.provenance.table_id}, {use.provenance.table_url}, "
+            f"{words['retrieved']} {use.provenance.retrieved_at:%Y-%m-%d %H:%M} UTC"
+            for use in item.result.snapshots
         )
+        steps = ", ".join(item.steps)
+        named = f". {words['Steps']}: {steps}" if steps else ""
+        return f"{words['calculation']} {tables}{named}. {words['details']}"
     if item.provenance is not None:
         record = item.provenance
         moment = record.retrieved_at.strftime("%Y-%m-%d %H:%M")
@@ -95,7 +99,9 @@ def answer_text(answer: Answer) -> str:
     known: dict[str, Citation | CalculationCitation] = {
         item.evidence_id: item for item in (*answer.citations, *answer.calculations)
     }
-    order = [evidence_id for evidence_id in cited(answer.text) if evidence_id in known]
+    order = [
+        evidence_id for evidence_id in cited_ids(answer.text, language) if evidence_id in known
+    ]
     numbers = {evidence_id: number for number, evidence_id in enumerate(order, start=1)}
     body = MARKER.sub(
         lambda match: f"[{numbers[match[1]]}]" if match[1] in numbers else match[0],

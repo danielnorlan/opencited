@@ -102,7 +102,7 @@ def test_a_refusal_from_the_model_declines(text: str, expected: ModelRefusal) ->
 
 def test_an_answer_that_passes_is_released(reports: tuple[Report, Report]) -> None:
     passed, _ = reports
-    state = RunState().replied(reply("Svar [E1].")).checked(passed)
+    state = RunState().replied(reply("Svar [E1].")).checked(passed, ("E1",))
 
     assert decide(state, LIMITS, None) == Release("Svar [E1].", passed)
 
@@ -114,7 +114,7 @@ def test_a_blocked_answer_is_retried_twice_and_then_refused(
     state = RunState()
     decisions: list[object] = []
     for _ in range(MAX_RETRIES + 1):
-        state = state.replied(reply("Svar [E1].")).checked(blocked)
+        state = state.replied(reply("Svar [E1].")).checked(blocked, ("E1",))
         decision = decide(state, LIMITS, None)
         decisions.append(decision)
         state = state.retrying()
@@ -122,7 +122,7 @@ def test_a_blocked_answer_is_retried_twice_and_then_refused(
     assert decisions == [
         Retry(blocked),
         Retry(blocked),
-        Refuse("gate blocked", "the gate blocked 3 answers in a row"),
+        Refuse("gate blocked", "3 answers in a row were blocked by the gate or cited no result"),
     ]
     assert state.report == blocked
 
@@ -131,7 +131,7 @@ def test_a_retry_calls_the_model_and_keeps_the_last_report(
     reports: tuple[Report, Report],
 ) -> None:
     _, blocked = reports
-    state = RunState().replied(reply("Svar [E1].")).checked(blocked).retrying()
+    state = RunState().replied(reply("Svar [E1].")).checked(blocked, ("E1",)).retrying()
 
     assert decide(state, LIMITS, None) == CallModel()
     assert (state.phase, state.report, state.reply) == ("ready", blocked, None)
@@ -181,7 +181,7 @@ def test_the_token_limit_stops_the_run_in_every_phase(
     states = {
         "ready": RunState(),
         "replied": RunState().replied(reply("Svar [E1].")),
-        "checked": RunState().replied(reply("Svar [E1].")).checked(passed),
+        "checked": RunState().replied(reply("Svar [E1].")).checked(passed, ("E1",)),
     }
     state = states[phase]
     below = replace(state, input_tokens=99_000, output_tokens=999)
@@ -228,7 +228,9 @@ def test_a_limit_stops_the_run_even_with_an_answer_in_hand(
     reports: tuple[Report, Report],
 ) -> None:
     passed, _ = reports
-    state = RunState().replied(reply("Svar [E1].", usage=Usage(99_000, 1_000))).checked(passed)
+    state = (
+        RunState().replied(reply("Svar [E1].", usage=Usage(99_000, 1_000))).checked(passed, ("E1",))
+    )
 
     assert decide(state, LIMITS, None) == Refuse("limit", "the limit of 100,000 tokens", "tokens")
 
@@ -256,3 +258,38 @@ def test_a_state_that_skips_a_step_is_refused() -> None:
         decide(replace(RunState(), phase="replied"), LIMITS, None)
     with pytest.raises(ValueError, match="a checked state holds the reply and its report"):
         decide(replace(RunState(), phase="checked"), LIMITS, None)
+
+
+def test_an_answer_that_cites_nothing_is_retried_like_a_blocked_one(
+    reports: tuple[Report, Report],
+) -> None:
+    passed, _ = reports
+    state = RunState()
+    decisions: list[object] = []
+    for _ in range(MAX_RETRIES + 1):
+        state = state.replied(reply("Oslo er hovedstaden.")).checked(passed, ())
+        decisions.append(decide(state, LIMITS, None))
+        state = state.retrying()
+
+    assert decisions == [
+        Retry(passed, uncited=True),
+        Retry(passed, uncited=True),
+        Refuse("gate blocked", "3 answers in a row were blocked by the gate or cited no result"),
+    ]
+
+
+@pytest.mark.parametrize("finish", ["length", "content_filter"])
+def test_a_reply_that_the_endpoint_cut_off_fails_the_run(finish: str) -> None:
+    cut = Completion("I 2026 bodde det", (), finish, "a-model", USAGE)
+
+    assert decide(RunState().replied(cut), LIMITS, None) == Fail(
+        f"the endpoint cut the reply off (finish reason {finish})"
+    )
+
+
+def test_a_reply_of_invisible_characters_fails_the_run() -> None:
+    state = RunState().replied(reply("\u200b \u2060"))
+
+    assert decide(state, LIMITS, None) == Fail(
+        "the model replied with neither text nor a tool call"
+    )

@@ -1,8 +1,10 @@
 """The agent's fixed system prompt, its version, and the messages it sends after a check.
 
 Every answer records the prompt's version, so a change to any text here changes the
-version. The model refuses by starting its reply with a fixed line, since it gets no
-tool besides the four of spec 0004.
+version. The model refuses with a fixed line, since it gets no tool besides the four of
+spec 0004. The line is found anywhere in a reply, in any case and with Markdown marks
+or a full stop around it, so that a refusal written a little off is never released as
+an answer.
 """
 
 from __future__ import annotations
@@ -53,14 +55,22 @@ that result in the same paragraph, list item or table row, use calculate for eve
 number you derive, or leave the number out.\
 """
 
-REFUSAL = re.compile(r"REFUSE: (no data|outside the sources)")
+UNCITED = """\
+Your answer cites no result. An answer rests on the results of the tools: cite each \
+one it uses, such as [E1], in the paragraph, list item or table row that uses it, or \
+refuse as the instructions say. Write the whole answer again.\
+"""
+
+REFUSAL = re.compile(
+    r"[\s*_`#>]*refuse:\s*(no data|outside the sources)[\s.:;!*_`]*", re.IGNORECASE
+)
 
 type ModelReason = Literal["no data", "outside the sources"]
 
 
 @dataclass(frozen=True)
 class ModelRefusal:
-    """A reply in which the model refuses, with its reason and the text after that line."""
+    """A reply in which the model refuses, with its reason and its other lines."""
 
     reason: ModelReason
     explanation: str
@@ -74,14 +84,21 @@ def retry_message(report: Report) -> str:
     return RETRY.format(report=report.text())
 
 
+def uncited_message() -> str:
+    return UNCITED
+
+
 def refusal_in(text: str) -> ModelRefusal | None:
-    """Return the refusal that a reply starts with, or None for an answer."""
-    first, _, rest = text.strip().partition("\n")
-    match = REFUSAL.fullmatch(first.strip())
-    if match is None:
-        return None
-    reason: ModelReason = "no data" if match[1] == "no data" else "outside the sources"
-    return ModelRefusal(reason, rest.strip())
+    """Return the refusal in a reply, with the other lines as its explanation, or None."""
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        match = REFUSAL.fullmatch(line)
+        if match is None:
+            continue
+        reason: ModelReason = "no data" if match[1].lower() == "no data" else "outside the sources"
+        rest = [*lines[:index], *lines[index + 1 :]]
+        return ModelRefusal(reason, "\n".join(rest).strip())
+    return None
 
 
 __all__ = [
@@ -90,4 +107,5 @@ __all__ = [
     "refusal_in",
     "retry_message",
     "system_prompt",
+    "uncited_message",
 ]
