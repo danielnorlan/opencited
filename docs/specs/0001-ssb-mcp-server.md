@@ -45,7 +45,7 @@ it was retrieved.
 2. `table_id` must be five digits. Invalid input is rejected before any request is
    sent.
 3. `selection` maps each dimension code to a list of value codes. Wildcards and
-   period expressions are supported where the API supports them (open question 1).
+   period expressions are supported where the API supports them (answer 1 below).
 4. Every tool declares an output schema and returns structured content.
 5. The order of tools in `tools/list` is fixed.
 
@@ -85,6 +85,9 @@ Each `query_table` result has one record:
    cache.
 4. When the API cannot be reached, the tool returns an error that says so. It
    returns cached data only when the result is marked as cached.
+5. From 05:00 to 08:15 Norwegian time, when SSB shows figures under revision as 0 or
+   as a dot, `query_table` returns an error that says so instead of data
+   ([ADR 0007](../adr/0007-ssb-pxwebapi-v2.md)).
 
 ### Transport and packaging
 
@@ -113,8 +116,9 @@ Each `query_table` result has one record:
       cell for cell.
 - [ ] Every `query_table` result has a complete provenance record, and
       `response_sha256` matches the raw response body.
-- [ ] Invalid table IDs and oversized selections are rejected without any request to
-      the API.
+- [ ] Invalid table IDs are rejected without any request to the API, and oversized
+      selections without a data request.
+- [ ] `query_table` returns no data from 05:00 to 08:15 Norwegian time.
 - [ ] A test fails if any value in a result is a `float`.
 - [ ] `uvx opencited mcp` starts the server from a clean environment, checked in CI
       against the built package.
@@ -147,8 +151,8 @@ Each `query_table` result has one record:
 
 ## Tasks
 
-1. Spike: answer the open questions, choose three fixture tables, write the
-   recording script and record the fixtures.
+1. Spike: confirm the answers for task 1 against recordings, write the recording
+   script and record the fixtures from tables 06856, 06743 and 05810.
 2. API client with typed models for search, metadata and data, and contract tests.
 3. Values and provenance: parsing, symbols, the provenance record and
    property-based tests.
