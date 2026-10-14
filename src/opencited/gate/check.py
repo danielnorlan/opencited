@@ -35,12 +35,32 @@ from opencited.calc.arithmetic import round_away
 from opencited.calc.engine import unit_named
 from opencited.calc.result import CalculationResult
 from opencited.gate.blocks import blocks
-from opencited.gate.numbers import Language, Number, normalise, read_numbers
+from opencited.gate.numbers import (
+    MONTHS_EN,
+    MONTHS_NO,
+    Language,
+    Number,
+    alternatives,
+    normalise,
+    read_numbers,
+)
 from opencited.model import Frozen
 from opencited.sources import QueryResult, SearchResult, TableMetadata
 from opencited.values import ExactDecimal
 
 OSLO = ZoneInfo("Europe/Oslo")
+MONTH_NUMBERS = {
+    name.lower(): number
+    for names in (MONTHS_NO, MONTHS_EN)
+    for number, name in enumerate(names, start=1)
+}
+# A day and a month in a label: "1. januar", "1 January", or "1.1." as in
+# "Population per 1.1.". English months need their capital, as in answers, which
+# keeps "may" the verb out.
+DAY_IN_WORDS = re.compile(
+    rf"(?<![0-9.])([0-9]{{1,2}})\.?\s+((?i:{alternatives(MONTHS_NO)})|{alternatives(MONTHS_EN)})\b"
+)
+DAY_IN_DIGITS = re.compile(r"(?<![0-9.])([0-9]{1,2})\.([0-9]{1,2})\.(?![0-9])")
 COMMENT = re.compile(r"<!--.*?(?:-->|$)", re.DOTALL)
 SOURCE_ID = re.compile(r"E[1-9][0-9]*")
 CALCULATION_ID = re.compile(r"C[1-9][0-9]*")
@@ -139,6 +159,10 @@ class Report(Frozen):
         return "\n".join(lines)
 
 
+# The reason for a year that fails as a value, which the agent's retry message reads.
+UNSELECTED_YEAR = "a year that no cited result selected, and no value that a cited result holds"
+
+
 @dataclass(frozen=True)
 class Candidate:
     """A value that a cited result holds, and where in the result it is."""
@@ -159,6 +183,9 @@ class Holdings:
     dates: dict[date, str] = field(default_factory=dict[date, str])
     tables: dict[str, str] = field(default_factory=dict[str, str])
     labels: dict[str, str] = field(default_factory=dict[str, str])
+    # Days that a query result gives for its figures: a day and month in a label, in a
+    # year the result selected, such as 1 January 2026 for "Befolkning 1. januar".
+    reference_dates: dict[date, str] = field(default_factory=dict[date, str])
 
     def add(self, other: Holdings) -> None:
         """Add what another cited result holds; the first holder of each item is kept."""
@@ -172,6 +199,48 @@ class Holdings:
                 mine.setdefault(key, holder)
         for day, holder in other.dates.items():
             self.dates.setdefault(day, holder)
+        for day, holder in other.reference_dates.items():
+            self.reference_dates.setdefault(day, holder)
+
+
+def day_months(text: str) -> set[tuple[int, int]]:
+    """Return the days and months that a label names, such as (1, 1) for "1. januar"."""
+    found: set[tuple[int, int]] = set()
+    for match in DAY_IN_WORDS.finditer(text):
+        found.add((MONTH_NUMBERS[match[2].lower()], int(match[1])))
+    for match in DAY_IN_DIGITS.finditer(text):
+        found.add((int(match[2]), int(match[1])))
+    return {(month, day) for month, day in found if 1 <= month <= 12 and 1 <= day <= 31}
+
+
+def reference_dates(result: QueryResult) -> set[date]:
+    """Return the dates that a query result gives as the days of its figures.
+
+    The day comes from the label of a value the result selected. Titles are not read:
+    no recorded query result's title names a day, and the gate blocks what it cannot
+    trace to the result.
+    """
+    marks = {
+        mark
+        for dimension in result.dimensions
+        for value in dimension.values
+        for mark in day_months(value.label)
+    }
+    years = {
+        int(value.code)
+        for dimension in result.dimensions
+        if dimension.time
+        for value in dimension.values
+        if re.fullmatch(r"[0-9]{4}", value.code)
+    }
+    found: set[date] = set()
+    for year in years:
+        for month, day in marks:
+            try:
+                found.add(date(year, month, day))
+            except ValueError:
+                continue
+    return found
 
 
 def language_of(url: str) -> Language:
@@ -247,6 +316,8 @@ def hold(holdings: Holdings, evidence: Evidence) -> None:
         holdings.tables.setdefault(result.table_id, name)
         for day in [*days(result.updated), *days(result.provenance.retrieved_at)]:
             holdings.dates.setdefault(day, name)
+        for day in sorted(reference_dates(result)):
+            holdings.reference_dates.setdefault(day, name)
     elif isinstance(result, TableMetadata):
         language = language_of(result.url)
         holdings.tables.setdefault(result.table_id, name)
@@ -308,7 +379,7 @@ def why_not(number: Number, holdings: Holdings) -> str:
         return "a cited value has this number with the other sign"
     digits = number.text.strip()
     if number.unit is None and number.scale == 0 and re.fullmatch(r"[0-9]{4}", digits):
-        return "a year that no cited result selected, and no value that a cited result holds"
+        return UNSELECTED_YEAR
     if number.unit is None and number.scale == 0 and re.fullmatch(r"[0-9]{5}", digits):
         return "the ID of no cited table, and no value that a cited result holds"
     return "no value of the cited results gives this number when rounded to the decimals written"
@@ -339,16 +410,31 @@ def judge(number: Number, holdings: Holdings, cited: bool) -> Finding:
         case "blocked":
             return finding(number, "blocked", "failed", number.reason or "a blocking form")
         case "date":
-            source = holdings.dates.get(number.date) if number.date is not None else None
-            if source is None:
+            day = number.date
+            source = holdings.dates.get(day) if day is not None else None
+            if source is not None:
                 return finding(
                     number,
                     "date",
-                    "failed",
-                    "a date that no cited result has as its update or retrieval date",
+                    "passed",
+                    "the update or retrieval date of a cited result",
+                    source,
+                )
+            source = holdings.reference_dates.get(day) if day is not None else None
+            if source is not None:
+                return finding(
+                    number,
+                    "date",
+                    "passed",
+                    "a day that a cited query result's label names, in a year it selected",
+                    source,
                 )
             return finding(
-                number, "date", "passed", "the update or retrieval date of a cited result", source
+                number,
+                "date",
+                "failed",
+                "a date that no cited result has as its update or retrieval date, or as the "
+                "day of its figures",
             )
         case "period":
             source = holdings.periods.get(number.period or "")

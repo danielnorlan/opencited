@@ -333,7 +333,9 @@ block, every line that holds a pipe is a table row of its own, and a marker insi
 HTML comment cites nothing.
 
 A period passes when a cited query result selected it, a date when it is the last
-update or the retrieval date of a cited result in UTC or in Norwegian time, a
+update or the retrieval date of a cited result in UTC or in Norwegian time, or a day
+that the label of a value a cited query result selected names, such as "Befolkning
+1. januar", in a year that result selected, a
 five-digit table ID when it is the ID of a cited result, and a number from the title
 of a cited result, or from the label of a value it selected, when it is written as
 there and has no unit, percent or scale word. A four-digit number that a cited query
@@ -455,13 +457,16 @@ reason, which can name a local path.
 tool schemas, runs the tool calls of each reply and returns their results, until the
 model replies without a tool call. The gate checks that reply. A blocked reply goes
 back to the model with the gate report, at most twice, and with what to do about each
-kind of failed number: a date becomes its period or goes, and a value is written as a
-result gives it. The prompt tells the model to write a change with its sign and to
-name periods as the results name them, since the gate passes a date only as the
-update or retrieval date of a cited result. A reply is released only when
-the gate passes it and its shown markers cite at least one result: the gate passes a
-text without numbers, and an answer that cites nothing does not rest on the sources,
-so it goes back with a request to cite, counted like a blocked reply. The prompt has a version,
+kind of failed number: a date or a period is cited with the source result that holds
+it or goes, a value is written as a result gives it, and a four-digit number that
+matched nothing gets both hints, since the gate cannot tell a year from a count. The prompt tells the model to write a change with its
+sign, to name periods as the results name them, to write a date only when a cited
+result gives it, and to cite the source result beside a calculation where it names a
+period or a date, since a calculation holds only the numbers it computes. A reply is
+released only when the gate passes it and its shown markers cite at least one
+result: the gate passes a text without numbers, and an answer that cites nothing does
+not rest on the sources, so it goes back with a request to cite, counted like a
+blocked reply. The prompt has a version,
 `opencited.agent.prompt.PROMPT_VERSION`, which every answer records; a test holds the
 hash of the prompt texts for each version, so a change to the texts needs a new
 version.

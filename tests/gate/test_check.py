@@ -14,14 +14,14 @@ import os
 import subprocess
 import sys
 import time
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
 from recorded import FIXTURES
-from snapshotting import altered, population, symbols
+from snapshotting import altered, population, retrieve, symbols
 
 from opencited.calc import CalculationResult, Engine, Plan, ResultUnit, StepResult
 from opencited.gate.blocks import blocks
@@ -31,12 +31,14 @@ from opencited.gate.check import (
     SourceEvidence,
     check,
     cited_ids,
+    day_months,
     language_of,
+    reference_dates,
 )
 from opencited.http import make_client
 from opencited.http.replay import replay_transport
 from opencited.snapshots import SnapshotStore
-from opencited.sources import QueryResult, SearchResult, TableMetadata, Unit
+from opencited.sources import Language, QueryResult, SearchResult, TableMetadata, Unit
 from opencited.sources.ssb import BASE_URL, SsbClient
 from opencited.values import format_number
 
@@ -425,3 +427,101 @@ def test_shown_markers_are_cited_in_order_and_hidden_ones_are_not() -> None:
     text = "Først [E2], så [C1] og [E2] igjen. <!-- [E7] --> Til slutt [E10]."
 
     assert cited_ids(text, "no") == ["E2", "C1", "E10"]
+
+
+# The day of a query result's figures (spec 0003, numbers that are not values, item 2).
+
+NORWAY = {"Region": ["0"], "ContentsCode": ["Folkemengde"], "Tid": ["2025", "2026"]}
+OSLO_EN = {"Region": ["0301"], "ContentsCode": ["Folkemengde"], "Tid": ["2025", "2026"]}
+
+
+def population_of(selection: dict[str, list[str]], language: Language) -> QueryResult:
+    return retrieve("06913", selection, language).result
+
+
+@pytest.mark.parametrize(
+    ("text", "found"),
+    [
+        ("Befolkning 1. januar", {(1, 1)}),
+        ("Population 1 January", {(1, 1)}),
+        ("Folkemengde per 31.12.", {(12, 31)}),
+        # A decimal, a longer dotted number or a month past 12 is no day.
+        ("Andel 2.5 prosent", set[tuple[int, int]]()),
+        ("Endring 1.5 januar", set[tuple[int, int]]()),
+        ("Kode 3.1.12.", set[tuple[int, int]]()),
+        ("Kode 31.13.", set[tuple[int, int]]()),
+        # Norwegian months in any case, English ones with their capital, as in answers.
+        ("Befolkning 1. Januar", {(1, 1)}),
+        ("Under 5 may", set[tuple[int, int]]()),
+    ],
+)
+def test_the_day_and_month_that_a_label_names(text: str, found: set[tuple[int, int]]) -> None:
+    assert day_months(text) == found
+
+
+def test_the_year_of_the_day_comes_from_the_time_dimension_only() -> None:
+    # The region code 0301 has four digits but is not a year.
+    result = population_of(OSLO_EN, "en")
+
+    assert reference_dates(result) == {date(2025, 1, 1), date(2026, 1, 1)}
+
+
+@pytest.mark.parametrize(
+    ("text", "passes"),
+    [
+        ("Per 1. januar 2026 bodde det {value} personer i Norge [E1].", True),
+        ("Den 1.1.2026 bodde det {value} personer i Norge [E1].", True),
+        ("Per 1. januar 2024 bodde det {value} personer i Norge [E1].", False),
+        ("Per 2. januar 2026 bodde det {value} personer i Norge [E1].", False),
+    ],
+)
+def test_a_day_that_a_label_names_passes_in_a_selected_year(text: str, passes: bool) -> None:
+    result = population_of(NORWAY, "no")
+    value = format_number(Decimal(5627400), "no")
+    assert any(cell.value == Decimal(5627400) for cell in result.observations)
+
+    report = check(text.format(value=value), "no", [SourceEvidence("E1", result)])
+
+    assert report.passed is passes, report.text()
+    [found] = [item for item in report.findings if item.kind == "date"]
+    if passes:
+        assert (
+            found.detail == "a day that a cited query result's label names, in a year it selected"
+        )
+        assert found.evidence == "E1"
+
+
+def test_the_day_reads_in_english_labels_too() -> None:
+    result = population_of(OSLO_EN, "en")
+    label = next(
+        value.label
+        for dimension in result.dimensions
+        for value in dimension.values
+        if value.code == "Folkemengde"
+    )
+    assert label == "Population 1 January"
+
+    report = check(
+        "On 1 January 2025, 724,290 people lived in Oslo [E1].",
+        "en",
+        [SourceEvidence("E1", result)],
+    )
+
+    assert report.passed, report.text()
+
+
+def test_the_day_and_the_year_come_from_the_same_result() -> None:
+    # 05810 selects 2024 but names no day; 06913 names 1 January but selects 2025 and 2026.
+    other = population().result
+    evidence = [SourceEvidence("E1", population_of(NORWAY, "no")), SourceEvidence("E2", other)]
+    assert any(value.code == "2024" for dimension in other.dimensions for value in dimension.values)
+
+    report = check("Per 1. januar 2024 var tallene andre [E1] [E2].", "no", evidence)
+
+    assert not report.passed
+
+
+def test_metadata_selects_no_year_for_the_day_of_its_figures() -> None:
+    report = check("Per 1. januar 2026 [E1].", "no", [SourceEvidence("E1", metadata())])
+
+    assert not report.passed

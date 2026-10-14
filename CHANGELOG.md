@@ -31,6 +31,13 @@ Notable changes to OpenCited are recorded here. The format follows
   Norwegian time, and a rate limiter that keeps each process within 30 requests a
   minute and backs off after HTTP 429. `opencited mcp` takes `--cache-dir` and
   `--no-cache`.
+- The gate passes a date that a cited query result gives as the day of its figures,
+  such as "1. januar 2026" for a population at "Befolkning 1. januar" in 2026, a change
+  to spec 0003 that the maintainer approved. Version 3 of the system prompt says so,
+  and says that a calculation backs only the numbers it computes, so a period or a
+  date beside them needs its source result cited as well. A blocked reply's hint for a
+  date or a period says to cite that result or leave it out, and a four-digit number
+  that matched nothing gets the hints for a year and for a value.
 - The model reads each dimension's values as a map from code to label, which halves
   the metadata of large tables, and a blocked reply goes back with what to do about
   each kind of failed number. Version 2 of the system prompt asks for changes with
