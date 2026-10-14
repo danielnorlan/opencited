@@ -7,10 +7,11 @@ key and never the key, which only the model client reads.
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Mapping
 from decimal import Decimal
-from typing import Annotated, Self
+from typing import Annotated, Self, cast
 from urllib.parse import urlsplit
 
 from pydantic import Field, StringConstraints, ValidationError, field_validator, model_validator
@@ -24,6 +25,7 @@ MODEL = "OPENCITED_MODEL"
 KEY_VARIABLE = "OPENCITED_MODEL_KEY_VARIABLE"
 TEMPERATURE = "OPENCITED_TEMPERATURE"
 SEED = "OPENCITED_SEED"
+EXTRA = "OPENCITED_MODEL_EXTRA"
 PRICE_INPUT = "OPENCITED_PRICE_INPUT"
 PRICE_OUTPUT = "OPENCITED_PRICE_OUTPUT"
 MAX_MODEL_CALLS = "OPENCITED_MAX_MODEL_CALLS"
@@ -44,6 +46,7 @@ VARIABLES: dict[tuple[str, ...], str] = {
     ("key_variable",): KEY_VARIABLE,
     ("settings", "temperature"): TEMPERATURE,
     ("settings", "seed"): SEED,
+    ("settings", "extra"): EXTRA,
     ("prices", "input"): PRICE_INPUT,
     ("prices", "output"): PRICE_OUTPUT,
     ("limits", "model_calls"): MAX_MODEL_CALLS,
@@ -54,6 +57,11 @@ VARIABLES: dict[tuple[str, ...], str] = {
 }
 
 NonNegative = Annotated[ExactDecimal, Field(ge=0)]
+# Request fields that the client sets from its own state or settings, which extra
+# fields may not replace.
+OWN_FIELDS = frozenset(
+    {"model", "messages", "tools", "tool_choice", "stream", "n", "temperature", "seed"}
+)
 
 
 class ConfigurationError(Exception):
@@ -61,10 +69,33 @@ class ConfigurationError(Exception):
 
 
 class Settings(Frozen):
-    """Model settings that change results, recorded in every answer."""
+    """Model settings that change results, recorded in every answer.
+
+    ``extra`` holds fields that the endpoint takes beside the standard ones, such as
+    ``{"thinking": {"type": "disabled"}}``, as the text of a JSON object, so that an
+    answer records it exactly and holds no binary number.
+    """
 
     temperature: Annotated[ExactDecimal, Field(ge=0, le=2)] | None = None
     seed: int | None = None
+    extra: str | None = None
+
+    @field_validator("extra")
+    @classmethod
+    def check_extra(cls, text: str | None) -> str | None:
+        if text is None:
+            return None
+        try:
+            fields = json.loads(text)
+        except ValueError as error:
+            raise ValueError(f"the extra request fields are not JSON: {error}") from None
+        if not isinstance(fields, dict):
+            raise ValueError("the extra request fields must be a JSON object")
+        named = cast("dict[str, object]", fields)
+        taken = sorted(set(named) & OWN_FIELDS)
+        if taken:
+            raise ValueError(f"the client sets {', '.join(taken)} itself")
+        return json.dumps(named, sort_keys=True, separators=(",", ":"))
 
 
 class Prices(Frozen):
@@ -152,7 +183,11 @@ def from_environment(environ: Mapping[str, str]) -> ModelConfig:
         "base_url": required(environ, MODEL_URL),
         "model": required(environ, MODEL),
         "key_variable": required(environ, KEY_VARIABLE),
-        "settings": present(temperature=decimal(environ, TEMPERATURE), seed=whole(environ, SEED)),
+        "settings": present(
+            temperature=decimal(environ, TEMPERATURE),
+            seed=whole(environ, SEED),
+            extra=environ.get(EXTRA, "").strip() or None,
+        ),
         "limits": present(
             model_calls=whole(environ, MAX_MODEL_CALLS),
             tool_calls=whole(environ, MAX_TOOL_CALLS),

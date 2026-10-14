@@ -321,3 +321,16 @@ def test_the_detail_of_an_error_is_its_message_without_the_key() -> None:
     assert detail_of(status_error({"code": "invalid"}), KEY) == ""
     assert detail_of(status_error(None), KEY) == ""
     assert detail_of(status_error({"message": "x" * 400}), KEY) == "x" * 300
+
+
+def test_extra_request_fields_go_into_the_request_body() -> None:
+    extra = Settings(extra='{"thinking":{"type":"disabled"}}')
+    config = CONFIG.model_copy(update={"settings": extra})
+
+    endpoint, _ = attempt(config, QUESTION, [])
+
+    assert json.loads(endpoint.requests[0].content) == {
+        "model": "a-model",
+        "messages": [{"role": "user", "content": "Hvor mange bor i Norge?"}],
+        "thinking": {"type": "disabled"},
+    }

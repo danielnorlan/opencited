@@ -117,8 +117,8 @@ configuration cannot be used.
 
 Each question is limited to 12 model calls, 20 tool calls, 100,000 tokens and 300
 seconds. The [architecture page](https://github.com/danielnorlan/opencited/blob/main/docs/architecture.md#agent-m2)
-lists the variables that change these limits and set prices, a temperature and a
-seed.
+lists the variables that change these limits and set prices, a temperature, a seed
+and extra request fields, such as the one that turns off a model's thinking mode.
 
 ## Sources
 
