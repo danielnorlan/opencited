@@ -99,6 +99,7 @@ class Expectation(Frozen):
 class Failure(Frozen):
     """A run that stopped with an error, with what it used and what the gate checked."""
 
+    kind: Literal["failure"] = "failure"
     message: str
     usage: RunUsage | None
     attempts: tuple[Attempt, ...] = ()

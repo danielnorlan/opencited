@@ -25,6 +25,7 @@ from openai.types.chat import (
 )
 
 from opencited.agent.config import ModelConfig
+from opencited.agent.schemas import flattened
 from opencited.http import USER_AGENT
 
 # Answers from a model take longer than responses from SSB; the time limit of a
@@ -106,12 +107,13 @@ class ToolSchema:
 
 
 def tool_param(schema: ToolSchema) -> ChatCompletionFunctionToolParam:
+    """Return a tool for the model, with its schema written out (``opencited.agent.schemas``)."""
     return {
         "type": "function",
         "function": {
             "name": schema.name,
             "description": schema.description,
-            "parameters": dict(schema.parameters),
+            "parameters": flattened(schema.parameters),
         },
     }
 

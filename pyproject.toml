@@ -48,6 +48,9 @@ dev = [
   "ruff>=0.17.0",
   "types-jsonschema>=4.26.0.20261006",
 ]
+evals = [
+    "inspect-ai==0.3.279",
+]
 
 [build-system]
 requires = ["uv_build>=0.13.0,<0.14"]
@@ -66,11 +69,12 @@ ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "S603", "S607"]
+"evals/tests/**" = ["S101"]
 "scripts/**" = ["S603", "S607"]
 
 [tool.pyright]
 include = ["src", "tests", "scripts"]
-extraPaths = ["scripts", "tests"]
+extraPaths = ["scripts", "tests", "evals"]
 pythonVersion = "3.13"
 typeCheckingMode = "strict"
 
@@ -79,7 +83,7 @@ minversion = "9.0"
 testpaths = ["tests"]
 # The development scripts import each other and their tests import them, and tests
 # share the readers of recorded responses in tests/recorded.py.
-pythonpath = ["scripts", "tests"]
+pythonpath = ["scripts", "tests", "evals"]
 addopts = ["-ra", "--strict-markers", "--strict-config", "--import-mode=importlib", "-m", "not live and not model"]
 markers = [
   "live: calls external services; excluded by default, run with `pytest -m live`",

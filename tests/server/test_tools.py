@@ -24,6 +24,7 @@ from recorded import FIXTURES, Json, description, raw, recorded, recorded_cells
 
 from opencited.http import make_client
 from opencited.http.cache import ResponseCache
+from opencited.http.limiter import RateLimiter
 from opencited.http.replay import replay_transport
 from opencited.mcp import build_server
 from opencited.snapshots import SnapshotStore
@@ -446,3 +447,29 @@ def test_an_unexpected_failure_of_a_snapshot_leaves_the_result(
     assert content["observations"]
     assert "No snapshot of" in caplog.text
     assert "an unexpected failure" in caplog.text
+
+
+def test_a_server_given_a_rate_limiter_uses_it() -> None:
+    # One request a minute and no waiting: the metadata request of a query takes the
+    # slot, so its data request is held back by the limiter the server was given.
+    clock = [0.0]
+
+    async def sleep(seconds: float) -> None:
+        clock[0] += seconds
+
+    limiter = RateLimiter(limit=1, window=60.0, max_wait=0.0, clock=lambda: clock[0], sleep=sleep)
+
+    async def work(client: Client) -> CallToolResult:
+        return await client.call_tool(
+            "query_table", {"table_id": "05810", "selection": POPULATION, "language": "en"}
+        )
+
+    async def run() -> CallToolResult:
+        server = build_server(transport=REPLAY, revision_period=False, limiter=limiter)
+        async with Client(server) as client:
+            return await work(client)
+
+    result = asyncio.run(run())
+
+    assert result.is_error
+    assert "rate limit" in error_text(result)

@@ -25,7 +25,7 @@ flowchart LR
 | Calculation engine | Runs typed calculation plans over stored snapshots: DuckDB selects the cells, and the arithmetic uses exact rational numbers | Built, with the agent's `calculate` tool ([spec 0002](specs/0002-snapshots-and-calculation.md)) |
 | Evidence gate | Matches every number in an answer to source data or a calculation result, and blocks the answer otherwise | Built, with the agent's retry ([spec 0003](specs/0003-evidence-gate.md)) |
 | Agent | Plans, calls tools and drafts the answer, in a loop of its own over a chat completions API | Built; not yet measured with a model ([spec 0004](specs/0004-agent.md)) |
-| Evaluation suite | Versioned questions with computed answers, run with Inspect AI | In progress: the scorer, the first question set and its reference runner are built ([spec 0005](specs/0005-evaluation-suite.md)) |
+| Evaluation suite | Versioned questions with computed answers, run with Inspect AI | Built; not yet run with a model ([spec 0005](specs/0005-evaluation-suite.md)) |
 | Table search | Hybrid full-text and vector search over table metadata, in PostgreSQL with pgvector | Planned, M3 |
 | Model gateway | Routes requests between local and hosted models within budgets, using LiteLLM | Planned, M3 |
 | Tracing | OpenTelemetry traces, viewed in Langfuse | Planned, M3 |
@@ -388,6 +388,13 @@ The configuration holds the name of the key variable and never the key.
 
 ### Model client
 
+The model gets each tool schema written out by `opencited.agent.schemas`: every
+`$ref` replaced by its definition, `oneOf` as `anyOf`, `const` as a one-value `enum`,
+and no titles, since not every endpoint reads the rest of JSON Schema. Inspect's agent
+bridge, for one, keeps only the common keywords, and would otherwise turn the plan
+schema into a list of anything. The agent still checks each call against the
+published schema.
+
 `opencited.agent.model.ModelClient` sends a conversation and the tool schemas to the
 endpoint through the `openai` SDK over an `httpx2` client, and returns the reply's
 text, its tool calls, the model name that the endpoint reports and the usage it
@@ -509,9 +516,11 @@ logged at debug level.
 
 The suite measures how often the agent answers correctly, refuses when it should and
 is blocked by the gate ([spec 0005](specs/0005-evaluation-suite.md)). The scorer, its
-report, the first question set and the runner of its reference plans are built, in
-`opencited.evals` and `evals/questions/`; `opencited.evals` imports nothing from
-Inspect ([ADR 0012](adr/0012-inspect-evaluations.md)). The Inspect task is planned.
+report, the first question set, the runner of its reference plans and the run of one
+question are in `opencited.evals`, which imports nothing from Inspect, so the main
+test job covers them ([ADR 0012](adr/0012-inspect-evaluations.md)). The Inspect task
+and the run report are in `evals/`, which a CI job of its own type-checks and tests
+with the `evals` dependency group. No run with a model has been made yet.
 
 ### Questions and reference plans
 
@@ -568,6 +577,43 @@ questions that should be refused, failed runs, runs whose first checked reply th
 blocked or that cited nothing, retries, and the tokens, cost and time of each
 question. Rates are exact fractions rounded once to four decimals, so the same
 verdicts give the same report in any order.
+
+### Runs
+
+`opencited.evals.run.run_question` runs one question: its reference plan on the day's
+data, then the agent through the MCP server in the same process, then the scorer. It
+takes the model client from the caller. One rate limiter and one response cache are
+shared by the reference fetches and every question's server, so a run stays within
+SSB's rate limit even when questions run at the same time, and the agent reads the
+data that the reference plan read. A question is not run in the periods that ADR 0007
+keeps scheduled jobs away from, 04:55 to 08:15 and 11:25 to 11:45 in Norwegian time,
+nor when its reference plan cannot run; the report lists it with the reason. Any
+error while the agent answers, a limit of the evaluation harness among them, is
+scored as a failure, so one question cannot end a run.
+
+The Inspect task in `evals/opencited_task.py` has one sample a question. Its solver
+runs the question inside Inspect's agent bridge, which answers the agent's calls to
+the model `inspect` with the model under evaluation, so the agent's base URL is never
+reached and its key is a placeholder. The agent offers the model only its four tools.
+The bridge's web search, code execution and client MCP servers are turned off as
+well, though they apply only to the Responses API, which the agent does not use. The
+agent's model settings are forwarded; Inspect's own options, such as `--temperature`,
+take precedence, and the report records both. A run needs the model's prices and a
+cost limit per question. Inspect's token limit is one and a half times the agent's,
+and its time limit three times the agent's, which also covers the reference plan's
+fetches. Inspect's cost limit needs the prices in Inspect's own form, so it is left
+to `--cost-limit` with `--model-cost-config`. Each run keeps its snapshots and SSB's
+responses in a folder of its own, so no run reads data that an earlier one fetched.
+
+`evals/report.py` writes the run report from the Inspect log: the question set
+version, the commit and whether the tree was clean, the model as Inspect named it,
+the endpoint given for the run, the model names in the endpoint's replies, an allow
+list of Inspect's generation settings, the agent's settings and prices, the date,
+each question's result with its snapshot IDs, the counts of the scorer's report, and
+the questions the run did not run. It refuses a log of a run that did not finish, one
+with more than one epoch or with samples outside the set, an endpoint URL with a user
+name, password or query, and a report that would hold the value of an environment
+variable named as a key, token, secret or password. It never replaces a report.
 
 ## Trust boundaries
 
