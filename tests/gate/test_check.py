@@ -26,6 +26,7 @@ from snapshotting import altered, population, retrieve, symbols
 from opencited.calc import CalculationResult, Engine, Plan, ResultUnit, StepResult
 from opencited.gate.blocks import blocks
 from opencited.gate.check import (
+    NO_BLOCK,
     UNCITED_DATE,
     UNCITED_PERIOD,
     UNCITED_VALUE,
@@ -189,19 +190,33 @@ def test_blocks_split_paragraphs_items_rows_and_headings() -> None:
 
 
 @pytest.mark.parametrize(
-    ("text", "number"),
+    ("text", "language", "number", "kind", "detail"),
     [
-        ("~~~ 99% growth\nx\n~~~\nEnd [E1].", "99%"),
-        ("```text 12345 people\nx\n```\nEnd [E1].", "12345"),
+        ("~~~ 99% growth\nx\n~~~\nEnd [E1].", "en", "99%", "value", NO_BLOCK),
+        ("```text 12345 people\nx\n```\nEnd [E1].", "en", "12345", "value", NO_BLOCK),
+        # A marker on the fence line cites nothing, since the line is in no block.
+        ("~~~ 99% growth [E1]\nx\n~~~\nEnd [E1].", "en", "99%", "value", NO_BLOCK),
+        ("~~~ per 1. januar 2026\nx\n~~~\nAnnet [E1].", "no", "1. januar 2026", "date", NO_BLOCK),
+        ("~~~ 2026M08 figures\nx\n~~~\nEnd [E1].", "en", "2026M08", "period", NO_BLOCK),
+        # A blocking form keeps the reason that names the form.
+        (
+            "~~~ 9 999 people\nx\n~~~\nEnd [E1].",
+            "en",
+            "9 999",
+            "blocked",
+            "digits grouped by spaces in English text",
+        ),
     ],
 )
-def test_a_number_on_a_code_fence_line_fails_as_uncited(text: str, number: str) -> None:
+def test_a_number_on_a_code_fence_line_fails_whatever_it_cites(
+    text: str, language: Language, number: str, kind: str, detail: str
+) -> None:
     # A fence line is in no block (#76).
-    report = check(text, "en", [SourceEvidence("E1", population().result)])
+    report = check(text, language, [SourceEvidence("E1", population().result)])
 
     [failed] = [finding for finding in report.findings if finding.outcome == "failed"]
     assert not report.passed
-    assert (failed.text, failed.detail) == (number, UNCITED_VALUE)
+    assert (failed.text, failed.kind, failed.detail) == (number, kind, detail)
 
 
 def test_a_code_fence_is_judged_as_before_apart_from_its_fence_lines() -> None:
@@ -214,6 +229,9 @@ def test_a_code_fence_is_judged_as_before_apart_from_its_fence_lines() -> None:
     assert check("~~~ [E1]\nx\n~~~\nEnd [E1].", "en", evidence).passed
     assert check(f"```\n{value} [E1]\n```", "en", evidence).passed
     assert not check(f"```\n{value}\n```\n\nEnd [E1].", "en", evidence).passed
+    # A backtick fence's info string holds no backtick, as in CommonMark, so this line is
+    # a paragraph with a code span, and its marker cites the value.
+    assert check(f"```{value}``` [E1].", "en", evidence).passed
 
 
 def test_a_date_that_a_result_gives_fails_in_a_block_that_cites_nothing() -> None:

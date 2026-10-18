@@ -15,10 +15,10 @@ from typing import Literal
 
 from opencited.gate import Finding, Report, normalise
 from opencited.gate.blocks import Block, blocks
-from opencited.gate.check import UNCITED_REASONS, UNSELECTED_YEAR
+from opencited.gate.check import NO_BLOCK, UNCITED_REASONS, UNSELECTED_YEAR
 from opencited.sources import Language
 
-PROMPT_VERSION = "8"
+PROMPT_VERSION = "9"
 
 LANGUAGES: dict[Language, str] = {"no": "Norwegian (bokmål)", "en": "English"}
 
@@ -130,6 +130,11 @@ HINTS: dict[str, str] = {
         "Cite the result that gives {text!r} in the same paragraph, list item or table row, "
         "or leave it out."
     ),
+    "outside": (
+        "{text!r} stands outside every paragraph, list item and table row, such as on a code "
+        "fence's own line, where no citation counts. Move it into a paragraph that cites "
+        "its result, or leave it out."
+    ),
 }
 
 # What to do about the failed numbers of a block that cites no result. The model finds
@@ -150,6 +155,8 @@ def hint_kind(finding: Finding) -> str:
     """
     if finding.detail in UNCITED_REASONS:
         return "uncited"
+    if finding.detail == NO_BLOCK:
+        return "outside"
     return "year" if finding.detail == UNSELECTED_YEAR else finding.kind
 
 
