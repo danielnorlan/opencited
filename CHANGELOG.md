@@ -58,6 +58,10 @@ Notable changes to OpenCited are recorded here. The format follows
   the prompt texts holds the notes.
 - A number that the gate blocks because its block cites nothing gets a retry hint to
   cite the result in that block, in version 7 of the prompt texts.
+- The gate reads a week as a period: SSB's code, such as `2026U41`, and a week in
+  words, such as "uke 41 2026" or "week 41 of 2026", and a week without a year passes
+  when a cited query result selected that week in a year, so answers from weekly tables
+  such as 03024 can pass.
 - A refusal line with its reason in Norwegian, `REFUSE: ingen data` or `REFUSE:
   utenfor kildene`, counts as a refusal, in version 11 of the prompt texts; before, such
   a reply could be released as an answer.

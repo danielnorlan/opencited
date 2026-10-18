@@ -723,6 +723,61 @@ def test_a_calculation_carries_only_periods_and_dates_of_sources_in_the_run(
     assert not alone.passed
 
 
+# 03024 gives the exports of fresh farmed salmon by week, in tonnes (#86).
+SALMON = {"VareGrupper2": ["01"], "ContentsCode": ["Vekt"], "Tid": ["2026U40", "2026U41"]}
+
+
+@pytest.mark.parametrize(
+    ("text", "passes"),
+    [
+        ("I uke 41 2026 ble det eksportert 27 982 tonn fersk laks [E1].", True),
+        ("I uke 41 i 2026 ble det eksportert 27 982 tonn [E1].", True),
+        ("Tallet for 2026U41 er 27 982 tonn [E1].", True),
+        # A week without a year passes when a cited result selected it in a year.
+        ("I uke 41 ble det eksportert 27 982 tonn [E1].", True),
+        ("I uke 42 2026 ble det eksportert 27 982 tonn [E1].", False),
+        ("I uke 39 ble det eksportert 27 982 tonn [E1].", False),
+    ],
+)
+def test_a_week_passes_when_a_cited_result_selected_it(text: str, passes: bool) -> None:
+    result = retrieve("03024", SALMON, "no").result
+
+    report = check(text, "no", [SourceEvidence("E1", result)])
+
+    assert report.passed is passes, report.text()
+
+
+def test_a_week_in_a_block_that_cites_nothing_fails_with_that_reason() -> None:
+    result = retrieve("03024", SALMON, "no").result
+    evidence = [SourceEvidence("E1", result)]
+
+    for text in ("I uke 41 2026 var det mye.", "I uke 41 var det mye."):
+        report = check(f"{text}\n\nAnnet [E1].", "no", evidence)
+        [failed] = [finding for finding in report.findings if finding.outcome == "failed"]
+        assert (failed.kind, failed.detail) == ("period", UNCITED_PERIOD), text
+
+
+def test_a_calculation_gives_the_weeks_of_the_result_it_read(tmp_path: Path) -> None:
+    evidence = calculated(
+        SnapshotStore(tmp_path),
+        "03024",
+        SALMON,
+        "no",
+        {
+            "name": "after",
+            "operation": "value",
+            "codes": {"VareGrupper2": "01", "ContentsCode": "Vekt", "Tid": "2026U41"},
+        },
+    )
+
+    def passes(text: str) -> bool:
+        return check(text, "no", evidence).passed
+
+    assert passes("I uke 41 2026 ble det eksportert 27 982 tonn [C1].")
+    assert passes("I uke 41 ble det eksportert 27 982 tonn [C1].")
+    assert not passes("I uke 42 ble det eksportert 27 982 tonn [C1].")
+
+
 def test_a_day_that_no_label_names_fails_though_its_number_is_in_one() -> None:
     # "Befolkning 1. januar" holds the number 1, and 1 February is still another day.
     report = check(

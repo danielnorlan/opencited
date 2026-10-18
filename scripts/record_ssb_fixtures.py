@@ -182,6 +182,20 @@ RECORDINGS: tuple[Recording, ...] = (
         ),
         reason="two dimensions that share codes and label them differently",
     ),
+    Recording(
+        "metadata-03024-no",
+        "GET",
+        "/tables/03024/metadata",
+        (("lang", "no"),),
+        reason="dimensions, codes and labels of a table by week",
+    ),
+    Recording(
+        "data-03024-weeks-no",
+        "GET",
+        "/tables/03024/data",
+        data_params("no", {"VareGrupper2": "01", "ContentsCode": "Vekt", "Tid": "2026U40,2026U41"}),
+        reason="values for weeks, whose periods are codes such as 2026U41",
+    ),
     *(
         Recording(
             f"data-05810-{language}",

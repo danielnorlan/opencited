@@ -228,6 +228,13 @@ def test_a_date_that_does_not_exist_blocks() -> None:
         ("en", "Q3 2023", "2023K3"),
         ("en", "January 2023", "2023M01"),
         ("en", "December 2023", "2023M12"),
+        # Weeks, as SSB's weekly tables code them (#86).
+        ("no", "2026U41", "2026U41"),
+        ("no", "uke 41 2026", "2026U41"),
+        ("no", "uke 7 i 2025", "2025U07"),
+        ("no", "veke 41 2026", "2026U41"),
+        ("en", "week 41 of 2026", "2026U41"),
+        ("en", "week 09 2026", "2026U09"),
     ],
 )
 def test_periods_are_read_as_ssb_writes_them(language: Language, text: str, period: str) -> None:
@@ -467,7 +474,21 @@ def test_words_that_are_no_month_or_quarter_leave_the_year_a_number(
     assert "number" in kinds
 
 
-@pytest.mark.parametrize("text", ["2023M13", "[E0]"])
+@pytest.mark.parametrize(
+    ("language", "text"), [("no", "uke 41"), ("no", "Uke 9"), ("en", "week 41")]
+)
+def test_a_week_without_a_year_is_read_as_its_number(language: Language, text: str) -> None:
+    number = only(f"I {text} var det slik.", language)
+    assert (number.kind, number.week, number.text) == ("week", int(text.split()[1]), text)
+
+
+@pytest.mark.parametrize("text", ["uke 54 2026", "uke 0 2026", "per uke"])
+def test_what_is_no_week_reads_no_week(text: str) -> None:
+    kinds = {number.kind for number in read_numbers(f"Det var {text}.", "no")}
+    assert not kinds & {"week", "period"}
+
+
+@pytest.mark.parametrize("text", ["2023M13", "2026U54", "[E0]"])
 def test_codes_that_are_no_period_or_marker_block(text: str) -> None:
     [number] = read_numbers(f"Se {text} her.", "no")
     assert number.kind == "blocked"
