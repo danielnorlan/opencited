@@ -489,3 +489,57 @@ def test_the_cell_limit_error_survives_pickling() -> None:
     error = TooManyCellsError("too many", 6000, 5000)
     again = pickle.loads(pickle.dumps(error))  # noqa: S301 - the test unpickles its own object
     assert (str(again), again.cells, again.limit) == ("too many", 6000, 5000)
+
+
+# Codes that differ only in case: SSB's API reads codes without regard to case.
+
+CRIME = parse_metadata(load_json(raw("metadata-08484-en")), "08484", "en")
+CRIME_METADATA = "/tables/08484/metadata?lang=en"
+
+
+def label_of(metadata: TableMetadata, dimension_code: str, code: str) -> str:
+    return next(
+        value.label for value in dimension(metadata, dimension_code).values if value.code == code
+    )
+
+
+@pytest.mark.parametrize(
+    ("item", "twin"),
+    [("1AAAAA-1ZZZZZ", "1AAAAA-1ZZZZz"), ("1AAAAA-9ZZZZZ", "1AAAAA-9ZZZZz")],
+)
+def test_a_code_that_ssb_reads_as_an_earlier_code_is_refused(item: str, twin: str) -> None:
+    # On 2026-10-18 a request for 1AAAAA-1ZZZZZ returned the cell of 1AAAAA-1ZZZZz.
+    crimes = codes(CRIME, "LovbruddKrim")
+    assert crimes.index(twin) < crimes.index(item)
+
+    with pytest.raises(InvalidSelectionError) as caught:
+        expand(dimension(CRIME, "LovbruddKrim"), [item])
+
+    message = str(caught.value)
+    assert f"returns {twin!r} for both, so {item!r} cannot be fetched" in message
+    assert f"{twin!r} ({label_of(CRIME, 'LovbruddKrim', twin)})" in message
+
+
+def test_the_first_code_of_a_pair_that_differs_in_case_is_selected() -> None:
+    assert expand(dimension(CRIME, "LovbruddKrim"), ["1AAAAA-1ZZZZz", "4AAAAA-4ZZZZz"]) == (
+        "1AAAAA-1ZZZZz",
+        "4AAAAA-4ZZZZz",
+    )
+
+
+def test_a_code_that_ssb_reads_as_another_fails_before_a_data_request() -> None:
+    sent: list[str] = []
+    selection = {
+        "LovbruddKrim": ["1AAAAA-1ZZZZZ"],
+        "ContentsCode": ["AnmeldteLovbrudd"],
+        "Tid": ["2025"],
+    }
+
+    async def call() -> QueryResult:
+        async with make_client(BASE_URL, transport=recorded_transport(sent)) as http:
+            client = SsbClient(http, now=lambda: NOON)
+            return await client.query("08484", selection, "en")
+
+    with pytest.raises(InvalidSelectionError, match="cannot be fetched"):
+        asyncio.run(call())
+    assert sent == [CRIME_METADATA]

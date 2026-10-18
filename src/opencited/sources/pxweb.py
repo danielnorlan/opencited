@@ -91,6 +91,17 @@ class Expander:
         self.dimension = dimension
         self.codes = [value.code for value in dimension.values]
         self.index = {code: number for number, code in enumerate(self.codes)}
+        self.labels = {value.code: value.label for value in dimension.values}
+        # SSB's API reads codes without regard to case and answers a code with the first
+        # code in the metadata that equals it so, so a later twin cannot be fetched.
+        first: dict[str, str] = {}
+        self.twins: dict[str, str] = {}
+        for code in self.codes:
+            key = code.casefold()
+            if key in first:
+                self.twins[code] = first[key]
+            else:
+                first[key] = code
         self.problems: list[str] = []
 
     def position(self, code: str, item: str) -> int | None:
@@ -104,6 +115,15 @@ class Expander:
     def select(self, item: str) -> list[str]:
         """Return the codes that one code or expression selects, in metadata order."""
         if item in self.index:
+            twin = self.twins.get(item)
+            if twin is not None:
+                self.problems.append(
+                    f"{self.dimension.code} has codes that differ only in case, {twin!r} "
+                    f"({self.labels[twin]}) and {item!r} ({self.labels[item]}); SSB's API "
+                    f"reads codes without regard to case and returns {twin!r} for both, so "
+                    f"{item!r} cannot be fetched"
+                )
+                return []
             return [item]
         text = item.strip()
         if match := TOP.fullmatch(text):
