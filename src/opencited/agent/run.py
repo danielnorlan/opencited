@@ -124,9 +124,13 @@ class CheckAnswer:
 
 @dataclass(frozen=True)
 class Retry:
-    """Ask for a corrected answer: with the gate report, or because nothing was cited."""
+    """Ask for a corrected answer: with the gate report, or because nothing was cited.
+
+    ``text`` is the reply that the gate checked, whose blocks the retry message quotes.
+    """
 
     report: Report
+    text: str
     uncited: bool = False
 
 
@@ -234,7 +238,7 @@ def after_check(state: RunState) -> Decision:
     if state.checks > MAX_RETRIES:
         detail = f"{state.checks} answers in a row were blocked by the gate or cited no result"
         return Refuse("gate blocked", detail)
-    return Retry(report, uncited=report.passed)
+    return Retry(report, reply.text or "", uncited=report.passed)
 
 
 __all__ = [

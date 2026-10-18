@@ -247,8 +247,11 @@ def test_a_refusal_keeps_the_model_s_explanation_only_if_the_gate_passes_it(
     assert result.explanation == (explanation if kept else None)
 
 
+BLOCKED, PASSED = "Det bodde 12 personer der.", "Ingen tall her."
+
+
 def blocked_and_passed() -> tuple[Report, Report]:
-    return check("Det bodde 12 personer der.", "no", []), check("Ingen tall her.", "no", [])
+    return check(BLOCKED, "no", []), check(PASSED, "no", [])
 
 
 @pytest.mark.parametrize("last", ["blocked", "passed"])
@@ -276,10 +279,10 @@ def test_a_retry_asks_to_cite_or_sends_the_gate_report(
     tmp_path: Path, cited: tuple[str, ...]
 ) -> None:
     blocked, passed = blocked_and_passed()
-    report = passed if not cited else blocked
+    report, text = (blocked, BLOCKED) if cited else (passed, PASSED)
 
     async def work(run: Run) -> Message:
-        run.state = RunState().replied(reply("Svar.")).checked(report, cited)
+        run.state = RunState().replied(reply(text)).checked(report, cited)
         # The retry is sent; the next model call then fails on the unreachable endpoint.
         with pytest.raises(AgentError):
             await run.answer()
@@ -287,8 +290,10 @@ def test_a_retry_asks_to_cite_or_sends_the_gate_report(
 
     message = with_run(tmp_path, work)
 
-    expected = uncited_message() if not cited else retry_message(blocked)
+    expected = retry_message(blocked, BLOCKED) if cited else uncited_message()
     assert message == UserMessage(expected)
+    # The hint quotes the paragraph of the reply that the gate checked.
+    assert ("The paragraph that begins 'Det bodde 12 personer der.'" in expected) is bool(cited)
 
 
 def test_a_released_answer_records_its_attempt(tmp_path: Path) -> None:

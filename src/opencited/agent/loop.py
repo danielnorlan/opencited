@@ -199,7 +199,9 @@ class Run:
                     self.state = self.state.checked(report, cited)
                 case Retry():
                     message = (
-                        uncited_message() if decision.uncited else retry_message(decision.report)
+                        uncited_message()
+                        if decision.uncited
+                        else retry_message(decision.report, decision.text)
                     )
                     self.messages.append(UserMessage(message))
                     self.state = self.state.retrying()

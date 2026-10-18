@@ -18,10 +18,13 @@ from opencited.agent.prompt import (
 )
 from opencited.gate import check
 from opencited.snapshots import SnapshotStore
+from opencited.sources import Language
 from opencited.values import format_number
 
 # The SHA-256 of the prompt texts for each version. A change to the texts without a
-# new version fails here, since every answer records the version it was made with.
+# new version fails here, since every answer records the version it was made with. The
+# texts include rendered retry messages, so that the parts of a block hint and the
+# gate's report that the model reads count too.
 TEXTS = {
     "1": "0cbf90b1b19623329bbf09b56bd3223ad1cdcb9b31a98afd6b8c932b8411fea2",
     "2": "fa4ea61be2406c0ade156a6d602532dbd5cb00c668d5e9420b73143461639ae3",
@@ -30,7 +33,28 @@ TEXTS = {
     "5": "66a5ab9223ea05c878bcd3f6b449af974e99a420b00e897b5d626680379d8a49",
     "6": "e9cbea8be7e011cd9eeaab1e9bba3f06901b027341ec707d41cff4ffc4781f63",
     "7": "f13da027e56d180c8713b4156917310aa64bad14e7037790e072d01e56766d2a",
+    "8": "d418cd01c57b1bff1ababdf7e9e3a5adea56e3c1a2b8cde1a7bbe7d043e7d30b",
 }
+
+
+# Answers whose numbers all stand in blocks that cite nothing, so that their retry
+# messages need no evidence: every kind of block, a cut start, one to three numbers, a
+# date, a day, a period and a value.
+RENDERED: tuple[tuple[str, Language], ...] = (
+    (
+        "The premise is contradicted by the figures: the population of Norway did not fall "
+        "from 2025 to 2026.",
+        "en",
+    ),
+    ("- In 2026 it was larger.", "en"),
+    ("| Country | Population, 1 January 2026 |", "en"),
+    ("# Figures for 2019M05", "en"),
+    ("Fra 2015\ntil 2025 og 2026 vokste den per 1. januar.", "no"),
+)
+
+
+def rendered() -> str:
+    return "".join(retry_message(check(text, language, []), text) for text, language in RENDERED)
 
 
 def test_a_change_to_the_prompt_texts_needs_a_new_version() -> None:
@@ -43,6 +67,9 @@ def test_a_change_to_the_prompt_texts_needs_a_new_version() -> None:
             prompt.REFUSAL.pattern,
             repr(prompt.HINTS),
             repr(prompt.SPENT_NOTES),
+            prompt.UNCITED_BLOCK,
+            str(prompt.QUOTED),
+            rendered(),
         ]
     )
 
@@ -72,9 +99,10 @@ def test_the_prompt_teaches_the_citation_markers_and_the_refusal_lines() -> None
 
 def test_a_retry_sends_the_gate_report_back(tmp_path: Path) -> None:
     found = evidences(SnapshotStore(tmp_path))
-    report = check("I 2026 bodde det 5,7 millioner personer i Norge [E1].", "no", found.evidence)
+    text = "I 2026 bodde det 5,7 millioner personer i Norge [E1]."
+    report = check(text, "no", found.evidence)
 
-    message = retry_message(report)
+    message = retry_message(report, text)
 
     assert message.startswith("The evidence gate blocked your answer.\n")
     assert report.text() in message
@@ -93,7 +121,7 @@ def test_a_retry_after_a_failed_date_says_to_cite_the_result_that_gives_it(
     text = "Per 1. januar 2026 og 1. januar 2026 bodde det mange i Norge [E1]."
     report = check(text, "no", found.evidence)
 
-    message = retry_message(report)
+    message = retry_message(report, text)
 
     hint = (
         "Cite the source result that gives '1. januar 2026' in the same paragraph, list item "
@@ -112,7 +140,7 @@ def test_a_retry_after_a_year_that_no_cited_result_holds_says_to_cite_its_source
     text = f"Folketallet økte med {growth} prosent fra 2015 til 2026 [C1]."
     report = check(text, "no", found.evidence)
 
-    message = retry_message(report)
+    message = retry_message(report, text)
 
     assert not report.passed
     assert message.count(year_hint("2015")) == 1
@@ -123,37 +151,161 @@ def test_a_retry_after_a_year_that_no_cited_result_holds_says_to_cite_its_source
 def test_a_four_digit_count_that_matches_nothing_gets_the_same_hint(tmp_path: Path) -> None:
     # The gate cannot tell a year from a count, so the hint covers both.
     found = evidences(SnapshotStore(tmp_path))
-    report = check("Det bodde 5432 personer i Norge [E1].", "no", found.evidence)
+    text = "Det bodde 5432 personer i Norge [E1]."
+    report = check(text, "no", found.evidence)
 
-    assert retry_message(report).endswith(year_hint("5432"))
+    assert retry_message(report, text).endswith(year_hint("5432"))
 
 
 def test_a_retry_after_a_failed_period_says_to_cite_the_result_that_selected_it(
     tmp_path: Path,
 ) -> None:
     found = evidences(SnapshotStore(tmp_path))
-    report = check("I 2019M05 bodde det mange i Norge [E1].", "no", found.evidence)
+    text = "I 2019M05 bodde det mange i Norge [E1]."
+    report = check(text, "no", found.evidence)
 
-    assert retry_message(report).endswith(
+    assert retry_message(report, text).endswith(
         "Cite the source result that selected '2019M05' in the same paragraph, list item "
         "or table row, or leave the period out."
     )
 
 
-def test_a_number_in_a_block_that_cites_nothing_gets_a_hint_to_cite(tmp_path: Path) -> None:
+def test_a_number_in_a_block_that_cites_nothing_gets_a_hint_that_quotes_the_block(
+    tmp_path: Path,
+) -> None:
     found = evidences(SnapshotStore(tmp_path))
     text = "Påstanden stemmer ikke for 2025.\n\nDet er alt [E1]."
     report = check(text, "no", found.evidence)
 
-    message = retry_message(report)
+    message = retry_message(report, text)
 
     assert not report.passed
+    assert message.endswith(
+        "The paragraph that begins 'Påstanden stemmer ikke for 2025.' cites no result. "
+        "Cite in it the result that gives '2025', or leave it out."
+    )
+    assert "per cent word" not in message
+    assert year_hint("2025") not in message
+
+
+def test_a_table_row_that_cites_nothing_is_named_and_quoted(tmp_path: Path) -> None:
+    # The form of a table in an answer of the published run of 2026-10-18 (#73): its
+    # header row named a date and cited nothing, and the model kept it so after the
+    # hint for a date.
+    found = evidences(SnapshotStore(tmp_path))
+    value = format_number(found.value("2026"), "en")
+    text = (
+        f"In 2026, {value} people lived in Norway [E1].\n\n"
+        "| Country | Population, 1 January 2026 |\n"
+        "| --- | --- |\n"
+        f"| Norway | {value} [E1] |"
+    )
+    report = check(text, "en", found.evidence)
+
+    message = retry_message(report, text)
+
+    assert not report.passed
+    assert message.endswith(
+        "The table row that begins '| Country | Population, 1 January 2026 |' cites no "
+        "result. Cite in it the result that gives '1 January 2026', or leave it out."
+    )
+    assert "or leave the date out" not in message
+
+
+def test_the_failed_numbers_of_a_block_get_one_hint_and_a_long_block_is_cut(
+    tmp_path: Path,
+) -> None:
+    found = evidences(SnapshotStore(tmp_path))
+    text = (
+        "The premise is contradicted by the figures: the population of Norway did not fall "
+        "from 2025 to 2026.\n\n- In 2026 it was larger.\n\nSee the figures [C1]."
+    )
+    report = check(text, "en", found.evidence)
+
+    message = retry_message(report, text)
+
+    assert message.endswith(
+        "The paragraph that begins 'The premise is contradicted by the figures: the "
+        "population...' "
+        "cites no result. Cite in it the result that gives '2025' and '2026', or leave them "
+        "out.\nThe list item that begins '- In 2026 it was larger.' cites no result. Cite "
+        "in it the result that gives '2026', or leave it out."
+    )
+
+
+def test_a_number_written_twice_in_a_block_is_named_once(tmp_path: Path) -> None:
+    found = evidences(SnapshotStore(tmp_path))
+    text = "Per 1. januar 2026 og 1. januar 2026 bodde det mange.\n\nDet er alt [E1]."
+    report = check(text, "no", found.evidence)
+
+    message = retry_message(report, text)
+
+    assert message.endswith(
+        "The paragraph that begins 'Per 1. januar 2026 og 1. januar 2026 bodde det mange.' "
+        "cites no result. Cite in it the result that gives '1. januar 2026', or leave it out."
+    )
+
+
+@pytest.mark.parametrize(
+    "other",
+    ["Kort.", "Noe helt annet, som er mye lengre enn den teksten som ble sjekket.\n\nMer."],
+)
+def test_a_text_that_is_not_the_checked_one_gets_the_hint_without_a_quote(
+    tmp_path: Path, other: str
+) -> None:
+    found = evidences(SnapshotStore(tmp_path))
+    report = check("Påstanden stemmer ikke for 2025.\n\nDet er alt [E1].", "no", found.evidence)
+
+    message = retry_message(report, other)
+
     assert message.endswith(
         "Cite the result that gives '2025' in the same paragraph, list item or table row, "
         "or leave it out."
     )
-    assert "per cent word" not in message
-    assert year_hint("2025") not in message
+
+
+@pytest.mark.parametrize(
+    ("text", "hint"),
+    [
+        # A number at a block's first character.
+        (
+            "2025 var lavere.\n\nDet er alt [E1].",
+            "The paragraph that begins '2025 var lavere.' cites no result. Cite in it the "
+            "result that gives '2025', or leave it out.",
+        ),
+        # A period, whose reason in such a block is its own.
+        (
+            "I 2019M05 bodde det mange.\n\nDet er alt [E1].",
+            "The paragraph that begins 'I 2019M05 bodde det mange.' cites no result. Cite in "
+            "it the result that gives '2019M05', or leave it out.",
+        ),
+        # Three numbers, and a paragraph of two lines whose spacing is collapsed.
+        (
+            "Fra 2015\ntil 2025 og 2026 vokste den.\n\nDet er alt [E1].",
+            "The paragraph that begins 'Fra 2015 til 2025 og 2026 vokste den.' cites no "
+            "result. Cite in it the result that gives '2015', '2025' and '2026', or leave "
+            "them out.",
+        ),
+        # A start of 61 characters is cut at a word, and one of 60 is quoted whole.
+        (
+            "Folketallet i 2025 var omtrent det samme som i de andre årene\n\nAnnet [E1].",
+            "The paragraph that begins 'Folketallet i 2025 var omtrent det samme som i de "
+            "andre...' cites no result. Cite in it the result that gives '2025', or leave it "
+            "out.",
+        ),
+        (
+            "Folketallet i 2025 var omtrent det samme som i de andre åra.\n\nAnnet [E1].",
+            "The paragraph that begins 'Folketallet i 2025 var omtrent det samme som i de "
+            "andre åra.' cites no result. Cite in it the result that gives '2025', or leave "
+            "it out.",
+        ),
+    ],
+)
+def test_the_block_hint_quotes_and_lists_as_it_should(tmp_path: Path, text: str, hint: str) -> None:
+    found = evidences(SnapshotStore(tmp_path))
+    report = check(text, "no", found.evidence)
+
+    assert retry_message(report, text).endswith(hint)
 
 
 def year_hint(text: str) -> str:
@@ -168,7 +320,7 @@ def test_a_retry_for_an_uncited_answer_has_no_hints(tmp_path: Path) -> None:
     found = evidences(SnapshotStore(tmp_path))
     report = check("Ingen tall her.", "no", found.evidence)
 
-    assert retry_message(report) == prompt.RETRY.format(report=report.text())
+    assert retry_message(report, "Ingen tall her.") == prompt.RETRY.format(report=report.text())
 
 
 @pytest.mark.parametrize(

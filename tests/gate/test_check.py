@@ -26,6 +26,9 @@ from snapshotting import altered, population, retrieve, symbols
 from opencited.calc import CalculationResult, Engine, Plan, ResultUnit, StepResult
 from opencited.gate.blocks import blocks
 from opencited.gate.check import (
+    UNCITED_DATE,
+    UNCITED_PERIOD,
+    UNCITED_VALUE,
     CalculationEvidence,
     Evidence,
     Match,
@@ -174,6 +177,45 @@ def test_blocks_split_paragraphs_items_rows_and_headings() -> None:
         "| a | b |",
         "| 1 | 2 |",
     ]
+    assert [block.kind for block in blocks(text)] == [
+        "heading",
+        "paragraph",
+        "list item",
+        "list item",
+        "paragraph",
+        "table row",
+        "table row",
+    ]
+
+
+def test_a_date_that_a_result_gives_fails_in_a_block_that_cites_nothing() -> None:
+    result = population().result
+    day = result.provenance.retrieved_at.date().isoformat()
+    evidence = [SourceEvidence("E1", result)]
+
+    report = check(f"Hentet {day}.\n\nAnnet [E1].", "no", evidence)
+
+    [failed] = [finding for finding in report.findings if finding.outcome == "failed"]
+    assert (failed.kind, failed.detail) == ("date", UNCITED_DATE)
+    assert check(f"Hentet {day} [E1].", "no", evidence).passed
+
+
+@pytest.mark.parametrize(
+    ("text", "kind", "detail"),
+    [
+        ("Per 1. januar 2026 bodde mange her.", "date", UNCITED_DATE),
+        ("Per 1. januar bodde mange her.", "date", UNCITED_DATE),
+        ("I 2026M08 bodde mange her.", "period", UNCITED_PERIOD),
+        ("I 2026 bodde mange her.", "value", UNCITED_VALUE),
+    ],
+)
+def test_a_number_in_a_block_that_cites_nothing_fails_with_that_reason(
+    text: str, kind: str, detail: str
+) -> None:
+    report = check(f"{text}\n\nAnnet [E1].", "no", [SourceEvidence("E1", population().result)])
+
+    [failed] = [finding for finding in report.findings if finding.outcome == "failed"]
+    assert (failed.kind, failed.detail) == (kind, detail)
 
 
 def test_a_count_with_a_percentage_point_word_fails() -> None:
