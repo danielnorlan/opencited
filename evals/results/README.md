@@ -14,6 +14,66 @@ every question ([spec 0005](../../docs/specs/0005-evaluation-suite.md)).
 | [2026-10-18T1127-v3-deepseek-deepseek-flash.json](2026-10-18T1127-v3-deepseek-deepseek-flash.json) | v3 | `deepseek-flash` | 40 of 43 |
 | [2026-10-18T1342-v1-deepseek-deepseek-flash.json](2026-10-18T1342-v1-deepseek-deepseek-flash.json) | v1 | `deepseek-flash` | 42 of 44 |
 | [2026-10-18T1350-v3-deepseek-deepseek-flash.json](2026-10-18T1350-v3-deepseek-deepseek-flash.json) | v3 | `deepseek-flash` | 40 of 43 |
+| [2026-10-18T1440-v1-deepseek-deepseek-flash.json](2026-10-18T1440-v1-deepseek-deepseek-flash.json) | v1 | `deepseek-flash` | 40 of 44 |
+| [2026-10-18T1447-v3-deepseek-deepseek-flash.json](2026-10-18T1447-v3-deepseek-deepseek-flash.json) | v3 | `deepseek-flash` | 40 of 43 |
+
+## 2026-10-18, question sets v1 and v3 with prompt texts v10, `deepseek-flash`
+
+Both runs started from commit `5d737f2` on 2026-10-18, set v1 at 14:40 UTC and set v3
+at 14:47 UTC, with the model, settings, prices and limits of the earlier runs. Since
+the runs from `ffb297f`, rule 10 of the system prompt asks for a table that holds the
+groups that a question names, or for a sum of the counts of smaller groups, and never
+for a value joined from the averages, medians, rates or shares of smaller groups
+(#80), in version 10 of the prompt texts.
+
+| | v1, 13:42 | v1, 14:40 | v3, 13:50 | v3, 14:47 |
+| --- | --- | --- | --- | --- |
+| Correct | 42 of 44 | 40 of 44 | 40 of 43 | 40 of 43 |
+| Released answers counted correct | 30 of 30 | 29 of 30 | 28 of 31 | 28 of 29 |
+| Answers to questions that should be refused | 0 of 12 | 1 of 12 | 0 of 12 | 0 of 12 |
+| Answerable questions refused | 2 | 3 | 0 | 2 |
+| Refusals after three blocked attempts | 0 | 0 | 0 | 0 |
+| First attempts that the gate blocked | 17 of 30 | 17 of 30 | 15 of 31 | 14 of 29 |
+| Retries | 20 | 20 | 16 | 15 |
+| Tokens | 1,690,484 | 1,715,899 | 1,237,735 | 1,393,664 |
+
+`ranking-age-group-highest-wage-2025` (v3), which at 13:50 joined the five-year bands
+of table 11421 with an unweighted mean, read table 13312 and named its group "55-66
+years"; the answer says that the table "holds exactly these five age groups".
+`lookup-weddings-2025` read table 09659 again and was correct.
+
+Set v1 had 40 of 44 correct: 18 of 22 in Norwegian and 22 of 22 in English. Lookup had
+6 of 7, change 5 of 5, share 4 of 5, sum 4 of 5, ranking 5 of 5, false premise 5 of 5,
+unanswerable 5 of 5 and out of scope 6 of 7.
+
+- `out-of-scope-stockholm` asks for the population of Stockholm. The reply opened
+  with "REFUSE: utenfor kildene", the refusal line in Norwegian, which the agent reads
+  only in English, so the reply went to the gate as an answer. It held no number, and
+  once it cited the searches it passed and was released as an answer to a question
+  that should be refused.
+- `lookup-population-norway-2026` reached the token limit with 104,577 tokens, after
+  four searches and the metadata of two tables. Its last reply held a correct
+  answer, "1. januar 2026 bodde det 5 627 400 personer i Norge", which the agent does
+  not check once a limit is reached (spec 0004).
+- `share-80-plus-norway-2026` and `sum-67-plus-norway-2026` reached the token limit as
+  before, in the middle of their queries.
+
+Set v3 had 40 of 43 correct: 22 of 23 in Norwegian and 18 of 20 in English. Lookup had
+6 of 7, change 5 of 6, share 5 of 5, sum 5 of 5, ranking 4 of 4, false premise 3 of 4,
+unanswerable 8 of 8 and out of scope 4 of 4.
+
+- `lookup-offences-2025` stopped at the limit of 12 model calls after repeated queries
+  of tables 08485 and 08484 with the offence code `0-999`, and
+  `change-offences-2015-2025` reached the token limit after querying table 08484 with
+  the same code, whose cell for 2025 is ".". At 11:27 and 13:50 both found the code
+  that holds the total.
+- `false-premise-women-earn-more-gap-2025` gave the gap as women's wage minus men's,
+  "−6 870 kr per måned for kvinnene", as before.
+
+The two runs used 1,715,899 and 1,393,664 tokens, and the largest correct answer used
+86,622. With every input token counted at the price without a cache hit, the agent's
+estimates of the cost are $0.5373 and $0.4413. The account's balance at DeepSeek fell
+from $4.01 to $3.84 over both runs.
 
 ## 2026-10-18, question sets v1 and v3 with prompt texts v9, `deepseek-flash`
 

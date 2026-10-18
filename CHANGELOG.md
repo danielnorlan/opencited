@@ -79,6 +79,9 @@ Notable changes to OpenCited are recorded here. The format follows
 - A query that names a code which equals an earlier code of its dimension in all but
   case fails before the data request and names the earlier code, since SSB's API
   returns the earlier code's cell for both.
+- Published runs of question sets v1 and v3 with version 10 of the prompt texts on
+  2026-10-18 from `5d737f2`: 40 of 44 and 40 of 43 correct. One question that should
+  be refused was answered, with a refusal line written in Norwegian.
 - Published runs of question sets v1 and v3 with version 9 of the prompt texts on
   2026-10-18 from `ffb297f`: 42 of 44 and 40 of 43 correct, no answer refused after
   three blocked attempts, and none of the 24 questions that should be refused answered.
