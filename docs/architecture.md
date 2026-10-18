@@ -361,7 +361,8 @@ does; any other number at the start of a line is read as a number. Month names a
 read in any case of their ASCII letters only, so a letter that merely folds to one,
 such as the long s in "auguſt", makes no month.
 
-Every other number is a value. It fails in a block that cites no result. It passes
+Every other number is a value. It fails in a block that cites no result, and so do a
+date, a day and a period, each with a reason that names the missing citation. It passes
 when a cited result holds a value `v` that, divided by any scale word and rounded with
 ties away from zero to the decimals written, equals the number; for a calculation, `v`
 is the step's exact result, and the values of the cells it ranked count too. A value
@@ -490,10 +491,12 @@ reason, which can name a local path.
 tool schemas, runs the tool calls of each reply and returns their results, until the
 model replies without a tool call. The gate checks that reply. A blocked reply goes
 back to the model with the gate report, at most twice, and with what to do about each
-kind of failed number: a number in a block that cites nothing is cited or goes, a
-date or a period is cited with the source result that holds it or goes, a value is
-written as a result gives it, and a four-digit number that matched nothing gets both
-hints, since the gate cannot tell a year from a count. The
+kind of failed number: the numbers of a block that cites nothing get one hint for the
+block, which names its kind, such as a table row, and quotes the start of its text, so
+that the model finds the block to cite in; a date or a period is cited with the source
+result that holds it or goes, a value is written as a result gives it, and a
+four-digit number that matched nothing gets both hints, since the gate cannot tell a
+year from a count. The
 prompt tells the model to write a change with its sign, to name periods as the
 results name them, to write a date only when a cited result gives it, and to cite
 the source result beside a calculation where it names a period or a date; the gate

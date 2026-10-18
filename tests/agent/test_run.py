@@ -120,8 +120,8 @@ def test_a_blocked_answer_is_retried_twice_and_then_refused(
         state = state.retrying()
 
     assert decisions == [
-        Retry(blocked),
-        Retry(blocked),
+        Retry(blocked, "Svar [E1]."),
+        Retry(blocked, "Svar [E1]."),
         Refuse("gate blocked", "3 answers in a row were blocked by the gate or cited no result"),
     ]
     assert state.report == blocked
@@ -272,8 +272,8 @@ def test_an_answer_that_cites_nothing_is_retried_like_a_blocked_one(
         state = state.retrying()
 
     assert decisions == [
-        Retry(passed, uncited=True),
-        Retry(passed, uncited=True),
+        Retry(passed, "Oslo er hovedstaden.", uncited=True),
+        Retry(passed, "Oslo er hovedstaden.", uncited=True),
         Refuse("gate blocked", "3 answers in a row were blocked by the gate or cited no result"),
     ]
 

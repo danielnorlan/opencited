@@ -58,6 +58,10 @@ Notable changes to OpenCited are recorded here. The format follows
   the prompt texts holds the notes.
 - A number that the gate blocks because its block cites nothing gets a retry hint to
   cite the result in that block, in version 7 of the prompt texts.
+- The retry hint for a block that cites nothing names the kind of block and quotes the
+  start of its text, with the block's failed numbers, in version 8 of the prompt texts,
+  and a date, a day or a period in such a block fails with the reason that it cites
+  nothing.
 - The scorer counts a ranking label followed by a genitive s, so "5–9 års" holds the
   label "5-9 år", and a number that leaves out decimals that are zeros, so "104" holds
   an index of 104.0 and "101" does not hold 100.6.

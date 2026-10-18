@@ -13,11 +13,12 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
-from opencited.gate import Finding, Report
-from opencited.gate.check import UNCITED_VALUE, UNSELECTED_YEAR
+from opencited.gate import Finding, Report, normalise
+from opencited.gate.blocks import Block, blocks
+from opencited.gate.check import UNCITED_REASONS, UNSELECTED_YEAR
 from opencited.sources import Language
 
-PROMPT_VERSION = "7"
+PROMPT_VERSION = "8"
 
 LANGUAGES: dict[Language, str] = {"no": "Norwegian (bokmål)", "en": "English"}
 
@@ -131,6 +132,15 @@ HINTS: dict[str, str] = {
     ),
 }
 
+# What to do about the failed numbers of a block that cites no result. The model finds
+# the block by the start of its text; a position in the answer does not tell it.
+UNCITED_BLOCK = (
+    "The {kind} that begins {start!r} cites no result. Cite in it the result that gives "
+    "{numbers}, or leave {them} out."
+)
+# The longest start of a block that the hint quotes, in characters.
+QUOTED = 60
+
 
 def hint_kind(finding: Finding) -> str:
     """Return the hint's kind for a failed number.
@@ -138,17 +148,57 @@ def hint_kind(finding: Finding) -> str:
     A number in a block that cites nothing needs a citation more than another form, and
     a four-digit number that matched nothing may be a year or a count.
     """
-    if finding.detail == UNCITED_VALUE:
+    if finding.detail in UNCITED_REASONS:
         return "uncited"
     return "year" if finding.detail == UNSELECTED_YEAR else finding.kind
 
 
-def retry_message(report: Report) -> str:
-    """Return the gate's report with what to do about each kind of failed number."""
+def block_start(text: str, block: Block) -> str:
+    """Return the start of a block's text, with its spacing collapsed, to quote it."""
+    start = " ".join(text[block.start : block.end].split())
+    if len(start) <= QUOTED:
+        return start
+    return f"{start[:QUOTED].rsplit(' ', 1)[0]}..."
+
+
+def uncited_hint(text: str, block: Block, numbers: list[str]) -> str:
+    """Return the hint for the failed numbers of a block that cites no result."""
+    quoted = [repr(number) for number in numbers]
+    listed = quoted[0] if len(quoted) == 1 else f"{', '.join(quoted[:-1])} and {quoted[-1]}"
+    return UNCITED_BLOCK.format(
+        kind=block.kind,
+        start=block_start(text, block),
+        numbers=listed,
+        them="it" if len(quoted) == 1 else "them",
+    )
+
+
+def retry_message(report: Report, answer: str) -> str:
+    """Return the gate's report with what to do about each kind of failed number.
+
+    The failed numbers of a block that cites no result get one hint for the block, which
+    quotes its start. Offsets in the report are in the normalised answer.
+    """
+    text = normalise(answer)
+    found = blocks(text)
+    entries: list[str | Block] = []
+    uncited: dict[Block, list[str]] = {}
+    for finding in report.findings:
+        if finding.outcome != "failed":
+            continue
+        kind = hint_kind(finding)
+        block = next((item for item in found if item.start <= finding.position < item.end), None)
+        if kind == "uncited" and block is not None:
+            if block not in uncited:
+                uncited[block] = []
+                entries.append(block)
+            if finding.text not in uncited[block]:
+                uncited[block].append(finding.text)
+        elif kind in HINTS:
+            entries.append(HINTS[kind].format(text=finding.text))
     hints = [
-        HINTS[kind].format(text=finding.text)
-        for finding in report.findings
-        if finding.outcome == "failed" and (kind := hint_kind(finding)) in HINTS
+        entry if isinstance(entry, str) else uncited_hint(text, entry, uncited[entry])
+        for entry in entries
     ]
     message = RETRY.format(report=report.text())
     return "\n".join([message, *dict.fromkeys(hints)]) if hints else message

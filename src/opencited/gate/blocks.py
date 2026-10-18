@@ -11,13 +11,14 @@ holds a pipe is a table row and a block of its own, and a table's separator row 
 no text. A heading is a block of its own, and so is a list item, with the indented
 lines below it. Block quote markers are read past, so a quoted paragraph or list item
 is split as if unquoted. Offsets are in the normalised text, as the number reader
-gives them.
+gives them. Each block records its kind, which the agent's retry message names.
 """
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import Literal
 
 QUOTE = re.compile(r"(?:[ \t]{0,3}>[ \t]?)+")
 LIST_ITEM = re.compile(r"[ \t]*(?:[-*+]|[0-9]+[.)])[ \t]")
@@ -28,10 +29,14 @@ TABLE_ROW = re.compile(r"(?:^|[^\\])\|")
 SEPARATOR_ROW = re.compile(r"[ \t:|-]*-[ \t:|-]*")
 
 
+type BlockKind = Literal["paragraph", "list item", "table row", "heading"]
+
+
 @dataclass(frozen=True)
 class Block:
     start: int
     end: int
+    kind: BlockKind = "paragraph"
 
 
 class Splitter:
@@ -44,11 +49,12 @@ class Splitter:
 
     def close(self, end: int) -> None:
         if self.start is not None:
-            self.found.append(Block(self.start, end))
+            kind: BlockKind = "list item" if self.in_item else "paragraph"
+            self.found.append(Block(self.start, end, kind))
         self.start, self.in_item = None, False
 
-    def alone(self, start: int, end: int) -> None:
-        self.found.append(Block(start, end))
+    def alone(self, start: int, end: int, kind: BlockKind) -> None:
+        self.found.append(Block(start, end, kind))
 
 
 def blocks(text: str) -> tuple[Block, ...]:
@@ -72,11 +78,11 @@ def blocks(text: str) -> tuple[Block, ...]:
         if TABLE_ROW.search(inner):
             split.close(line_start)
             if not SEPARATOR_ROW.fullmatch(inner):
-                split.alone(line_start, line_end)
+                split.alone(line_start, line_end, "table row")
             continue
         if HEADING.match(inner):
             split.close(line_start)
-            split.alone(line_start, line_end)
+            split.alone(line_start, line_end, "heading")
             continue
         if LIST_ITEM.match(inner):
             split.close(line_start)

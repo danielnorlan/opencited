@@ -165,8 +165,11 @@ class Report(Frozen):
 
 # The reason for a year that fails as a value, which the agent's retry message reads.
 UNSELECTED_YEAR = "a year that no cited result selected, and no value that a cited result holds"
-# The reason for a number in a block that cites nothing, which the retry message reads.
+# The reasons for a number in a block that cites nothing, which the retry message reads.
 UNCITED_VALUE = "a value in a block that cites no result"
+UNCITED_DATE = "a date in a block that cites no result"
+UNCITED_PERIOD = "a period in a block that cites no result"
+UNCITED_REASONS = (UNCITED_VALUE, UNCITED_DATE, UNCITED_PERIOD)
 
 
 @dataclass(frozen=True)
@@ -458,6 +461,12 @@ def finding(
 
 def judge(number: Number, holdings: Holdings, cited: bool) -> Finding:
     """Decide one number of a block whose cited results hold ``holdings``."""
+    # A block that cites nothing holds nothing, and the reason says so, so that the
+    # retry message asks for a citation rather than for another date or period.
+    if not cited and number.kind in ("date", "day", "period"):
+        if number.kind == "period":
+            return finding(number, "period", "failed", UNCITED_PERIOD)
+        return finding(number, "date", "failed", UNCITED_DATE)
     match number.kind:
         case "list number":
             return finding(number, "list number", "ignored", "the number of a list item")
