@@ -15,7 +15,7 @@ source is Statistics Norway (SSB).
 > this repository and is not on PyPI yet. The calculation engine, the evidence gate,
 > the agent and the evaluation suite are built, and the
 > [latest published runs](https://github.com/danielnorlan/opencited/blob/main/evals/results/README.md)
-> of the suite answered 40 of 44 questions of set v1 and 40 of 43 of set v3 correctly
+> of the suite answered 42 of 44 questions of set v1 and 40 of 43 of set v3 correctly
 > with DeepSeek's `deepseek-flash`.
 > See the
 > [roadmap](https://github.com/danielnorlan/opencited/blob/main/docs/roadmap.md).
