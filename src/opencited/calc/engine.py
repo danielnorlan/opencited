@@ -261,6 +261,69 @@ def locked(
     return connection, tables
 
 
+# The tables that ``locked`` loads the snapshots into.
+TABLE = re.compile(r"snapshot_[1-9][0-9]*")
+
+
+def where_clause(dimensions: Sequence[str], counts: Sequence[int]) -> str:
+    """Return the WHERE clause with a placeholder for each code of each dimension, in order."""
+    return " AND ".join(
+        f"{quoted(code)} IN ({', '.join('?' * count)})"
+        for code, count in zip(dimensions, counts, strict=True)
+    )
+
+
+def select_statement(table: str, dimensions: Sequence[str], counts: Sequence[int]) -> str:
+    """Return the statement that selects a step's cells from a snapshot's table."""
+    columns = ", ".join(quoted(code) for code in dimensions)
+    return (
+        f"SELECT {columns}, value_text, symbol, unit FROM {table} "  # noqa: S608 - quoted names, bound codes
+        f"WHERE {where_clause(dimensions, counts)} ORDER BY {columns}"
+    )
+
+
+def bound_codes(
+    sql: str, parameters: Sequence[str], dimensions: Sequence[str]
+) -> tuple[tuple[str, str], ...] | None:
+    """Return the dimension and code of each value that a selecting statement binds.
+
+    The statement must be the one that ``select_statement`` writes for a table that
+    ``locked`` names and a snapshot whose dimensions have these codes, in this order,
+    with one parameter for each placeholder. Any other statement gives None. The
+    evidence gate reads the labels of a calculation's values with it (spec 0003).
+    """
+    columns = ", ".join(quoted(code) for code in dimensions)
+    head = f"SELECT {columns}, value_text, symbol, unit FROM "  # noqa: S608 - compared, never run
+    if not sql.startswith(head):
+        return None
+    table, separator, _ = sql[len(head) :].partition(" WHERE ")
+    if not separator or TABLE.fullmatch(table) is None:
+        return None
+    # The walk only counts each dimension's placeholders; the comparison with the
+    # statement written from those counts then checks every character.
+    position = len(head) + len(table) + len(" WHERE ")
+    counts: list[int] = []
+    for index, dimension in enumerate(dimensions):
+        opening = f"{' AND ' if index else ''}{quoted(dimension)} IN (?"
+        if not sql.startswith(opening, position):
+            return None
+        position += len(opening)
+        count = 1
+        while sql.startswith(", ?", position):
+            position += len(", ?")
+            count += 1
+        counts.append(count)
+        position += len(")")
+    if sum(counts) != len(parameters) or sql != select_statement(table, dimensions, counts):
+        return None
+    codes = iter(parameters)
+    return tuple(
+        (dimension, next(codes))
+        for dimension, count in zip(dimensions, counts, strict=True)
+        for _ in range(count)
+    )
+
+
 def selection_of(step: Step, snapshot: Snapshot | None = None) -> dict[str, tuple[str, ...]]:
     """Return the codes a step selects; a ranking leaving out ``by`` takes all its codes."""
     match step:
@@ -342,29 +405,21 @@ class Runner:
 
     def where(
         self, step: ValueStep | SumStep | MeanStep | RankStep
-    ) -> tuple[list[str], str, list[str]]:
-        """Return the dimension codes, the WHERE clause and the codes it binds."""
+    ) -> tuple[list[str], list[int], list[str]]:
+        """Return the dimension codes, the number of codes each selects, and the codes."""
         snapshot = self.snapshots[step.snapshot]
         selection = selection_of(step, snapshot)
         codes = [dimension.code for dimension in snapshot.manifest.dimensions]
-        clauses: list[str] = []
-        parameters: list[str] = []
-        for code in codes:
-            chosen = selection[code]
-            clauses.append(f"{quoted(code)} IN ({', '.join('?' * len(chosen))})")
-            parameters.extend(chosen)
-        return codes, " AND ".join(clauses), parameters
+        counts = [len(selection[code]) for code in codes]
+        parameters = [value for code in codes for value in selection[code]]
+        return codes, counts, parameters
 
     def select(
         self, step: ValueStep | SumStep | MeanStep | RankStep
     ) -> tuple[str, tuple[str, ...], list[Row]]:
         """Return the SQL, its parameters and the cells that a step selects."""
-        codes, where, parameters = self.where(step)
-        columns = ", ".join(quoted(code) for code in codes)
-        sql = (
-            f"SELECT {columns}, value_text, symbol, unit FROM {self.tables[step.snapshot]} "  # noqa: S608 - quoted names, bound codes
-            f"WHERE {where} ORDER BY {columns}"
-        )
+        codes, counts, parameters = self.where(step)
+        sql = select_statement(self.tables[step.snapshot], codes, counts)
         cursor = self.connection.execute(sql, parameters)
         check_types(cursor, step.name)
         count = len(codes)
@@ -438,7 +493,8 @@ class Runner:
     def rank(self, step: RankStep) -> StepResult:
         sql, parameters, rows = self.select(step)
         snapshot = self.snapshots[step.snapshot]
-        codes, where, _ = self.where(step)
+        codes, counts, _ = self.where(step)
+        where = where_clause(codes, counts)
         direction = "DESC" if step.order == "highest" else "ASC"
         columns = ", ".join(quoted(code) for code in codes)
         # The place is the last column, sorted by its number, so no alias can collide

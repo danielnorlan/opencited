@@ -167,6 +167,21 @@ RECORDINGS: tuple[Recording, ...] = (
         ),
         reason="values with one decimal, and zeros",
     ),
+    Recording(
+        "data-06946-shared-codes-en",
+        "GET",
+        "/tables/06946/data",
+        data_params(
+            "en",
+            {
+                "Region": "01,02",
+                "HusholdType": "01,02",
+                "ContentsCode": "AntallHushold",
+                "Tid": "2019",
+            },
+        ),
+        reason="two dimensions that share codes and label them differently",
+    ),
     *(
         Recording(
             f"data-05810-{language}",

@@ -40,9 +40,15 @@ Notable changes to OpenCited are recorded here. The format follows
   such as "per 1. januar", passes when a cited query result's label names that day.
   A list whose items start with a month stays a list, and a month name with a letter
   that only folds to a month's letter, such as "auguſt", no longer stops the gate.
+- A number from the label of a value that a cited calculation's steps read passes
+  beside the calculation without its query result, so "0-2 år [C1]" passes when C1
+  read the value labelled "0-2 år".
 - Question set v2 with 43 questions over ten more tables, among them prices, wages,
   the national accounts, crime, marriages, income and employment, and 12 questions
   that should be refused, each with the reason the sources cannot answer it.
+- Question set v3: set v2 with three questions reworded under new IDs so that each has
+  one reading, the divorces by the duration of the marriage, the five age groups of
+  table 13312 and the wage gap as a difference.
 - Version 5 of the system prompt asks the model, when a question rests on a claim
   that the results contradict, to say so with the results' figures and not to repeat
   a number from the question that no result holds.

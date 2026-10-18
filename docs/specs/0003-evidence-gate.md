@@ -89,6 +89,11 @@ gate says which number failed and why.
 6. For items 1 and 2, a calculation result cited in the block also counts as citing
    every query result that its steps read, so "from 2025 to 2026 [C1]" passes when C1
    read a query result that selected both years.
+7. For item 4, a calculation result cited in the block also counts as citing the
+   label of each value that its steps read, apart from periods, so "0-2 år [C1]"
+   passes when a step of C1 read the value labelled `0-2 år`. A title, and the label
+   of a value that no step read, still need a source result cited in the block that
+   holds them.
 
 ### Matching values
 
