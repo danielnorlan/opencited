@@ -29,14 +29,14 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
 from fractions import Fraction
-from typing import Literal
+from typing import Literal, cast
 from zoneinfo import ZoneInfo
 
 from pydantic import Field
 
 from opencited.calc.arithmetic import round_away
 from opencited.calc.engine import unit_named
-from opencited.calc.result import CalculationResult
+from opencited.calc.result import CalculationResult, StepResult
 from opencited.gate.blocks import blocks
 from opencited.gate.numbers import (
     MONTHS_EN,
@@ -223,6 +223,38 @@ def day_months(text: str) -> set[tuple[int, int]]:
     for match in DAY_IN_DIGITS.finditer(text):
         found.add((int(match[2]), int(match[1])))
     return {(month, day) for month, day in found if 1 <= month <= 12 and 1 <= day <= 31}
+
+
+# A dimension and its placeholders in the WHERE clause that the engine writes for a step.
+WHERE_IN = re.compile(r'"((?:[^"]|"")+)" IN \(((?:\?, )*\?)\)')
+
+
+def step_codes(step: StepResult) -> list[tuple[str, str]]:
+    """Return the dimension and code of each value that a step's selection read.
+
+    The engine binds the codes of each dimension to its placeholders, in the order of
+    the WHERE clause. A statement in another form gives nothing, so no label passes.
+    """
+    if not step.sql or not step.parameters:
+        return []
+    sql, parameters = step.sql[0], step.parameters[0]
+    pairs: list[tuple[str, str]] = []
+    for match in WHERE_IN.finditer(sql):
+        dimension = match[1].replace('""', '"')
+        start = len(pairs)
+        pairs += [(dimension, code) for code in parameters[start : start + match[2].count("?")]]
+    return pairs if len(pairs) == len(parameters) else []
+
+
+def read_labels(step: StepResult, result: QueryResult) -> list[str]:
+    """Return the labels of the values that a step read in a query result, apart from periods."""
+    labels = {
+        (dimension.code, value.code): value.label
+        for dimension in result.dimensions
+        if not dimension.time
+        for value in dimension.values
+    }
+    return [labels[pair] for pair in step_codes(step) if pair in labels]
 
 
 def label_days(result: QueryResult) -> set[tuple[int, int]]:
@@ -585,6 +617,15 @@ def check(answer: str, language: Language, evidence: Sequence[Evidence]) -> Repo
             for use in item.result.snapshots:
                 for source in responses.get(use.provenance.response_sha256, []):
                     holdings_of[name].add_times(holdings_of[source])
+            # A label number passes beside a calculation when one of its steps read the
+            # value that the label names (spec 0003, Numbers that are not values, item 7).
+            for step in item.result.steps:
+                for source in responses.get(step.snapshot or "", []):
+                    result = cast("QueryResult", known[source].result)
+                    language = language_of(result.provenance.table_url)
+                    for label in read_labels(step, result):
+                        for number in label_numbers(label, language):
+                            holdings_of[name].labels.setdefault(number, source)
     findings: list[Finding] = []
     for block in blocks(text):
         inside = [number for number in numbers if block.start <= number.position < block.end]

@@ -346,8 +346,13 @@ result selected as a period counts as a year. A day and month without a year, su
 as "per 1. januar" or "1 January", passes when the label of a value that a cited
 query result selected names that day. For periods and dates, a cited calculation also
 counts as citing every query result whose snapshot its steps read, found by the
-response hash in the snapshot's provenance; it gives no other number of those
-results; when one response was fetched twice, it gives the dates of both fetches.
+response hash in the snapshot's provenance; when one response was fetched twice, it
+gives the dates of both fetches. It also gives the numbers of the labels of the values
+its steps read, apart from periods, so "0-2 år [C1]" passes when a step of C1 read the
+value labelled "0-2 år". The gate takes a step's dimensions and codes from the SQL
+statement and the parameters that the engine ran, and a statement in another form
+gives no label. A calculation gives no value, table ID or title number of its sources,
+and no label of a value that no step read.
 Citation markers are not findings, and the numbers of an ordered list are ignored
 when they count up from 1, also when an item starts with a month, as "1. August"
 does; any other number at the start of a line is read as a number. Month names are

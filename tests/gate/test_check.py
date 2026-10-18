@@ -34,11 +34,13 @@ from opencited.gate.check import (
     cited_ids,
     day_months,
     language_of,
+    read_labels,
     reference_dates,
+    step_codes,
 )
 from opencited.http import make_client
 from opencited.http.replay import replay_transport
-from opencited.snapshots import SnapshotStore
+from opencited.snapshots import SnapshotStore, quoted
 from opencited.sources import (
     Language,
     QueryResult,
@@ -659,7 +661,7 @@ def test_a_label_with_a_letter_that_folds_to_a_month_s_letter_names_no_day() -> 
     assert day_months("Befolkning 1. augu\u017ft") == set()
 
 
-def test_a_calculation_gives_the_days_of_its_sources_and_not_their_label_numbers(
+def test_a_calculation_gives_the_days_of_its_sources_and_the_numbers_of_labels_it_read(
     tmp_path: Path,
 ) -> None:
     retrieval = retrieve("06913", NORWAY, "no")
@@ -674,7 +676,8 @@ def test_a_calculation_gives_the_days_of_its_sources_and_not_their_label_numbers
 
     assert passes("Tallene gjelder per 1. januar [C1].")
     assert passes("Etiketten nevner 1 [E1].")
-    assert not passes("Etiketten nevner 1 [C1].")
+    # The calculation read the value "Befolkning 1. januar" (item 7).
+    assert passes("Etiketten nevner 1 [C1].")
 
 
 def test_a_calculation_gets_periods_only_from_the_results_it_read(tmp_path: Path) -> None:
@@ -852,3 +855,193 @@ def test_a_per_cent_cell_is_compared_as_written_whatever_its_unit_s_name_holds()
     report = check(f"It was {written} per cent [E1].", "en", [SourceEvidence("E1", result)])
 
     assert report.passed, report.text()
+
+
+# Label numbers through a calculation (spec 0003, Numbers that are not values, item 7).
+
+DURATIONS = ["00-02", "03-04", "05-09", "10-14", "15-19", "20-24", "025+"]
+DIVORCES = {"VarighetIAar": [*DURATIONS, "999E"], "ContentsCode": ["Skilsmisse"], "Tid": ["2025"]}
+RANKED = {"VarighetIAar": DURATIONS, "ContentsCode": ["Skilsmisse"], "Tid": ["2025"]}
+
+
+def calculated(
+    store: SnapshotStore,
+    table_id: str,
+    selection: dict[str, list[str]],
+    language: Language,
+    *steps: dict[str, object],
+) -> list[Evidence]:
+    retrieval = retrieve(table_id, selection, language)
+    snapshot = store.write(retrieval).name
+    # Steps that read cells get the snapshot; the others combine earlier steps.
+    reading = ("value", "sum", "mean", "rank")
+    plan = {
+        "steps": [
+            {**step, "snapshot": snapshot} if step["operation"] in reading else step
+            for step in steps
+        ]
+    }
+    result = Engine(store).run(Plan.model_validate_json(json.dumps(plan)))
+    return [SourceEvidence("E1", retrieval.result), CalculationEvidence("C1", result)]
+
+
+def test_a_calculation_gives_the_numbers_of_the_labels_its_steps_read(tmp_path: Path) -> None:
+    codes = {"ContentsCode": "Skilsmisse", "Tid": "2025"}
+    evidence = calculated(
+        SnapshotStore(tmp_path),
+        "05692",
+        DIVORCES,
+        "no",
+        {"name": "short", "operation": "value", "codes": {"VarighetIAar": "00-02", **codes}},
+        {"name": "all", "operation": "sum", "selection": DIVORCES},
+        {
+            "name": "share",
+            "operation": "share_percent",
+            "part": "short",
+            "total": "all",
+            "decimals": 1,
+        },
+    )
+
+    report = check(
+        "Ekteskap som hadde vart 0-2 år, var 6,8 prosent av skilsmissene [C1].", "no", evidence
+    )
+
+    assert report.passed, report.text()
+
+
+def test_a_calculation_gives_the_bounds_of_the_age_group_it_read(tmp_path: Path) -> None:
+    # The form of an answer that the gate blocked in the published run of 2026-10-18.
+    selection = {
+        "Kjonn": ["0"],
+        "Alder": ["999B", "00-06"],
+        "ContentsCode": ["Personer"],
+        "Tid": ["2025"],
+    }
+    codes = {"Kjonn": "0", "ContentsCode": "Personer", "Tid": "2025"}
+    evidence = calculated(
+        SnapshotStore(tmp_path),
+        "05810",
+        selection,
+        "en",
+        {"name": "children", "operation": "value", "codes": {"Alder": "00-06", **codes}},
+        {"name": "all", "operation": "value", "codes": {"Alder": "999B", **codes}},
+        {
+            "name": "share",
+            "operation": "share_percent",
+            "part": "children",
+            "total": "all",
+            "decimals": 2,
+        },
+    )
+
+    report = check("Children aged 0 to 6 years made up 7.0 per cent [C1].", "en", evidence)
+
+    assert report.passed, report.text()
+
+
+def test_a_label_that_no_step_read_fails_beside_the_calculation_alone(tmp_path: Path) -> None:
+    codes = {"ContentsCode": "Skilsmisse", "Tid": "2025"}
+    evidence = calculated(
+        SnapshotStore(tmp_path),
+        "05692",
+        DIVORCES,
+        "no",
+        {"name": "short", "operation": "value", "codes": {"VarighetIAar": "00-02", **codes}},
+    )
+
+    def passes(text: str) -> bool:
+        return check(text, "no", evidence).passed
+
+    assert not passes("Ekteskap som hadde vart 3-4 år, telles også [C1].")
+    assert passes("Ekteskap som hadde vart 3-4 år, telles også [C1] [E1].")
+
+
+def test_a_ranking_gives_the_numbers_of_the_labels_it_ranked(tmp_path: Path) -> None:
+    evidence = calculated(
+        SnapshotStore(tmp_path),
+        "05692",
+        RANKED,
+        "no",
+        {
+            "name": "top",
+            "operation": "rank",
+            "selection": RANKED,
+            "by": "VarighetIAar",
+            "order": "highest",
+            "count": 1,
+        },
+    )
+
+    report = check("Flest skilsmisser kom etter 5-9 år [C1].", "no", evidence)
+
+    assert report.passed, report.text()
+
+
+def test_a_step_s_codes_are_bound_to_their_dimensions(tmp_path: Path) -> None:
+    codes = {"ContentsCode": "Skilsmisse", "Tid": "2025"}
+    evidence = calculated(
+        SnapshotStore(tmp_path),
+        "05692",
+        DIVORCES,
+        "no",
+        {"name": "all", "operation": "sum", "selection": DIVORCES},
+        {"name": "short", "operation": "value", "codes": {"VarighetIAar": "00-02", **codes}},
+    )
+    source, calculation = evidence
+    assert isinstance(source, SourceEvidence)
+    assert isinstance(source.result, QueryResult)
+    assert isinstance(calculation, CalculationEvidence)
+    total, short = calculation.result.steps
+
+    assert step_codes(total) == [
+        *(("VarighetIAar", code) for code in DIVORCES["VarighetIAar"]),
+        ("ContentsCode", "Skilsmisse"),
+        ("Tid", "2025"),
+    ]
+    assert step_codes(short) == [
+        ("VarighetIAar", "00-02"),
+        ("ContentsCode", "Skilsmisse"),
+        ("Tid", "2025"),
+    ]
+    # The period is not a label: it passes as a period of the result (item 6).
+    assert read_labels(short, source.result) == ["0-2 år", "Skilsmisser"]
+
+
+@pytest.mark.parametrize(
+    ("sql", "parameters"),
+    [
+        ('SELECT * FROM snapshot_1 WHERE "Tid" = ?', ("2025",)),
+        # One dimension in the expected form and one not: nothing, rather than half.
+        ('SELECT * FROM snapshot_1 WHERE "Tid" IN (?) AND "Region" = ?', ("2025", "0")),
+    ],
+)
+def test_a_statement_in_another_form_gives_no_codes(sql: str, parameters: tuple[str, ...]) -> None:
+    assert step_codes(statement(sql, parameters)) == []
+
+
+def test_a_dimension_code_with_a_quote_is_read_as_the_engine_quoted_it() -> None:
+    sql = 'SELECT * FROM snapshot_1 WHERE "A ""B""" IN (?, ?) AND "Tid" IN (?)'
+
+    assert quoted('A "B"') in sql
+    assert step_codes(statement(sql, ("1", "2", "2025"))) == [
+        ('A "B"', "1"),
+        ('A "B"', "2"),
+        ("Tid", "2025"),
+    ]
+
+
+def statement(sql: str, parameters: tuple[str, ...]) -> StepResult:
+    return StepResult(
+        name="odd",
+        operation="value",
+        inputs=(),
+        snapshot=None,
+        sql=(sql,),
+        parameters=(parameters,),
+        arithmetic="",
+        exact=None,
+        value=None,
+        decimals=None,
+        unit=ResultUnit(kind="amount"),
+    )
