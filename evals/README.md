@@ -30,6 +30,7 @@ uv run --group evals python evals/report.py logs/LOG.eval
 ```
 
 The task runs set v1 unless `-T questions=evals/questions/v2.jsonl` names another.
+Relative paths for the questions and `run_dir` are read from the repository's root.
 
 ## The second set
 

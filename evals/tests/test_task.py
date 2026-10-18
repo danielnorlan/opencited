@@ -24,6 +24,7 @@ from opencited_task import (
     QUESTIONS,
     bridge_config,
     decimal_of,
+    from_repository,
     kept,
     opencited,
     samples,
@@ -353,3 +354,22 @@ def test_a_report_that_holds_a_secret_is_not_written(
     assert code == 1
     assert "holds the value of PROVIDER_API_KEY" in capsys.readouterr().err
     assert list(tmp_path.iterdir()) == []
+
+
+def test_a_relative_path_is_read_from_the_repository_s_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Inspect runs a task from the task file's folder, not from where it was started.
+    monkeypatch.chdir(tmp_path)
+
+    task = opencited(
+        price_input=0.28,
+        price_output=0.42,
+        max_cost=0.05,
+        questions="evals/questions/v2.jsonl",
+        run_dir=str(tmp_path / "runs"),
+    )
+
+    assert task.metadata == {"question_set": "v2"}
+    assert from_repository("evals/questions/v2.jsonl").is_file()
+    assert from_repository(str(tmp_path)) == tmp_path
