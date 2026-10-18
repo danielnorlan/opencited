@@ -64,6 +64,9 @@ Notable changes to OpenCited are recorded here. The format follows
 - A query that names a code which equals an earlier code of its dimension in all but
   case fails before the data request and names the earlier code, since SSB's API
   returns the earlier code's cell for both.
+- Published runs of question sets v1 and v3 with DeepSeek's `deepseek-flash` on
+  2026-10-18 from `86c5e94`: 40 of 44 and 40 of 43 correct, and none of the 24
+  questions that should be refused answered.
 - Published runs of question sets v1 and v2 with DeepSeek's `deepseek-flash` on
   2026-10-18: 40 of 44 and 33 of 43 correct, and none of the 24 questions that should
   be refused answered. The Inspect task reads relative paths from the repository's

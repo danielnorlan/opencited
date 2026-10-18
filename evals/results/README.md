@@ -10,6 +10,77 @@ every question ([spec 0005](../../docs/specs/0005-evaluation-suite.md)).
 | [2026-10-14T1751-v1-deepseek-deepseek-flash.json](2026-10-14T1751-v1-deepseek-deepseek-flash.json) | v1 | `deepseek-flash` | 27 of 44 |
 | [2026-10-18T0807-v1-deepseek-deepseek-flash.json](2026-10-18T0807-v1-deepseek-deepseek-flash.json) | v1 | `deepseek-flash` | 40 of 44 |
 | [2026-10-18T0815-v2-deepseek-deepseek-flash.json](2026-10-18T0815-v2-deepseek-deepseek-flash.json) | v2 | `deepseek-flash` | 33 of 43 |
+| [2026-10-18T1119-v1-deepseek-deepseek-flash.json](2026-10-18T1119-v1-deepseek-deepseek-flash.json) | v1 | `deepseek-flash` | 40 of 44 |
+| [2026-10-18T1127-v3-deepseek-deepseek-flash.json](2026-10-18T1127-v3-deepseek-deepseek-flash.json) | v3 | `deepseek-flash` | 40 of 43 |
+
+## 2026-10-18, question sets v1 and v3, `deepseek-flash`
+
+Both runs started from commit `86c5e94` on 2026-10-18, set v1 at 11:19 UTC and set v3
+at 11:27 UTC, with the model, settings, prices and limits of the earlier runs. Since
+the runs of 08:07 and 08:15 UTC that day, a query refuses a code that SSB reads as
+another code (#62), a number in a block that cites nothing gets a retry hint to cite
+the result there (#64), a cited calculation gives the numbers of the labels of the
+values its steps read (#66), and the scorer accepts a genitive label and decimals left
+out as zeros (#67). Set v3 is set v2 with three questions reworded (#68).
+
+| | v1, 08:07 | v1, 11:19 | v2, 08:15 | v3, 11:27 |
+| --- | --- | --- | --- | --- |
+| Correct | 40 of 44 | 40 of 44 | 33 of 43 | 40 of 43 |
+| Released answers counted correct | 28 of 28 | 28 of 28 | 21 of 25 | 28 of 29 |
+| Answers to questions that should be refused | 0 of 12 | 0 of 12 | 0 of 12 | 0 of 12 |
+| Answerable questions refused | 4 | 4 | 6 | 2 |
+| First attempts that the gate blocked | 16 of 29 | 14 of 29 | 17 of 28 | 16 of 31 |
+| Retries | 18 | 18 | 20 | 22 |
+| Tokens | 1,734,482 | 1,729,314 | 1,382,173 | 1,313,673 |
+
+In set v1, 39 questions were correct in both runs of the day. Of the other two:
+
+- `share-children-norway-2025` was correct. Its first attempt wrote "aged 0 to 6
+  [C2]", and the gate passed 0 and 6 through the calculation (#66). The gate blocked
+  "1 January 2025" twice, since table 10211, which the model read this time, names no
+  day in its labels, and the model left the date out in the third attempt.
+- `sum-largest-cities-2026` was refused after three blocked attempts. Each wrote
+  "1 January 2026" in the header row of a table that cited no result; the retry hint
+  asked the model to cite the source in the same row, and it added the citation to
+  the opening sentence instead. At 08:07 the same header row cited the source.
+
+The three questions that reached the token limit ask about age groups, as at 08:07.
+
+In set v3, 40 of the 43 questions were correct: 22 of 23 in Norwegian and 18 of 20 in
+English. Lookup had 7 of 7, change 6 of 6, share 5 of 5, sum 5 of 5, ranking 3 of 4,
+false premise 2 of 4, unanswerable 8 of 8 and out of scope 4 of 4. Against set v2 at
+08:15, eight questions were correct that were not, and one was not that was:
+
+- `lookup-cpi-2026m09` and `ranking-divorce-duration-2025` wrote the same forms as at
+  08:15, "104" and "5–9 års", which the scorer now accepts (#67).
+- The reworded `sum-divorces-duration-2024-2025` and
+  `ranking-age-group-highest-wage-2025` read the tables of the reference plans, 05692
+  and 13312 (#68).
+- The three questions on table 08484 were answered. At 08:15 one stopped for lack of
+  data and two at the token limit.
+- `share-divorces-short-marriages-2025` was answered after one retry: the gate had
+  blocked a share, 6,9 prosent, that the cited calculation did not give, and the model
+  calculated it again.
+- `ranking-wedding-type-2025` was refused after three blocked attempts: a line before
+  a table, "The full breakdown for 2025, among marriages where the oldest spouse was
+  resident in Norway, was:", cited no result, and the model kept it after the hints.
+
+Of the other two, `false-premise-mainland-gdp-shrank-2025` was refused as at 08:15: its
+opening sentence on the premise named 2025 and cited no result, and the model sent the
+same text after each hint. `false-premise-women-earn-more-gap-2025` asks how large the
+difference was, and the answer gave "−6 870 kr i forskjell for kvinner", women's wage
+minus men's; the reference plan takes men's minus women's, and the scorer counts the
+sign.
+
+All three refusals after blocked attempts in these runs have one cause: a year or a
+date in a block that cites no result, a table's header row, a line before a table or
+an opening sentence, which the model left uncited after the retry hints. The hints
+name the number and its position in the answer and not the block.
+
+The two runs used 1,729,314 and 1,313,673 tokens, and the largest correct answer used
+95,111 against the agent's limit of 100,000. With every input token counted at the
+price without a cache hit, the agent's estimates of the cost are $0.5399 and $0.4173.
+The account's balance at DeepSeek fell from $4.23 to $4.11 over both runs.
 
 ## 2026-10-18, question sets v1 and v2, `deepseek-flash`
 
