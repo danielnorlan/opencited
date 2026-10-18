@@ -1,8 +1,8 @@
 """Reading the numbers in an answer, in Norwegian or English (spec 0003, tasks 1 and 2).
 
 The tokenizer normalises the text to Unicode NFC and finds, in this order, citation
-markers, dates, periods, the numbers of ordered list items, the forms that block an
-answer, and other numbers. Each pass claims its span of text, so a later pass never
+markers, dates, periods, the numbers of ordered list items, days and months without a
+year, the forms that block an answer, and other numbers. Each pass claims its span of text, so a later pass never
 reads a digit that an earlier one read. It uses no model and no network. Positions are
 offsets in ``normalise(text)``.
 
@@ -30,7 +30,7 @@ from opencited.model import Frozen
 from opencited.values import ExactDecimal
 
 type Language = Literal["no", "en"]
-type Kind = Literal["number", "date", "period", "marker", "list number", "blocked"]
+type Kind = Literal["number", "date", "day", "period", "marker", "list number", "blocked"]
 type Unit = Literal["per cent", "percentage points"]
 
 # Spaces that group digits in Norwegian text (spec 0003), which may also stand between
@@ -237,8 +237,9 @@ class Number(Frozen):
     ``position`` and ``end`` are offsets in the normalised text. ``value`` is the number
     as written, with its decimals, before any scale word; ``scale`` is the power of ten
     of a scale word after it. ``unit`` says whether a percent or percentage point word
-    follows. A date has ``date``, a period ``period`` as SSB writes it, such as
-    ``2023K1``, and a blocked form ``reason``.
+    follows. A date has ``date``, a day and month without a year ``day`` as (month,
+    day), a period ``period`` as SSB writes it, such as ``2023K1``, and a blocked form
+    ``reason``.
     """
 
     position: int
@@ -249,6 +250,7 @@ class Number(Frozen):
     scale: int = 0
     unit: Unit | None = None
     date: datetime.date | None = None
+    day: tuple[int, int] | None = None
     period: str | None = None
     reason: str | None = None
 
@@ -299,7 +301,7 @@ def date_patterns() -> list[tuple[re.Pattern[str], str]]:
         ),
         (
             re.compile(
-                rf"(?<![\w.,])([0-9]{{1,2}})\.?{SPACE}((?i:{norwegian})){SPACE}([0-9]{{4}})(?!\w)"
+                rf"(?<![\w.,])([0-9]{{1,2}})\.?{SPACE}((?ai:{norwegian})){SPACE}([0-9]{{4}})(?!\w)"
             ),
             "day month",
         ),
@@ -311,6 +313,16 @@ def date_patterns() -> list[tuple[re.Pattern[str], str]]:
             re.compile(rf"(?<!\w)({english}){SPACE}([0-9]{{1,2}}),{SPACE}([0-9]{{4}})(?!\w)"),
             "month day",
         ),
+    ]
+
+
+def day_patterns() -> list[re.Pattern[str]]:
+    """Return the patterns of a day and month without a year, in either language."""
+    norwegian = alternatives(MONTHS_NO)
+    english = alternatives(MONTHS_EN)
+    return [
+        re.compile(rf"(?<![\w.,])([0-9]{{1,2}})\.?{SPACE}((?ai:{norwegian}))(?!\w)"),
+        re.compile(rf"(?<![\w.,])([0-9]{{1,2}}){SPACE}({english})(?!\w)"),
     ]
 
 
@@ -364,7 +376,7 @@ def period_patterns() -> list[tuple[re.Pattern[str], str]]:
         ),
         (re.compile(rf"(?<!\w)Q([1-4]){SPACE}([0-9]{{4}})(?!\w)"), "number quarter"),
         (
-            re.compile(rf"(?<!\w)((?i:{norwegian})){SPACE}(?:i{SPACE})?([0-9]{{4}})(?!\w)"),
+            re.compile(rf"(?<!\w)((?ai:{norwegian})){SPACE}(?:i{SPACE})?([0-9]{{4}})(?!\w)"),
             "month",
         ),
         (re.compile(rf"(?<!\w)({english}){SPACE}(?:of{SPACE})?([0-9]{{4}})(?!\w)"), "month"),
@@ -418,7 +430,9 @@ class Reader:
         self.markers()
         self.dates()
         self.periods()
+        # After list numbers, so that a list such as "1. August" and "2. July" stays one.
         self.list_numbers()
+        self.days()
         self.blocking_forms()
         self.numbers()
         return tuple(sorted(self.found, key=lambda number: (number.position, number.end)))
@@ -447,6 +461,29 @@ class Reader:
                             date=when,
                         )
                     )
+
+    def days(self) -> None:
+        """Read a day and month without a year, such as "1. januar" or "1 January"."""
+        for pattern in day_patterns():
+            for match in pattern.finditer(self.text):
+                if not self.free(*match.span()):
+                    continue
+                month, day = month_number(match[2]), int(match[1])
+                try:
+                    # 2000 was a leap year, so 29 February is a day.
+                    datetime.date(2000, month, day)
+                except ValueError:
+                    self.block(*match.span(), "a date that does not exist")
+                    continue
+                self.add(
+                    Number(
+                        position=match.start(),
+                        end=match.end(),
+                        text=match[0],
+                        kind="day",
+                        day=(month, day),
+                    )
+                )
 
     def periods(self) -> None:
         for pattern, kind in period_patterns():

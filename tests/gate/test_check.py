@@ -27,6 +27,7 @@ from opencited.calc import CalculationResult, Engine, Plan, ResultUnit, StepResu
 from opencited.gate.blocks import blocks
 from opencited.gate.check import (
     CalculationEvidence,
+    Evidence,
     Match,
     SourceEvidence,
     check,
@@ -38,7 +39,14 @@ from opencited.gate.check import (
 from opencited.http import make_client
 from opencited.http.replay import replay_transport
 from opencited.snapshots import SnapshotStore
-from opencited.sources import Language, QueryResult, SearchResult, TableMetadata, Unit
+from opencited.sources import (
+    Language,
+    QueryResult,
+    QueryRetrieval,
+    SearchResult,
+    TableMetadata,
+    Unit,
+)
 from opencited.sources.ssb import BASE_URL, SsbClient
 from opencited.values import format_number
 
@@ -525,3 +533,192 @@ def test_metadata_selects_no_year_for_the_day_of_its_figures() -> None:
     report = check("Per 1. januar 2026 [E1].", "no", [SourceEvidence("E1", metadata())])
 
     assert not report.passed
+
+
+# A day without a year, and the periods and dates that a calculation's sources hold
+# (spec 0003, Numbers that are not values, items 2 and 6).
+
+
+@pytest.mark.parametrize(
+    ("text", "passes"),
+    [
+        ("Tallene gjelder befolkningen per 1. januar [E1].", True),
+        ("Tallene gjelder befolkningen per 2. januar [E1].", False),
+    ],
+)
+def test_a_day_without_a_year_passes_when_a_label_names_it(text: str, passes: bool) -> None:
+    report = check(text, "no", [SourceEvidence("E1", population_of(NORWAY, "no"))])
+
+    assert report.passed is passes, report.text()
+
+
+def test_a_day_without_a_year_fails_for_a_result_whose_labels_name_none() -> None:
+    report = check(
+        "The figures are for 1 January [E1].", "en", [SourceEvidence("E1", population().result)]
+    )
+
+    assert not report.passed
+    [found] = report.findings
+    assert found.detail == "a day and month that no cited query result's label names"
+
+
+def calculation_over(store: SnapshotStore, retrieval: QueryRetrieval) -> CalculationResult:
+    snapshot = store.write(retrieval).name
+    codes = {"Region": "0", "ContentsCode": "Folkemengde"}
+    steps = [
+        {
+            "name": "before",
+            "operation": "value",
+            "snapshot": snapshot,
+            "codes": {**codes, "Tid": "2025"},
+        },
+        {
+            "name": "after",
+            "operation": "value",
+            "snapshot": snapshot,
+            "codes": {**codes, "Tid": "2026"},
+        },
+        {
+            "name": "growth",
+            "operation": "change_percent",
+            "old": "before",
+            "new": "after",
+            "decimals": 2,
+        },
+    ]
+    return Engine(store).run(Plan.model_validate_json(json.dumps({"steps": steps})))
+
+
+@pytest.mark.parametrize(
+    ("text", "passes"),
+    [
+        ("Folketallet økte med {growth} prosent fra 2025 til 2026 [C1].", True),
+        ("Folketallet økte med {growth} prosent fra 1. januar 2025 til 1. januar 2026 [C1].", True),
+        ("Folketallet økte med {growth} prosent fra 2024 til 2026 [C1].", False),
+    ],
+)
+def test_a_calculation_counts_as_citing_its_sources_for_periods_and_dates(
+    tmp_path: Path, text: str, passes: bool
+) -> None:
+    retrieval = retrieve("06913", NORWAY, "no")
+    result = calculation_over(SnapshotStore(tmp_path), retrieval)
+    value = result.step("growth").value
+    assert value is not None
+    growth = format_number(value, "no")
+    evidence = [SourceEvidence("E1", retrieval.result), CalculationEvidence("C1", result)]
+
+    report = check(text.format(growth=growth), "no", evidence)
+
+    assert report.passed is passes, report.text()
+
+
+def test_a_calculation_carries_only_periods_and_dates_of_sources_in_the_run(
+    tmp_path: Path,
+) -> None:
+    retrieval = retrieve("06913", NORWAY, "no")
+    result = calculation_over(SnapshotStore(tmp_path), retrieval)
+    evidence: list[Evidence] = [
+        SourceEvidence("E1", retrieval.result),
+        CalculationEvidence("C1", result),
+    ]
+
+    # A table ID is no period or date, so citing only C1 does not back it.
+    table = check("Tallene er fra tabell 06913 [C1].", "no", evidence)
+    # Without the query result among the run's results, C1 holds no periods.
+    alone = check(
+        "Endringen gjelder fra 2025 til 2026 [C1].", "no", [CalculationEvidence("C1", result)]
+    )
+
+    assert not table.passed
+    assert not alone.passed
+
+
+def test_a_day_that_no_label_names_fails_though_its_number_is_in_one() -> None:
+    # "Befolkning 1. januar" holds the number 1, and 1 February is still another day.
+    report = check(
+        "Tallene gjelder per 1. februar [E1].",
+        "no",
+        [SourceEvidence("E1", population_of(NORWAY, "no"))],
+    )
+
+    assert not report.passed
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["The figures are for 1 January [E1].", "As of January 1 [E1]."],
+)
+def test_an_english_label_gives_its_day_and_its_number(text: str) -> None:
+    report = check(text, "en", [SourceEvidence("E1", population_of(OSLO_EN, "en"))])
+
+    assert report.passed, report.text()
+
+
+def test_a_label_with_a_letter_that_folds_to_a_month_s_letter_names_no_day() -> None:
+    # U+017F, the long s, folds to s.
+    assert day_months("Befolkning 1. augu\u017ft") == set()
+
+
+def test_a_calculation_gives_the_days_of_its_sources_and_not_their_label_numbers(
+    tmp_path: Path,
+) -> None:
+    retrieval = retrieve("06913", NORWAY, "no")
+    result = calculation_over(SnapshotStore(tmp_path), retrieval)
+    evidence: list[Evidence] = [
+        SourceEvidence("E1", retrieval.result),
+        CalculationEvidence("C1", result),
+    ]
+
+    def passes(text: str) -> bool:
+        return check(text, "no", evidence).passed
+
+    assert passes("Tallene gjelder per 1. januar [C1].")
+    assert passes("Etiketten nevner 1 [E1].")
+    assert not passes("Etiketten nevner 1 [C1].")
+
+
+def test_a_calculation_gets_periods_only_from_the_results_it_read(tmp_path: Path) -> None:
+    # C1 read 06913, which selected 2025 and 2026; 05810 selected 2024 and was not read.
+    retrieval = retrieve("06913", NORWAY, "no")
+    result = calculation_over(SnapshotStore(tmp_path), retrieval)
+    other = population().result
+    assert any(value.code == "2024" for dimension in other.dimensions for value in dimension.values)
+    evidence: list[Evidence] = [
+        SourceEvidence("E1", retrieval.result),
+        SourceEvidence("E2", other),
+        CalculationEvidence("C1", result),
+    ]
+
+    assert check("Endringen gjelder fra 2025 til 2026 [C1].", "no", evidence).passed
+    assert not check("Endringen gjelder fra 2024 til 2026 [C1].", "no", evidence).passed
+
+
+def test_a_calculation_gets_the_dates_of_every_fetch_of_the_response_it_read(
+    tmp_path: Path,
+) -> None:
+    # The same response fetched twice has one hash and two retrieval dates.
+    retrieval = retrieve("06913", NORWAY, "no")
+    result = calculation_over(SnapshotStore(tmp_path), retrieval)
+    first = retrieval.result
+    earlier = datetime(2026, 10, 1, 10, 0, tzinfo=UTC)
+    second = first.model_copy(
+        update={"provenance": first.provenance.model_copy(update={"retrieved_at": earlier})}
+    )
+    fetched = first.provenance.retrieved_at.astimezone(UTC).date()
+    assert fetched != earlier.date()
+    # Both dates must pass, so the calculation needs both fetches.
+    text = f"Tallene ble hentet {fetched.isoformat()} og 2026-10-01 [C1]."
+
+    with_both = check(
+        text,
+        "no",
+        [
+            SourceEvidence("E1", first),
+            SourceEvidence("E2", second),
+            CalculationEvidence("C1", result),
+        ],
+    )
+    with_one = check(text, "no", [SourceEvidence("E1", first), CalculationEvidence("C1", result)])
+
+    assert with_both.passed, with_both.text()
+    assert not with_one.passed
