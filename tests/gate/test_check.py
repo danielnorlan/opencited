@@ -188,6 +188,18 @@ def test_blocks_split_paragraphs_items_rows_and_headings() -> None:
     ]
 
 
+def test_a_date_that_a_result_gives_fails_in_a_block_that_cites_nothing() -> None:
+    result = population().result
+    day = result.provenance.retrieved_at.date().isoformat()
+    evidence = [SourceEvidence("E1", result)]
+
+    report = check(f"Hentet {day}.\n\nAnnet [E1].", "no", evidence)
+
+    [failed] = [finding for finding in report.findings if finding.outcome == "failed"]
+    assert (failed.kind, failed.detail) == ("date", UNCITED_DATE)
+    assert check(f"Hentet {day} [E1].", "no", evidence).passed
+
+
 @pytest.mark.parametrize(
     ("text", "kind", "detail"),
     [

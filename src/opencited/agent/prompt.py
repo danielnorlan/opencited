@@ -177,7 +177,9 @@ def retry_message(report: Report, answer: str) -> str:
     """Return the gate's report with what to do about each kind of failed number.
 
     The failed numbers of a block that cites no result get one hint for the block, which
-    quotes its start. Offsets in the report are in the normalised answer.
+    quotes its start. Offsets in the report are in the normalised answer; a block is
+    quoted only when the answer holds the failed number at its offsets, so a text other
+    than the checked one gets the hint without a quote.
     """
     text = normalise(answer)
     found = blocks(text)
@@ -188,6 +190,8 @@ def retry_message(report: Report, answer: str) -> str:
             continue
         kind = hint_kind(finding)
         block = next((item for item in found if item.start <= finding.position < item.end), None)
+        if text[finding.position : finding.end] != finding.text:
+            block = None
         if kind == "uncited" and block is not None:
             if block not in uncited:
                 uncited[block] = []
