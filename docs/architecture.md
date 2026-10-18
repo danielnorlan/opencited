@@ -618,8 +618,12 @@ expected one when the gate matched it as a value, it may be that value under the
 gate's rules for unit and rounding, and it shows at least the required decimals in the
 value's base unit; a scale word lowers what it shows, so "5,6 millioner" shows a count
 to a tenth of a million, and a question that asks for whole thousands of a value in
-"1 000 personer" asks for -3 decimals of persons. Periods, dates, table IDs, label numbers and numbers in HTML
+"1 000 personer" asks for -3 decimals of persons. A number with fewer decimals holds
+the expected one when the decimals it leaves out are zeros of the expected number
+rounded to the required decimals, so "104" holds an index of 104.0 and "101" does not
+hold 100.6. Periods, dates, table IDs, label numbers and numbers in HTML
 comments do not count. A label counts when it stands in the shown text as a whole,
+alone or with a genitive s, as in "5–9 års" for "5-9 år" and "Oslo's" for "Oslo",
 ignoring case and the kind of dash and space, and may not run on into a letter, a
 digit or a hyphen; a label that begins another one, such as "Troms" in "Troms og
 Finnmark", still counts. A question that should be refused is correct when the agent

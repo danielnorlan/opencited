@@ -3,15 +3,17 @@
 The scorer is deterministic and asks no model. It reads an answer with the evidence
 gate. An expected number is in an answer when a shown number that the gate matched as
 a value may be that value under the gate's rules for unit and rounding, and shows at
-least the required decimals in the value's base unit. Periods, dates, table IDs, label
-numbers and numbers in HTML comments do not count. A scale word lowers what a number
-shows: "5,6 millioner" shows a count to one decimal of a million, which is five places
-short of a whole number.
+least the required decimals in the value's base unit, or leaves out only decimals that
+are zeros of the value rounded to the required decimals, as "104" does for 104.0.
+Periods, dates, table IDs, label numbers and numbers in HTML comments do not count. A
+scale word lowers what a number shows: "5,6 millioner" shows a count to one decimal of
+a million, which is five places short of a whole number.
 
-A label counts when it stands in the shown text as a whole: the comparison ignores
-case and the kind of dash and space, and the label may not run on into a letter, a
-digit or a hyphen. A label that begins another one, such as "Troms" in "Troms og
-Finnmark", still counts; the scorer cannot tell them apart.
+A label counts when it stands in the shown text as a whole, alone or with a genitive
+s, as "5-9 års" does for "5-9 år": the comparison ignores case and the kind of dash and
+space, and the label may not run on into a letter, a digit or a hyphen. A label that
+begins another one, such as "Troms" in "Troms og Finnmark", still counts; the scorer
+cannot tell them apart.
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ from pydantic import Field, StringConstraints, model_validator
 
 from opencited.agent.answer import Answer, Refusal, RunUsage
 from opencited.agent.run import Attempt
+from opencited.calc.arithmetic import round_away
 from opencited.calc.result import FRACTION_PATTERN
 from opencited.gate import Evidence, Number, Report, check, normalise
 from opencited.gate.check import COMMENT, UnitKind, decimals, fits_value, hidden_spans
@@ -160,11 +163,31 @@ def shown_values(text: str, report: Report) -> list[Number]:
     ]
 
 
+def written(number: Number) -> Fraction:
+    """Return the value that a number writes, in its value's base unit."""
+    if number.value is None:
+        raise ValueError(f"{number.text!r} has no value")
+    return Fraction(number.value) * Fraction(10) ** number.scale
+
+
+def rounded(value: Fraction, places: int) -> Fraction:
+    """Return a value rounded to places that may be negative, with ties away from zero."""
+    step = Fraction(10) ** -places
+    return Fraction(round_away(value / step, 0)) * step
+
+
 def holder(expected: ExpectedNumber, numbers: Sequence[Number]) -> str | None:
-    """Return the text of the first number that holds an expected number, or None."""
+    """Return the text of the first number that holds an expected number, or None.
+
+    A number with fewer decimals than required holds it when the decimals it leaves out
+    are zeros of the expected number rounded to the required decimals.
+    """
     exact = Fraction(expected.exact)
+    required = rounded(exact, expected.decimals)
     for number in numbers:
-        if shown_decimals(number) >= expected.decimals and fits_value(number, exact, expected.kind):
+        if not fits_value(number, exact, expected.kind):
+            continue
+        if shown_decimals(number) >= expected.decimals or written(number) == required:
             return number.text
     return None
 
@@ -176,7 +199,10 @@ def folded(text: str) -> str:
 
 def has_label(text: str, label: str) -> bool:
     shown = folded(COMMENT.sub(" ", normalise(text)))
-    return re.search(rf"(?<![\w-]){re.escape(folded(label))}(?![\w-])", shown) is not None
+    # A genitive s may follow a label. An apostrophe ends one already, so "Oslo's" and
+    # "Troms'" count without it.
+    pattern = rf"(?<![\w-]){re.escape(folded(label))}s?(?![\w-])"
+    return re.search(pattern, shown) is not None
 
 
 def verdict(
