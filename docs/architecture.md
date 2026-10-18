@@ -548,8 +548,9 @@ refuses.
 
 The model refuses with the line `REFUSE: no data` or `REFUSE: outside the sources`,
 since it gets no tool besides the four. The line counts anywhere in the reply, in any
-case and with Markdown marks or a full stop around it, so that a refusal written a
-little off is never released as an answer. The other lines are kept as the model's
+case and with Markdown marks or a full stop around it, and with its reason in
+Norwegian, `ingen data` or `utenfor kildene`, as the model writes it when it answers in
+Norwegian, so that a refusal written a little off is never released as an answer. The other lines are kept as the model's
 explanation only when the gate passes them. A reply without usage, a reply with
 neither text nor a tool call, a reply that the endpoint cut off for its length or a
 content filter, and an endpoint that fails stop the run with an error that holds the
