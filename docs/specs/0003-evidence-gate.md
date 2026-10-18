@@ -69,8 +69,11 @@ gate says which number failed and why.
 ### Numbers that are not values
 
 1. A period passes when a source result cited in the block selected it. Periods are
-   years, SSB's codes such as `2023K1` and `2023M01`, and quarters and months in
-   words in either language, such as `1. kvartal 2023` or `January 2023`.
+   years, SSB's codes such as `2023K1`, `2023M01` and `2023U41`, and quarters, months
+   and weeks in words in either language, such as `1. kvartal 2023`, `January 2023`,
+   `uke 41 2023` or `week 41 of 2023`. A week without a year, written as `uke 41` or
+   `week 41`, passes when a query result cited in the block selected that week in a
+   year.
 2. A date passes when it equals the last update or the retrieval date of a source
    result cited in the block. It also passes when a query result cited in the block
    selected its year as a period and the label of a value that result selected names

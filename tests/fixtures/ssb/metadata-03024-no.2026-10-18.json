@@ -1,0 +1,33 @@
+{
+  "name": "metadata-03024-no",
+  "reason": "dimensions, codes and labels of a table by week",
+  "recorded_at": "2026-10-18T15:10:39Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/03024/metadata?lang=no",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "metadata-03024-no.2026-10-18.body",
+    "body_sha256": "cc98bcb7afd3311010491d475084b7ebb6162a04f5c256c8c500b2dec460366d",
+    "original_body_sha256": "daa35b0c0d822196b66d83201902de0199f9f584f655b5eb03dd109903fb71c2",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

@@ -65,6 +65,8 @@ DAY_IN_WORDS = re.compile(
     rf"(?<![0-9.])([0-9]{{1,2}})\.?\s+((?ai:{alternatives(MONTHS_NO)})|{alternatives(MONTHS_EN)})\b"
 )
 DAY_IN_DIGITS = re.compile(r"(?<![0-9.])([0-9]{1,2})\.([0-9]{1,2})\.(?![0-9])")
+# A week as SSB codes it, such as 2026U41.
+WEEK_CODE = re.compile(r"[0-9]{4}U([0-9]{2})")
 COMMENT = re.compile(r"<!--.*?(?:-->|$)", re.DOTALL)
 SOURCE_ID = re.compile(r"E[1-9][0-9]*")
 CALCULATION_ID = re.compile(r"C[1-9][0-9]*")
@@ -200,6 +202,9 @@ class Holdings:
     reference_dates: dict[date, str] = field(default_factory=dict[date, str])
     # The same days without a year, as (month, day), such as (1, 1).
     reference_days: dict[tuple[int, int], str] = field(default_factory=dict[tuple[int, int], str])
+    # The numbers of the weeks that a query result selected, in any year, such as 41
+    # for 2026U41, for a week written without a year.
+    reference_weeks: dict[int, str] = field(default_factory=dict[int, str])
 
     def add(self, other: Holdings) -> None:
         """Add what another cited result holds; the first holder of each item is kept."""
@@ -220,6 +225,8 @@ class Holdings:
             self.reference_dates.setdefault(day, holder)
         for mark, holder in other.reference_days.items():
             self.reference_days.setdefault(mark, holder)
+        for week, holder in other.reference_weeks.items():
+            self.reference_weeks.setdefault(week, holder)
 
 
 def day_months(text: str) -> set[tuple[int, int]]:
@@ -366,6 +373,9 @@ def hold(holdings: Holdings, evidence: Evidence) -> None:
                 if dimension.time:
                     # A period's label is its code, which counts as a period, not a label.
                     holdings.periods.setdefault(value.code, name)
+                    week = WEEK_CODE.fullmatch(value.code)
+                    if week is not None:
+                        holdings.reference_weeks.setdefault(int(week[1]), name)
                     continue
                 for number in label_numbers(value.label, language):
                     holdings.labels.setdefault(number, name)
@@ -471,7 +481,7 @@ def outside(number: Number) -> Finding:
         return judge(number, Holdings(), False)
     kind: FindingKind = (
         "period"
-        if number.kind == "period"
+        if number.kind in ("period", "week")
         else "date"
         if number.kind in ("date", "day")
         else "value"
@@ -483,8 +493,8 @@ def judge(number: Number, holdings: Holdings, cited: bool) -> Finding:
     """Decide one number of a block whose cited results hold ``holdings``."""
     # A block that cites nothing holds nothing, and the reason says so, so that the
     # retry message asks for a citation rather than for another date or period.
-    if not cited and number.kind in ("date", "day", "period"):
-        if number.kind == "period":
+    if not cited and number.kind in ("date", "day", "week", "period"):
+        if number.kind in ("week", "period"):
             return finding(number, "period", "failed", UNCITED_PERIOD)
         return finding(number, "date", "failed", UNCITED_DATE)
     match number.kind:
@@ -533,6 +543,22 @@ def judge(number: Number, holdings: Holdings, cited: bool) -> Finding:
                 "date",
                 "passed",
                 "a day and month that a cited query result's label names",
+                source,
+            )
+        case "week":
+            source = holdings.reference_weeks.get(number.week or 0)
+            if source is None:
+                return finding(
+                    number,
+                    "period",
+                    "failed",
+                    f"week {number.week}, which no cited query result selected in a year",
+                )
+            return finding(
+                number,
+                "period",
+                "passed",
+                f"week {number.week}, which a cited query result selected in a year",
                 source,
             )
         case "period":

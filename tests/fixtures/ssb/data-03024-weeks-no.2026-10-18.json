@@ -1,0 +1,33 @@
+{
+  "name": "data-03024-weeks-no",
+  "reason": "values for weeks, whose periods are codes such as 2026U41",
+  "recorded_at": "2026-10-18T15:10:42Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/03024/data?lang=no&valueCodes%5BVareGrupper2%5D=01&valueCodes%5BContentsCode%5D=Vekt&valueCodes%5BTid%5D=2026U40%2C2026U41&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "data-03024-weeks-no.2026-10-18.body",
+    "body_sha256": "e4617e2ed1f6c640a42ac88b23d34fb9390e629019eb74245701d6b72fc43cc3",
+    "original_body_sha256": "16da13bc787e8499f8a7e331f9acbdf26236a3fec29d7abb301a722e2e247648",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

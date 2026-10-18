@@ -346,8 +346,11 @@ that the label of a value a cited query result selected names, such as "Befolkni
 five-digit table ID when it is the ID of a cited result, and a number from the title
 of a cited result, or from the label of a value it selected, when it is written as
 there and has no unit, percent or scale word. A four-digit number that a cited query
-result selected as a period counts as a year. A day and month without a year, such
-as "per 1. januar" or "1 January", passes when the label of a value that a cited
+result selected as a period counts as a year. A week is a period too: SSB's code,
+such as `2026U41`, or a week in words, such as "uke 41 2026" or "week 41 of 2026",
+and a week without a year, "uke 41", passes when a cited query result selected that
+week in a year. A day and month without a year, such as "per 1. januar" or "1
+January", passes when the label of a value that a cited
 query result selected names that day. For periods and dates, a cited calculation also
 counts as citing every query result whose snapshot its steps read, found by the
 response hash in the snapshot's provenance; when one response was fetched twice, it

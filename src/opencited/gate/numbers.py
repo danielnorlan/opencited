@@ -30,13 +30,17 @@ from opencited.model import Frozen
 from opencited.values import ExactDecimal
 
 type Language = Literal["no", "en"]
-type Kind = Literal["number", "date", "day", "period", "marker", "list number", "blocked"]
+type Kind = Literal["number", "date", "day", "week", "period", "marker", "list number", "blocked"]
 type Unit = Literal["per cent", "percentage points"]
 
 # Spaces that group digits in Norwegian text (spec 0003), which may also stand between
 # a number and its word, and between the parts of a date or a period.
 GROUP_SPACES = " \u00a0\u202f\u2009"
 SPACE = "[ \u00a0\u202f\u2009]"
+# A week's number, 1 to 53, with or without a leading zero.
+WEEK = "(0?[1-9]|[1-4][0-9]|5[0-3])"
+# The words for a week: Norwegian bokmål and nynorsk, and English.
+WEEK_WORDS = "(?i:uke|veke|week)"
 MINUS = "-\u2212"
 RANGE_DASHES = "-\u2013"
 OTHER_DASHES = "\u2013\u2014\u2012"
@@ -238,8 +242,8 @@ class Number(Frozen):
     as written, with its decimals, before any scale word; ``scale`` is the power of ten
     of a scale word after it. ``unit`` says whether a percent or percentage point word
     follows. A date has ``date``, a day and month without a year ``day`` as (month,
-    day), a period ``period`` as SSB writes it, such as ``2023K1``, and a blocked form
-    ``reason``.
+    day), a week without a year ``week``, a period ``period`` as SSB writes it, such as
+    ``2023K1`` or ``2023U41``, and a blocked form ``reason``.
     """
 
     position: int
@@ -251,6 +255,7 @@ class Number(Frozen):
     unit: Unit | None = None
     date: datetime.date | None = None
     day: tuple[int, int] | None = None
+    week: int | None = None
     period: str | None = None
     reason: str | None = None
 
@@ -356,6 +361,13 @@ def period_patterns() -> list[tuple[re.Pattern[str], str]]:
     return [
         (re.compile(r"(?<!\w)([0-9]{4})K([1-4])(?!\w)"), "code quarter"),
         (re.compile(r"(?<!\w)([0-9]{4})M(0[1-9]|1[0-2])(?!\w)"), "code month"),
+        (re.compile(r"(?<!\w)([0-9]{4})U(0[1-9]|[1-4][0-9]|5[0-3])(?!\w)"), "code week"),
+        (
+            re.compile(
+                rf"(?<!\w){WEEK_WORDS}{SPACE}{WEEK}{SPACE}(?:(?i:i|in|of){SPACE})?([0-9]{{4}})(?!\w)"
+            ),
+            "number week",
+        ),
         (
             re.compile(
                 rf"(?<![\w.,])([1-4])\.{SPACE}(?i:kvartal){SPACE}(?:i{SPACE})?([0-9]{{4}})(?!\w)"
@@ -389,6 +401,10 @@ def read_period(kind: str, groups: tuple[str, ...]) -> str:
             return f"{groups[0]}K{groups[1]}"
         case "code month":
             return f"{groups[0]}M{groups[1]}"
+        case "code week":
+            return f"{groups[0]}U{groups[1]}"
+        case "number week":
+            return f"{groups[1]}U{int(groups[0]):02d}"
         case "number quarter":
             return f"{groups[1]}K{groups[0]}"
         case "word quarter":
@@ -433,6 +449,7 @@ class Reader:
         # After list numbers, so that a list such as "1. August" and "2. July" stays one.
         self.list_numbers()
         self.days()
+        self.weeks()
         self.blocking_forms()
         self.numbers()
         return tuple(sorted(self.found, key=lambda number: (number.position, number.end)))
@@ -482,6 +499,21 @@ class Reader:
                         text=match[0],
                         kind="day",
                         day=(month, day),
+                    )
+                )
+
+    def weeks(self) -> None:
+        """Read a week without a year, such as "uke 41" or "week 41"."""
+        pattern = re.compile(rf"(?<!\w){WEEK_WORDS}{SPACE}{WEEK}(?!\w|[.,][0-9])")
+        for match in pattern.finditer(self.text):
+            if self.free(*match.span()):
+                self.add(
+                    Number(
+                        position=match.start(),
+                        end=match.end(),
+                        text=match[0],
+                        kind="week",
+                        week=int(match[1]),
                     )
                 )
 
