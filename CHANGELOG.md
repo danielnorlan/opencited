@@ -58,6 +58,10 @@ Notable changes to OpenCited are recorded here. The format follows
   the prompt texts holds the notes.
 - A number that the gate blocks because its block cites nothing gets a retry hint to
   cite the result in that block, in version 7 of the prompt texts.
+- Version 10 of the prompt texts asks the model to answer for the groups that a
+  question names from a table that holds them with the same limits, or from a sum of
+  the counts of smaller groups, and never to join averages, medians, rates or shares
+  of smaller groups into the value of a larger group.
 - A number on a code fence's own line, which stands in no block, fails whatever the
   line cites, with a retry hint to move it into a paragraph that cites its result, in
   version 9 of the prompt texts; before, it passed unchecked. A line that opens with

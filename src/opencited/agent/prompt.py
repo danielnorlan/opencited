@@ -18,7 +18,7 @@ from opencited.gate.blocks import Block, blocks
 from opencited.gate.check import NO_BLOCK, UNCITED_REASONS, UNSELECTED_YEAR
 from opencited.sources import Language
 
-PROMPT_VERSION = "9"
+PROMPT_VERSION = "10"
 
 LANGUAGES: dict[Language, str] = {"no": "Norwegian (bokmål)", "en": "English"}
 
@@ -59,6 +59,15 @@ reader needs to understand the numbers.
 9. If the question rests on a claim that the results contradict, say so and give the \
 figures that the results hold. Do not repeat a number from the question that no \
 result holds, such as a threshold the question names.
+10. When the question names groups, such as age groups, regions or occupations, answer \
+for those groups from a table that holds them with the same limits, or from the sum of \
+the counts of smaller groups. Never join averages, medians, rates or shares of smaller \
+groups into the value of a larger group, such as a mean of the average earnings of two \
+age bands: the groups differ in size, so the result is not the larger group's value. \
+Means over periods, such as the months of a year, are fine. If no table holds the \
+groups that the question names and no sum of counts gives them, say so, and give the \
+figures for the groups that a table holds, under the names it gives them. If no table \
+holds a figure for the people or places that the question names, refuse as in rule 7.
 """
 
 RETRY = """\
