@@ -1,0 +1,33 @@
+{
+  "name": "data-06946-shared-codes-en",
+  "reason": "two dimensions that share codes and label them differently",
+  "recorded_at": "2026-10-18T09:45:07Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.ssb.no/api/pxwebapi/v2/tables/06946/data?lang=en&valueCodes%5BRegion%5D=01%2C02&valueCodes%5BHusholdType%5D=01%2C02&valueCodes%5BContentsCode%5D=AntallHushold&valueCodes%5BTid%5D=2019&outputFormat=json-stat2",
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=UTF-8",
+      "x-ratelimit-limit": "40",
+      "x-ratelimit-policy": "40;w=60s",
+      "x-ratelimit-remaining": "39",
+      "x-ratelimit-resource": "SB_API_1MIN"
+    },
+    "body_file": "data-06946-shared-codes-en.2026-10-18.body",
+    "body_sha256": "2ab7f13f72698ea27ab4eae2df04dd70bce23b29de6bcd9e0befd89675cb8b72",
+    "original_body_sha256": "0d95f64484d132724a88465193baec6b611a2dec9b32156146a069f5f237cf4a",
+    "removed": [
+      "extension.contact"
+    ],
+    "removed_fields": [
+      "mail",
+      "name",
+      "organization",
+      "phone",
+      "raw"
+    ]
+  }
+}

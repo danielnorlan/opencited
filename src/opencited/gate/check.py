@@ -9,7 +9,8 @@ each number against the results that the block cites (spec 0003, tasks 3 and 4):
   names it, a five-digit table ID when it is the ID of a cited result, and a number
   from the title of a cited result or from the label of a value that the result
   selected when it has no unit, percent or scale word. For periods and dates, a cited
-  calculation also counts as citing the query results its steps read.
+  calculation also counts as citing the query results its steps read, and it gives
+  the numbers of the labels of the values they read.
 - Every other number is a value. It must stand in a block that cites a result, and
   equal a value ``v`` of a cited result after ``v``, divided by any scale word, is
   rounded with ties away from zero to the decimals written. For a calculation, ``v``
@@ -29,14 +30,14 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
 from fractions import Fraction
-from typing import Literal
+from typing import Literal, cast
 from zoneinfo import ZoneInfo
 
 from pydantic import Field
 
 from opencited.calc.arithmetic import round_away
-from opencited.calc.engine import unit_named
-from opencited.calc.result import CalculationResult
+from opencited.calc.engine import bound_codes, unit_named
+from opencited.calc.result import CalculationResult, StepResult
 from opencited.gate.blocks import blocks
 from opencited.gate.numbers import (
     MONTHS_EN,
@@ -223,6 +224,29 @@ def day_months(text: str) -> set[tuple[int, int]]:
     for match in DAY_IN_DIGITS.finditer(text):
         found.add((int(match[2]), int(match[1])))
     return {(month, day) for month, day in found if 1 <= month <= 12 and 1 <= day <= 31}
+
+
+def read_codes(step: StepResult, result: QueryResult) -> tuple[tuple[str, str], ...]:
+    """Return the dimension and code of each value that a step read in a query result.
+
+    A step's first statement selects the cells it reads. A statement other than the one
+    the engine writes for the result's dimensions gives nothing, so no label passes.
+    """
+    if not step.sql or not step.parameters:
+        return ()
+    dimensions = [dimension.code for dimension in result.dimensions]
+    return bound_codes(step.sql[0], step.parameters[0], dimensions) or ()
+
+
+def value_label_numbers(result: QueryResult) -> dict[tuple[str, str], list[str]]:
+    """Return the numbers in the label of each value of a query result, apart from periods."""
+    language = language_of(result.provenance.table_url)
+    return {
+        (dimension.code, value.code): label_numbers(value.label, language)
+        for dimension in result.dimensions
+        if not dimension.time
+        for value in dimension.values
+    }
 
 
 def label_days(result: QueryResult) -> set[tuple[int, int]]:
@@ -580,11 +604,24 @@ def check(answer: str, language: Language, evidence: Sequence[Evidence]) -> Repo
     for name, item in known.items():
         if isinstance(item, SourceEvidence) and isinstance(item.result, QueryResult):
             responses.setdefault(item.result.provenance.response_sha256, []).append(name)
+    # The label numbers of each value of a query result that a calculation read, read
+    # once for all the steps of all calculations.
+    value_numbers: dict[str, dict[tuple[str, str], list[str]]] = {}
     for name, item in known.items():
         if isinstance(item, CalculationEvidence):
             for use in item.result.snapshots:
                 for source in responses.get(use.provenance.response_sha256, []):
                     holdings_of[name].add_times(holdings_of[source])
+            # A label number passes beside a calculation when one of its steps read the
+            # value that the label names (spec 0003, Numbers that are not values, item 7).
+            for step in item.result.steps:
+                for source in responses.get(step.snapshot or "", []):
+                    result = cast("QueryResult", known[source].result)
+                    if source not in value_numbers:
+                        value_numbers[source] = value_label_numbers(result)
+                    for value in read_codes(step, result):
+                        for number in value_numbers[source].get(value, []):
+                            holdings_of[name].labels.setdefault(number, source)
     findings: list[Finding] = []
     for block in blocks(text):
         inside = [number for number in numbers if block.start <= number.position < block.end]
