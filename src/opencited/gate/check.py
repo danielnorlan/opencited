@@ -164,6 +164,8 @@ class Report(Frozen):
 
 # The reason for a year that fails as a value, which the agent's retry message reads.
 UNSELECTED_YEAR = "a year that no cited result selected, and no value that a cited result holds"
+# The reason for a number in a block that cites nothing, which the retry message reads.
+UNCITED_VALUE = "a value in a block that cites no result"
 
 
 @dataclass(frozen=True)
@@ -500,7 +502,7 @@ def judge(number: Number, holdings: Holdings, cited: bool) -> Finding:
             pass
     value_of(number)
     if not cited:
-        return finding(number, "value", "failed", "a value in a block that cites no result")
+        return finding(number, "value", "failed", UNCITED_VALUE)
     plain = number.unit is None and number.scale == 0
     digits = number.text.strip()
     if plain and re.fullmatch(r"[0-9]{4}", digits) and digits in holdings.periods:

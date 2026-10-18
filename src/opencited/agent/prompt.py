@@ -14,10 +14,10 @@ from dataclasses import dataclass
 from typing import Literal
 
 from opencited.gate import Finding, Report
-from opencited.gate.check import UNSELECTED_YEAR
+from opencited.gate.check import UNCITED_VALUE, UNSELECTED_YEAR
 from opencited.sources import Language
 
-PROMPT_VERSION = "6"
+PROMPT_VERSION = "7"
 
 LANGUAGES: dict[Language, str] = {"no": "Norwegian (bokmål)", "en": "English"}
 
@@ -125,11 +125,21 @@ HINTS: dict[str, str] = {
     "value": (
         "Write {text!r} as a result gives it, with its sign and its per cent word, or leave it out."
     ),
+    "uncited": (
+        "Cite the result that gives {text!r} in the same paragraph, list item or table row, "
+        "or leave it out."
+    ),
 }
 
 
 def hint_kind(finding: Finding) -> str:
-    """Return the hint's kind for a failed number, with its own for a four-digit number."""
+    """Return the hint's kind for a failed number.
+
+    A number in a block that cites nothing needs a citation more than another form, and
+    a four-digit number that matched nothing may be a year or a count.
+    """
+    if finding.detail == UNCITED_VALUE:
+        return "uncited"
     return "year" if finding.detail == UNSELECTED_YEAR else finding.kind
 
 
