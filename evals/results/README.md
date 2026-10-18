@@ -12,6 +12,70 @@ every question ([spec 0005](../../docs/specs/0005-evaluation-suite.md)).
 | [2026-10-18T0815-v2-deepseek-deepseek-flash.json](2026-10-18T0815-v2-deepseek-deepseek-flash.json) | v2 | `deepseek-flash` | 33 of 43 |
 | [2026-10-18T1119-v1-deepseek-deepseek-flash.json](2026-10-18T1119-v1-deepseek-deepseek-flash.json) | v1 | `deepseek-flash` | 40 of 44 |
 | [2026-10-18T1127-v3-deepseek-deepseek-flash.json](2026-10-18T1127-v3-deepseek-deepseek-flash.json) | v3 | `deepseek-flash` | 40 of 43 |
+| [2026-10-18T1342-v1-deepseek-deepseek-flash.json](2026-10-18T1342-v1-deepseek-deepseek-flash.json) | v1 | `deepseek-flash` | 42 of 44 |
+| [2026-10-18T1350-v3-deepseek-deepseek-flash.json](2026-10-18T1350-v3-deepseek-deepseek-flash.json) | v3 | `deepseek-flash` | 40 of 43 |
+
+## 2026-10-18, question sets v1 and v3 with prompt texts v9, `deepseek-flash`
+
+Both runs started from commit `ffb297f` on 2026-10-18, set v1 at 13:42 UTC and set v3
+at 13:50 UTC, with the model, settings, prices and limits of the earlier runs. Since
+the runs from `86c5e94`, the retry hint for a block that cites nothing names the block
+and quotes its start (#74), and a number on a code fence's own line fails with a hint
+of its own (#76), in version 9 of the prompt texts.
+
+| | v1, 11:19 | v1, 13:42 | v3, 11:27 | v3, 13:50 |
+| --- | --- | --- | --- | --- |
+| Correct | 40 of 44 | 42 of 44 | 40 of 43 | 40 of 43 |
+| Released answers counted correct | 28 of 28 | 30 of 30 | 28 of 29 | 28 of 31 |
+| Answers to questions that should be refused | 0 of 12 | 0 of 12 | 0 of 12 | 0 of 12 |
+| Answerable questions refused | 4 | 2 | 2 | 0 |
+| Refusals after three blocked attempts | 1 | 0 | 2 | 0 |
+| First attempts that the gate blocked | 14 of 29 | 17 of 30 | 16 of 31 | 15 of 31 |
+| Retries | 18 | 20 | 22 | 16 |
+| Tokens | 1,729,314 | 1,690,484 | 1,313,673 | 1,237,735 |
+
+No answer stopped after three blocked attempts in either run, and the three questions
+that did so at 11:19 and 11:27 were answered:
+
+- `sum-largest-cities-2026` (v1): the hint quoted the table's header row, "| Municipality
+  | Population, 1 January 2026 |". The model rewrote the row without a citation, the
+  hint quoted it again, and the third attempt cited the source in the row.
+- `false-premise-mainland-gdp-shrank-2025` (v3): the hint quoted the opening sentence
+  on the premise, and the next attempt cited the source there.
+- `ranking-wedding-type-2025` (v3) passed at its first attempt, without the line
+  before its table that cited nothing.
+
+Set v1 had 42 of 44 correct: 20 of 22 in Norwegian and 22 of 22 in English. Lookup had
+7 of 7, change 5 of 5, share 4 of 5, sum 4 of 5, ranking 5 of 5, false premise 5 of 5,
+unanswerable 5 of 5 and out of scope 7 of 7. `ranking-largest-age-group-2026` was
+answered from table 05810 with 63,264 tokens, where the runs at 08:07 and 11:19
+reached the token limit; its first blocked attempt left its table rows uncited, and
+its second wrote places 1 to 5 that no result gives. The two other questions about
+age groups, `share-80-plus-norway-2026` and `sum-67-plus-norway-2026`, reached the
+token limit as before.
+
+Set v3 had 40 of 43 correct: 21 of 23 in Norwegian and 19 of 20 in English. Lookup had
+6 of 7, change 6 of 6, share 5 of 5, sum 5 of 5, ranking 3 of 4, false premise 3 of 4,
+unanswerable 8 of 8 and out of scope 4 of 4. The three released answers counted wrong
+hold only numbers that the gate traced to cited SSB results or to calculations over
+them:
+
+- `lookup-weddings-2025` asks for the marriages of 2025 where the oldest spouse lived
+  in Norway. The answer read table 05712 and gave 21 774 marriages where one of the
+  partners lived in Norway, and said that the table does not tell who is oldest. At
+  08:15 and 11:27 the answer read table 09659, which gives the plan's 21 574.
+- `ranking-age-group-highest-wage-2025` read table 11421, whose age bands span five
+  years, and joined them into the question's groups with the unweighted mean of the
+  bands' averages. The gate traced that calculation, but it is not the average of a
+  group, and the answer named "55 years or older" where the plan's group is "55-66
+  years".
+- `false-premise-women-earn-more-gap-2025` gave the gap as "−6 870 kr per måned
+  sammenlignet med menn", women's wage minus men's, as at 11:27.
+
+The two runs used 1,690,484 and 1,237,735 tokens, and the largest correct answer used
+95,357 against the agent's limit of 100,000. With every input token counted at the
+price without a cache hit, the agent's estimates of the cost are $0.5295 and $0.3949.
+The account's balance at DeepSeek fell from $4.11 to $4.01 over both runs.
 
 ## 2026-10-18, question sets v1 and v3, `deepseek-flash`
 
