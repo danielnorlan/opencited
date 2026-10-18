@@ -551,3 +551,57 @@ def test_a_number_of_more_digits_than_any_source_value_blocks() -> None:
     [number] = read_numbers(f"It was {text}.", "en")
     assert number.kind == "blocked"
     assert number.text == text
+
+
+@pytest.mark.parametrize(
+    ("language", "text", "day"),
+    [
+        ("no", "Tallene gjelder befolkningen per 1. januar.", (1, 1)),
+        ("no", "Tallene gjelder befolkningen per 1 januar.", (1, 1)),
+        ("no", "Per 1. Januar var det slik.", (1, 1)),
+        ("en", "The figures are for 1 January.", (1, 1)),
+        ("no", "Skuddårsdagen 29. februar.", (2, 29)),
+    ],
+)
+def test_a_day_and_month_without_a_year_is_a_day(
+    language: Language, text: str, day: tuple[int, int]
+) -> None:
+    [number] = read_numbers(text, language)
+
+    assert (number.kind, number.day) == ("day", day)
+
+
+def test_a_day_with_its_year_stays_a_date_and_a_month_with_its_year_a_period() -> None:
+    kinds = [number.kind for number in read_numbers("1. januar 2026 og januar 2026.", "no")]
+
+    assert kinds == ["date", "period"]
+
+
+def test_a_day_that_no_year_has_blocks_and_an_english_month_needs_its_capital() -> None:
+    [blocked] = read_numbers("Per 31. februar.", "no")
+    [number] = read_numbers("On 1 january.", "en")
+
+    assert (blocked.kind, blocked.reason) == ("blocked", "a date that does not exist")
+    assert number.kind == "number"
+
+
+@pytest.mark.parametrize(
+    ("language", "text"),
+    [
+        ("en", "Highest months:\n\n1. August [E1]\n2. July [E1]\n3. June [E1]"),
+        ("no", "Kaldeste måneder:\n\n1. januar [E1]\n2. februar [E1]"),
+    ],
+)
+def test_a_list_whose_items_start_with_a_month_stays_a_list(language: Language, text: str) -> None:
+    kinds = [number.kind for number in read_numbers(text, language) if number.kind != "marker"]
+
+    assert kinds == ["list number"] * len(kinds)
+
+
+def test_a_letter_that_folds_to_a_month_s_letter_makes_no_month() -> None:
+    # The long s, U+017F, folds to s, so a case-insensitive match would read the month
+    # below as August.
+    month = "augu\u017ft"
+    found = read_numbers(f"Per 5 {month} og 6. {month} 2026, i {month} 2026.", "no")
+
+    assert {number.kind for number in found} == {"number"}

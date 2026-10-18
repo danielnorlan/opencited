@@ -35,6 +35,11 @@ Notable changes to OpenCited are recorded here. The format follows
   "1000 personer" or "mill. kr", in its base unit: 138 in "1000 personer" matches
   "138 000" and "138 tusen" and no longer "138". The model gets such values formatted
   in the base unit, and version 6 of the system prompt tells it to write them so.
+- For periods and dates, a cited calculation counts as citing the query results its
+  steps read, so "fra 2025 til 2026 [C1]" passes, and a day and month without a year,
+  such as "per 1. januar", passes when a cited query result's label names that day.
+  A list whose items start with a month stays a list, and a month name with a letter
+  that only folds to a month's letter, such as "auguſt", no longer stops the gate.
 - Question set v2 with 43 questions over ten more tables, among them prices, wages,
   the national accounts, crime, marriages, income and employment, and 12 questions
   that should be refused, each with the reason the sources cannot answer it.

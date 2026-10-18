@@ -101,19 +101,21 @@ def test_a_retry_after_a_failed_date_says_to_cite_the_result_that_gives_it(
     assert message.count(hint) == 1
 
 
-def test_a_retry_after_a_year_that_only_a_calculation_backs_says_to_cite_its_source(
+def test_a_retry_after_a_year_that_no_cited_result_holds_says_to_cite_its_source(
     tmp_path: Path,
 ) -> None:
+    # C1 read E1, which selected 2026 and not 2015, so only 2015 fails (spec 0003,
+    # Numbers that are not values, item 6).
     found = evidences(SnapshotStore(tmp_path))
     growth = format_number(found.step("growth"), "no")
-    text = f"Folketallet økte med {growth} prosent fra 2025 til 2026 [C1]."
+    text = f"Folketallet økte med {growth} prosent fra 2015 til 2026 [C1]."
     report = check(text, "no", found.evidence)
 
     message = retry_message(report)
 
     assert not report.passed
-    for year in ("2025", "2026"):
-        assert message.count(year_hint(year)) == 1
+    assert message.count(year_hint("2015")) == 1
+    assert year_hint("2026") not in message
     assert "per cent word" not in message
 
 

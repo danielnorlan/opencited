@@ -76,13 +76,19 @@ gate says which number failed and why.
    selected its year as a period and the label of a value that result selected names
    its day and month, as `1. januar`, `1 January` or `1.1.` do, so "1. januar 2026"
    passes for a population at "Befolkning 1. januar" in 2026. Dates are written as
-   `2026-10-13`, as `13.10.2026` or with the month in words in either language.
+   `2026-10-13`, as `13.10.2026` or with the month in words in either language. A
+   day and month without a year, written as `1. januar` or `1 January`, pass when
+   the label of a value that a query result cited in the block selected names that
+   day and month.
 3. A five-digit table ID passes when it is the ID of a source result cited in the
    block.
 4. A number that appears in the title of a source result cited in the block, or in
    the label of a value that result selected, passes when it is written without a
    unit, percent or scale word.
 5. Citation markers and the numbers of ordered list items are ignored.
+6. For items 1 and 2, a calculation result cited in the block also counts as citing
+   every query result that its steps read, so "from 2025 to 2026 [C1]" passes when C1
+   read a query result that selected both years.
 
 ### Matching values
 
