@@ -632,7 +632,8 @@ def check(answer: str, language: Language, evidence: Sequence[Evidence]) -> Repo
                         for number in value_numbers[source].get(value, []):
                             holdings_of[name].labels.setdefault(number, source)
     findings: list[Finding] = []
-    for block in blocks(text):
+    found = blocks(text)
+    for block in found:
         inside = [number for number in numbers if block.start <= number.position < block.end]
         holdings = Holdings()
         cited = False
@@ -656,6 +657,15 @@ def check(answer: str, language: Language, evidence: Sequence[Evidence]) -> Repo
             cited = True
             holdings.add(holdings_of[item.evidence_id])
         findings += [judge(number, holdings, cited) for number in inside if number.kind != "marker"]
+    # A number in no block, such as one on a code-fence line, stands in no block that
+    # cites a result, so it fails as one in a block that cites nothing (spec 0003,
+    # Matching values, item 1).
+    findings += [
+        judge(number, Holdings(), False)
+        for number in numbers
+        if number.kind != "marker"
+        and not any(block.start <= number.position < block.end for block in found)
+    ]
     findings.sort(key=lambda item: (item.position, item.end))
     return Report(
         passed=all(item.outcome != "failed" for item in findings), findings=tuple(findings)

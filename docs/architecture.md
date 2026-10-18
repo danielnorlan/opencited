@@ -333,7 +333,8 @@ against the results whose markers the block holds. Since a citation must never r
 a number outside its block, the split errs towards smaller blocks: a blank line, a
 thematic break such as `---`, a code fence and a change of block quote depth end a
 block, every line that holds a pipe is a table row of its own, and a marker inside an
-HTML comment cites nothing.
+HTML comment cites nothing. A number in no block, such as one on a code fence's own
+line, fails as a number in a block that cites nothing.
 
 A period passes when a cited query result selected it, a date when it is the last
 update or the retrieval date of a cited result in UTC or in Norwegian time, or a day

@@ -188,6 +188,34 @@ def test_blocks_split_paragraphs_items_rows_and_headings() -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    ("text", "number"),
+    [
+        ("~~~ 99% growth\nx\n~~~\nEnd [E1].", "99%"),
+        ("```text 12345 people\nx\n```\nEnd [E1].", "12345"),
+    ],
+)
+def test_a_number_on_a_code_fence_line_fails_as_uncited(text: str, number: str) -> None:
+    # A fence line is in no block (#76).
+    report = check(text, "en", [SourceEvidence("E1", population().result)])
+
+    [failed] = [finding for finding in report.findings if finding.outcome == "failed"]
+    assert not report.passed
+    assert (failed.text, failed.detail) == (number, UNCITED_VALUE)
+
+
+def test_a_code_fence_is_judged_as_before_apart_from_its_fence_lines() -> None:
+    result = population().result
+    value = format_number(first_value(result), "en")
+    evidence = [SourceEvidence("E1", result)]
+
+    assert check("```\nNo number here.\n```\n\nEnd [E1].", "en", evidence).passed
+    # A marker on a fence line is in no block, so it is no number and cites nothing.
+    assert check("~~~ [E1]\nx\n~~~\nEnd [E1].", "en", evidence).passed
+    assert check(f"```\n{value} [E1]\n```", "en", evidence).passed
+    assert not check(f"```\n{value}\n```\n\nEnd [E1].", "en", evidence).passed
+
+
 def test_a_date_that_a_result_gives_fails_in_a_block_that_cites_nothing() -> None:
     result = population().result
     day = result.provenance.retrieved_at.date().isoformat()

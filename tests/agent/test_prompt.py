@@ -264,6 +264,17 @@ def test_a_text_that_is_not_the_checked_one_gets_the_hint_without_a_quote(
     )
 
 
+def test_a_number_in_no_block_gets_the_hint_without_a_quote(tmp_path: Path) -> None:
+    found = evidences(SnapshotStore(tmp_path))
+    text = "~~~ 2025 growth\nx\n~~~\nDet er alt [E1]."
+    report = check(text, "no", found.evidence)
+
+    assert retry_message(report, text).endswith(
+        "Cite the result that gives '2025' in the same paragraph, list item or table row, "
+        "or leave it out."
+    )
+
+
 @pytest.mark.parametrize(
     ("text", "hint"),
     [
