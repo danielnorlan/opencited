@@ -9,6 +9,7 @@ It runs as an Inspect task, with Inspect pinned in the `evals` dependency group
 | --- | --- |
 | `questions/v1.jsonl` | The first question set, with a reference plan for each question that has an answer |
 | `questions/v2.jsonl` | The second set: questions about prices, wages, the national accounts, crime, marriages, income and employment, and questions where a made-up number would be easy |
+| `questions/v3.jsonl` | Set v2 with three questions reworded, so that each has one reading |
 | `opencited_task.py` | The Inspect task: the reference plans, the agent behind Inspect's agent bridge, and the scorer |
 | `report.py` | Writes the report of a run from its Inspect log |
 | `tests/` | Tests of the task and the report, which need no model |
@@ -45,6 +46,25 @@ refusal there is wrong. Each of its 12 questions that should be refused gives a
 municipality that does not exist, a street, a person, a company, dogs, a share price,
 a translation, code and a future election. The reasons were checked against the
 tables' metadata and searches of the API on 2026-10-14.
+
+## The third set
+
+Set v3 is set v2 with three questions asked in other words, under new IDs, so that
+each has one reading; its other 40 questions are those of set v2, with their IDs. In
+the published run of set v2 on 2026-10-18, two answers read another table than the
+reference plan, and the last blocked attempt at the wage premise gave women's wage
+minus men's, -6 870, where the reference plan takes men's minus women's:
+
+- `sum-divorces-duration-2024-2025` asks for divorces in the statistics by the
+  duration of the marriage, table 05692. Table 05693, divorces by the number of
+  children, gives another total for the same years.
+- `ranking-age-group-highest-wage-2025` names the five age groups of table 13312.
+  Table 11421 groups ages by five years and has another highest group.
+- `false-premise-women-earn-more-gap-2025` asks how large the difference was, in
+  place of how much more women earned.
+
+The reworded questions send the requests of set v2, so the three sets share their
+recordings.
 
 Inspect reads the key of the model provider from that provider's usual environment
 variable; the agent holds only a placeholder key, since the bridge answers its calls.

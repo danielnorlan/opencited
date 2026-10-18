@@ -43,6 +43,9 @@ Notable changes to OpenCited are recorded here. The format follows
 - Question set v2 with 43 questions over ten more tables, among them prices, wages,
   the national accounts, crime, marriages, income and employment, and 12 questions
   that should be refused, each with the reason the sources cannot answer it.
+- Question set v3: set v2 with three questions reworded under new IDs so that each has
+  one reading, the divorces by the duration of the marriage, the five age groups of
+  table 13312 and the wage gap as a difference.
 - Version 5 of the system prompt asks the model, when a question rests on a claim
   that the results contradict, to say so with the results' figures and not to repeat
   a number from the question that no result holds.
