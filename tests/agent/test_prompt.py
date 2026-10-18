@@ -34,12 +34,13 @@ TEXTS = {
     "6": "e9cbea8be7e011cd9eeaab1e9bba3f06901b027341ec707d41cff4ffc4781f63",
     "7": "f13da027e56d180c8713b4156917310aa64bad14e7037790e072d01e56766d2a",
     "8": "d418cd01c57b1bff1ababdf7e9e3a5adea56e3c1a2b8cde1a7bbe7d043e7d30b",
+    "9": "268d269508e21392401b61bd58155701d2c50cc8710e4021ca42f2762b9e0582",
 }
 
 
 # Answers whose numbers all stand in blocks that cite nothing, so that their retry
-# messages need no evidence: every kind of block, a cut start, one to three numbers, a
-# date, a day, a period and a value.
+# messages need no evidence: every kind of block, a cut start, one to four numbers, a
+# date, a day, a period, a value and a number on a code fence's own line.
 RENDERED: tuple[tuple[str, Language], ...] = (
     (
         "The premise is contradicted by the figures: the population of Norway did not fall "
@@ -50,6 +51,7 @@ RENDERED: tuple[tuple[str, Language], ...] = (
     ("| Country | Population, 1 January 2026 |", "en"),
     ("# Figures for 2019M05", "en"),
     ("Fra 2015\ntil 2025 og 2026 vokste den per 1. januar.", "no"),
+    ("~~~ 99% growth\nx\n~~~", "en"),
 )
 
 
@@ -261,6 +263,20 @@ def test_a_text_that_is_not_the_checked_one_gets_the_hint_without_a_quote(
     assert message.endswith(
         "Cite the result that gives '2025' in the same paragraph, list item or table row, "
         "or leave it out."
+    )
+
+
+def test_a_number_in_no_block_gets_the_hint_to_move_it_or_leave_it_out(
+    tmp_path: Path,
+) -> None:
+    found = evidences(SnapshotStore(tmp_path))
+    text = "~~~ 2025 growth\nx\n~~~\nDet er alt [E1]."
+    report = check(text, "no", found.evidence)
+
+    assert retry_message(report, text).endswith(
+        "'2025' stands outside every paragraph, list item and table row, such as on a code "
+        "fence's own line, where no citation counts. Move it into a paragraph that cites "
+        "its result, or leave it out."
     )
 
 

@@ -23,7 +23,10 @@ from typing import Literal
 QUOTE = re.compile(r"(?:[ \t]{0,3}>[ \t]?)+")
 LIST_ITEM = re.compile(r"[ \t]*(?:[-*+]|[0-9]+[.)])[ \t]")
 HEADING = re.compile(r"[ \t]{0,3}#{1,6}(?:[ \t]|$)")
-FENCE = re.compile(r"[ \t]{0,3}(?:```|~~~)")
+# A fence opens or closes a code block. As in CommonMark, the info string after a
+# backtick fence holds no backtick, so a line such as ```5``` [E1] is a paragraph
+# with a code span.
+FENCE = re.compile(r"[ \t]{0,3}(?:`{3,}[^`]*|~{3,}.*)")
 BREAK = re.compile(r"[ \t]{0,3}([-*_=])(?:[ \t]*\1){2,}[ \t]*")
 TABLE_ROW = re.compile(r"(?:^|[^\\])\|")
 SEPARATOR_ROW = re.compile(r"[ \t:|-]*-[ \t:|-]*")
@@ -72,7 +75,7 @@ def blocks(text: str) -> tuple[Block, ...]:
         if level != depth:
             split.close(line_start)
             depth = level
-        if not inner.strip() or FENCE.match(inner) or BREAK.fullmatch(inner):
+        if not inner.strip() or FENCE.fullmatch(inner) or BREAK.fullmatch(inner):
             split.close(line_start)
             continue
         if TABLE_ROW.search(inner):

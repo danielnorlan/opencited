@@ -170,6 +170,9 @@ UNCITED_VALUE = "a value in a block that cites no result"
 UNCITED_DATE = "a date in a block that cites no result"
 UNCITED_PERIOD = "a period in a block that cites no result"
 UNCITED_REASONS = (UNCITED_VALUE, UNCITED_DATE, UNCITED_PERIOD)
+# The reason for a number outside every block, which only a code fence's own line
+# can hold: no citation counts there.
+NO_BLOCK = "a number outside every paragraph, list item and table row"
 
 
 @dataclass(frozen=True)
@@ -459,6 +462,23 @@ def finding(
     )
 
 
+def outside(number: Number) -> Finding:
+    """Decide a number that stands in no block: it fails, whatever it cites.
+
+    A blocking form keeps its own reason, which names the form to write instead.
+    """
+    if number.kind == "blocked":
+        return judge(number, Holdings(), False)
+    kind: FindingKind = (
+        "period"
+        if number.kind == "period"
+        else "date"
+        if number.kind in ("date", "day")
+        else "value"
+    )
+    return finding(number, kind, "failed", NO_BLOCK)
+
+
 def judge(number: Number, holdings: Holdings, cited: bool) -> Finding:
     """Decide one number of a block whose cited results hold ``holdings``."""
     # A block that cites nothing holds nothing, and the reason says so, so that the
@@ -632,7 +652,8 @@ def check(answer: str, language: Language, evidence: Sequence[Evidence]) -> Repo
                         for number in value_numbers[source].get(value, []):
                             holdings_of[name].labels.setdefault(number, source)
     findings: list[Finding] = []
-    for block in blocks(text):
+    found = blocks(text)
+    for block in found:
         inside = [number for number in numbers if block.start <= number.position < block.end]
         holdings = Holdings()
         cited = False
@@ -656,6 +677,14 @@ def check(answer: str, language: Language, evidence: Sequence[Evidence]) -> Repo
             cited = True
             holdings.add(holdings_of[item.evidence_id])
         findings += [judge(number, holdings, cited) for number in inside if number.kind != "marker"]
+    # A number on a code fence's own line stands in no block that cites a result, so it
+    # fails (spec 0003, Matching values, item 1).
+    findings += [
+        outside(number)
+        for number in numbers
+        if number.kind != "marker"
+        and not any(block.start <= number.position < block.end for block in found)
+    ]
     findings.sort(key=lambda item: (item.position, item.end))
     return Report(
         passed=all(item.outcome != "failed" for item in findings), findings=tuple(findings)
