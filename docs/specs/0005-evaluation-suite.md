@@ -56,9 +56,13 @@ calculation engine computes their expected answers.
    ([spec 0003](0003-evidence-gate.md)).
 2. A question with an answer is correct when the agent releases an answer, the answer
    passes the gate again when the scorer checks it, and it contains each expected
-   number at the required decimals or more under the gate's rounding rule. A ranking
-   answer must also contain the expected label as the snapshot gives it in the
-   language of the question, compared without regard to case.
+   number at the required decimals or more under the gate's rounding rule. A number
+   with fewer decimals counts when the decimals it leaves out are zeros of the
+   expected number rounded to the required decimals, so "104" counts for 104.0 and
+   "101" does not count for 100.6. A ranking answer must also contain the expected
+   label as the snapshot gives it in the language of the question, compared without
+   regard to case, alone or followed by a genitive `s`, `'s` or `’s`, as in
+   "5–9 års" for "5-9 år".
 3. A question that should be refused is correct when the agent refuses. The reason is
    recorded.
 4. The report gives counts and rates of correct answers by category and language,
