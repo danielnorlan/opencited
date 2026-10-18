@@ -1119,6 +1119,36 @@ def test_a_calculation_that_read_two_tables_gives_the_labels_of_each(tmp_path: P
     assert report.passed, report.text()
 
 
+# 06946 has dimensions that share codes: Region 02 is "Akershus (-2019)" and
+# HusholdType 02 is "Living alone, person 30-44 years".
+SHARED = {
+    "Region": ["01", "02"],
+    "HusholdType": ["01", "02"],
+    "ContentsCode": ["AntallHushold"],
+    "Tid": ["2019"],
+}
+
+
+def test_a_code_that_two_dimensions_share_gives_its_own_dimension_s_label(
+    tmp_path: Path,
+) -> None:
+    # The step reads Region 02 and HusholdType 01, "Living alone, person under 30 years".
+    codes = {"Region": "02", "HusholdType": "01", "ContentsCode": "AntallHushold", "Tid": "2019"}
+    evidence = calculated(
+        SnapshotStore(tmp_path),
+        "06946",
+        SHARED,
+        "en",
+        {"name": "households", "operation": "value", "codes": codes},
+    )
+
+    def passes(text: str) -> bool:
+        return check(text, "en", evidence).passed
+
+    assert passes("These people lived alone and were under 30 [C1].")
+    assert not passes("These people lived alone and were at most 44 [C1].")
+
+
 CPI_MONTHS = {"ContentsCode": ["KpiIndMnd"], "Tid": ["2025M09", "2026M09"]}
 
 
