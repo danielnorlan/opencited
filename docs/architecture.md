@@ -509,9 +509,11 @@ reader where they come from. When a question rests on a claim
 that the results contradict, the prompt asks for the results' figures and for no
 number from the question that no result holds, such as a threshold it names. When a
 question names groups, such as age groups, the prompt asks for a table that holds
-them and never for a value joined from the averages, medians, rates or shares of
-smaller groups, which the gate would pass as a traced calculation although it is no
-group's value; sums of counts and means over periods stay allowed. A reply
+them with the same limits, or for a sum of the counts of smaller groups, and never
+for a value joined from the averages, medians, rates or shares of smaller groups,
+which the gate would pass as a traced calculation although it is no group's value;
+means over periods stay allowed, and a question about people or places that no table
+covers is still refused. A reply
 is released only when the gate passes it and its shown markers cite at least one
 result: the gate passes a text without numbers, and an answer that cites nothing does
 not rest on the sources, so it goes back with a request to cite, counted like a

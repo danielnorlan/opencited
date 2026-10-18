@@ -35,7 +35,7 @@ TEXTS = {
     "7": "f13da027e56d180c8713b4156917310aa64bad14e7037790e072d01e56766d2a",
     "8": "d418cd01c57b1bff1ababdf7e9e3a5adea56e3c1a2b8cde1a7bbe7d043e7d30b",
     "9": "268d269508e21392401b61bd58155701d2c50cc8710e4021ca42f2762b9e0582",
-    "10": "43e3fad4759fb2d966f5071ae2b2bed8eafcb7434e54a332b69b2b5a4b8f20f1",
+    "10": "a9132e3b6b90e8714b7e4f87bc89b1c89eff65c5816556f8b9634380b868849a",
 }
 
 
@@ -98,9 +98,11 @@ def test_the_prompt_keeps_averages_of_groups_from_being_joined() -> None:
     # age bands into the question's groups with an unweighted mean (#80).
     text = system_prompt("en")
 
-    assert "answer for those groups from a table that holds them" in text
+    assert "from a table that holds them with the same limits, or from the sum of" in text
     assert "Never join averages, medians, rates or shares of smaller groups" in text
-    assert "Sums of counts, and means over periods such as the months of a year, are fine." in text
+    assert "Means over periods, such as the months of a year, are fine." in text
+    # A question about people or places that no table covers is still refused (rule 7).
+    assert "refuse as in rule 7" in text
 
 
 def test_the_prompt_teaches_the_citation_markers_and_the_refusal_lines() -> None:
