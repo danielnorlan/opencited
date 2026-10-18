@@ -18,7 +18,7 @@ from opencited.gate.blocks import Block, blocks
 from opencited.gate.check import NO_BLOCK, UNCITED_REASONS, UNSELECTED_YEAR
 from opencited.sources import Language
 
-PROMPT_VERSION = "10"
+PROMPT_VERSION = "11"
 
 LANGUAGES: dict[Language, str] = {"no": "Norwegian (bokmål)", "en": "English"}
 
@@ -84,9 +84,14 @@ one it uses, such as [E1], in the paragraph, list item or table row that uses it
 refuse as the instructions say. Write the whole answer again.\
 """
 
+# The refusal line of rule 7, also with its reason in Norwegian, as the model writes it
+# when it answers in Norwegian (#84).
 REFUSAL = re.compile(
-    r"[\s*_`#>]*refuse:\s*(no data|outside the sources)[\s.:;!*_`]*", re.IGNORECASE
+    r"[\s*_`#>]*refuse:\s*(no data|outside the sources|ingen data|utenfor kildene)"
+    r"[\s.:;!*_`]*",
+    re.IGNORECASE,
 )
+NO_DATA = ("no data", "ingen data")
 
 type ModelReason = Literal["no data", "outside the sources"]
 
@@ -235,7 +240,7 @@ def refusal_in(text: str) -> ModelRefusal | None:
         match = REFUSAL.fullmatch(line)
         if match is None:
             continue
-        reason: ModelReason = "no data" if match[1].lower() == "no data" else "outside the sources"
+        reason: ModelReason = "no data" if match[1].lower() in NO_DATA else "outside the sources"
         rest = [*lines[:index], *lines[index + 1 :]]
         return ModelRefusal(reason, "\n".join(rest).strip())
     return None

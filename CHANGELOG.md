@@ -58,6 +58,9 @@ Notable changes to OpenCited are recorded here. The format follows
   the prompt texts holds the notes.
 - A number that the gate blocks because its block cites nothing gets a retry hint to
   cite the result in that block, in version 7 of the prompt texts.
+- A refusal line with its reason in Norwegian, `REFUSE: ingen data` or `REFUSE:
+  utenfor kildene`, counts as a refusal, in version 11 of the prompt texts; before, such
+  a reply could be released as an answer.
 - Version 10 of the prompt texts asks the model to answer for the groups that a
   question names from a table that holds them with the same limits, or from a sum of
   the counts of smaller groups, and never to join averages, medians, rates or shares

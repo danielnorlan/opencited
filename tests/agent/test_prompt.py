@@ -36,6 +36,7 @@ TEXTS = {
     "8": "d418cd01c57b1bff1ababdf7e9e3a5adea56e3c1a2b8cde1a7bbe7d043e7d30b",
     "9": "268d269508e21392401b61bd58155701d2c50cc8710e4021ca42f2762b9e0582",
     "10": "a9132e3b6b90e8714b7e4f87bc89b1c89eff65c5816556f8b9634380b868849a",
+    "11": "eb8b79ef5a29f0058031b5aa21f787f2cd6be3032ac8bc2a259108ec417c5cce",
 }
 
 
@@ -368,6 +369,12 @@ def test_a_retry_for_an_uncited_answer_has_no_hints(tmp_path: Path) -> None:
         ("REFUSE: no data.", ModelRefusal("no data", "")),
         ("**REFUSE: no data**", ModelRefusal("no data", "")),
         ("> `refuse: Outside the sources`", ModelRefusal("outside the sources", "")),
+        # The reason in Norwegian, as in the published run of #83.
+        (
+            "REFUSE: utenfor kildene\nStockholm er ikke en norsk kommune.",
+            ModelRefusal("outside the sources", "Stockholm er ikke en norsk kommune."),
+        ),
+        ("**REFUSE: Ingen data.**", ModelRefusal("no data", "")),
     ],
 )
 def test_a_reply_with_a_refusal_line_is_a_refusal(text: str, expected: ModelRefusal) -> None:
@@ -380,6 +387,8 @@ def test_a_reply_with_a_refusal_line_is_a_refusal(text: str, expected: ModelRefu
         "REFUSE: no data at all",
         "REFUSE: outside",
         "I REFUSE: no data",
+        "REFUSE: utenfor",
+        "REFUSE: ingen data her",
     ],
 )
 def test_any_other_reply_is_an_answer(text: str) -> None:
