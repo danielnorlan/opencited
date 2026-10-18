@@ -29,6 +29,7 @@ TEXTS = {
     "4": "a8363ff1724fddd369a4b97b469fe7869b9e41aab8941f96e112762ad04fdb12",
     "5": "66a5ab9223ea05c878bcd3f6b449af974e99a420b00e897b5d626680379d8a49",
     "6": "e9cbea8be7e011cd9eeaab1e9bba3f06901b027341ec707d41cff4ffc4781f63",
+    "7": "f13da027e56d180c8713b4156917310aa64bad14e7037790e072d01e56766d2a",
 }
 
 
@@ -137,6 +138,22 @@ def test_a_retry_after_a_failed_period_says_to_cite_the_result_that_selected_it(
         "Cite the source result that selected '2019M05' in the same paragraph, list item "
         "or table row, or leave the period out."
     )
+
+
+def test_a_number_in_a_block_that_cites_nothing_gets_a_hint_to_cite(tmp_path: Path) -> None:
+    found = evidences(SnapshotStore(tmp_path))
+    text = "Påstanden stemmer ikke for 2025.\n\nDet er alt [E1]."
+    report = check(text, "no", found.evidence)
+
+    message = retry_message(report)
+
+    assert not report.passed
+    assert message.endswith(
+        "Cite the result that gives '2025' in the same paragraph, list item or table row, "
+        "or leave it out."
+    )
+    assert "per cent word" not in message
+    assert year_hint("2025") not in message
 
 
 def year_hint(text: str) -> str:

@@ -50,6 +50,8 @@ Notable changes to OpenCited are recorded here. The format follows
   given a result, and instead of a table's metadata once that table was queried, so
   the metadata of a large table no longer rides along in every call. Version 4 of
   the prompt texts holds the notes.
+- A number that the gate blocks because its block cites nothing gets a retry hint to
+  cite the result in that block, in version 7 of the prompt texts.
 - A query that names a code which equals an earlier code of its dimension in all but
   case fails before the data request and names the earlier code, since SSB's API
   returns the earlier code's cell for both.

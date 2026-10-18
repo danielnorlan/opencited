@@ -483,9 +483,10 @@ reason, which can name a local path.
 tool schemas, runs the tool calls of each reply and returns their results, until the
 model replies without a tool call. The gate checks that reply. A blocked reply goes
 back to the model with the gate report, at most twice, and with what to do about each
-kind of failed number: a date or a period is cited with the source result that holds
-it or goes, a value is written as a result gives it, and a four-digit number that
-matched nothing gets both hints, since the gate cannot tell a year from a count. The
+kind of failed number: a number in a block that cites nothing is cited or goes, a
+date or a period is cited with the source result that holds it or goes, a value is
+written as a result gives it, and a four-digit number that matched nothing gets both
+hints, since the gate cannot tell a year from a count. The
 prompt tells the model to write a change with its sign, to name periods as the
 results name them, to write a date only when a cited result gives it, and to cite
 the source result beside a calculation where it names a period or a date; the gate
