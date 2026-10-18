@@ -66,7 +66,10 @@ usually served from the cache, and a data request.
    must have five digits. A malformed input fails before any request is sent.
 2. For `query_table`, the client reads the table metadata, expands the selection to
    the value codes it covers and counts the cells. A selection above the limit fails
-   before the data request.
+   before the data request. So does a code that equals an earlier code of its
+   dimension in all but case, as `1AAAAA-1ZZZZZ` does `1AAAAA-1ZZZZz` in table 08484:
+   SSB's API reads codes without regard to case and returns the earlier code's cell,
+   so the later code cannot be fetched, and the error names the earlier one.
 3. The client sends the data request as GET when the URL fits within a conservative
    length, and as POST otherwise ([ADR 0007](adr/0007-ssb-pxwebapi-v2.md)).
 4. The raw response body is kept as bytes. Its SHA-256 is computed from those bytes,
