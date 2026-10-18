@@ -33,8 +33,18 @@ from opencited.sources.ssb import BASE_URL, SsbClient
 FOLDER = Path(__file__).resolve().parents[2] / "evals" / "questions"
 SET = load_questions(FOLDER / "v1.jsonl")
 SECOND = load_questions(FOLDER / "v2.jsonl")
-SETS = (SET, SECOND)
-QUESTIONS = [question for questions in SETS for question in questions.questions]
+THIRD = load_questions(FOLDER / "v3.jsonl")
+SETS = (SET, SECOND, THIRD)
+# Each question once: a later set repeats questions of an earlier one under their IDs.
+QUESTIONS = list(
+    {question.id: question for questions in SETS for question in questions.questions}.values()
+)
+# The questions of set v2 that set v3 asks in other words, under new IDs.
+REWORDED = {
+    "sum-divorces-2024-2025": "sum-divorces-duration-2024-2025",
+    "ranking-age-highest-wage-2025": "ranking-age-group-highest-wage-2025",
+    "false-premise-women-earn-more-2025": "false-premise-women-earn-more-gap-2025",
+}
 
 
 def tables(questions: QuestionSet) -> set[str]:
@@ -77,10 +87,25 @@ def test_the_second_set_asks_about_other_tables_and_says_why_it_refuses() -> Non
         assert question.expected.reason, question.id
 
 
-def test_question_ids_are_unique_across_the_sets() -> None:
-    ids = [question.id for question in QUESTIONS]
+def test_a_question_id_means_the_same_question_in_every_set() -> None:
+    seen: dict[str, Question] = {}
+    for questions in SETS:
+        for question in questions.questions:
+            assert seen.setdefault(question.id, question) == question, question.id
 
-    assert len(ids) == len(set(ids))
+
+def test_the_third_set_is_the_second_with_three_questions_reworded() -> None:
+    second = {question.id: question for question in SECOND.questions}
+    third = {question.id: question for question in THIRD.questions}
+
+    assert THIRD.version == "v3"
+    assert set(third) == (set(second) - set(REWORDED)) | set(REWORDED.values())
+    for old, new in REWORDED.items():
+        before, after = second[old], third[new]
+        # The words change; the reference plan, its numbers and the category do not.
+        assert after.text != before.text
+        assert after.expected == before.expected
+        assert (after.language, after.category) == (before.language, before.category)
 
 
 @pytest.mark.parametrize(
