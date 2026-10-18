@@ -295,14 +295,21 @@ def hold(holdings: Holdings, evidence: Evidence) -> None:
     name = evidence.evidence_id
     if isinstance(evidence, CalculationEvidence):
         for step in evidence.result.steps:
+            # A value in a unit such as 1000 personer is compared in persons (item 6).
+            base = Fraction(10) ** step.unit.scale
             if step.exact is not None:
                 where = f"step {step.name}"
-                candidate = Candidate(Fraction(step.exact), step.unit.kind, where, step=step.name)
+                exact = Fraction(step.exact) * base
+                candidate = Candidate(exact, step.unit.kind, where, step=step.name)
                 holdings.values.append((name, candidate))
             for cell in step.ranked:
                 where = f"step {step.name}, {', '.join(cell.codes)}"
                 candidate = Candidate(
-                    Fraction(cell.value), step.unit.kind, where, cell=cell.codes, step=step.name
+                    Fraction(cell.value) * base,
+                    step.unit.kind,
+                    where,
+                    cell=cell.codes,
+                    step=step.name,
                 )
                 holdings.values.append((name, candidate))
         return
@@ -317,9 +324,10 @@ def hold(holdings: Holdings, evidence: Evidence) -> None:
             if cell.value is None:
                 continue
             base = units.get(cell.codes[contents[0]]) if contents else None
-            kind = unit_named(base).kind
+            unit = unit_named(base)
             where = f"cell {', '.join(cell.codes)}"
-            candidate = Candidate(Fraction(cell.value), kind, where, cell=cell.codes)
+            exact = Fraction(cell.value) * Fraction(10) ** unit.scale
+            candidate = Candidate(exact, unit.kind, where, cell=cell.codes)
             holdings.values.append((name, candidate))
         for dimension in result.dimensions:
             for value in dimension.values:

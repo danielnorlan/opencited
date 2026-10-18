@@ -63,7 +63,15 @@ def expected_number(result: CalculationResult, ref: NumberRef) -> ExpectedNumber
                 f"step {ref.step!r} has {len(cells)} cells at place {ref.position}, not one"
             )
         exact = str(Fraction(cells[0].value))
-    return ExpectedNumber(step=ref.step, exact=exact, kind=step.unit.kind, decimals=ref.decimals)
+    # A value in a unit such as 1000 personer is expected in persons, so the decimals
+    # that the question asks for in thousands become decimals of persons.
+    scale = step.unit.scale
+    return ExpectedNumber(
+        step=ref.step,
+        exact=str(Fraction(exact) * Fraction(10) ** scale),
+        kind=step.unit.kind,
+        decimals=ref.decimals - scale,
+    )
 
 
 def label_of(

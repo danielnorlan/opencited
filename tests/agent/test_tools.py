@@ -12,6 +12,7 @@ import json
 import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, cast
 
@@ -20,7 +21,7 @@ import pytest
 from mcp import Client
 from mcp.types import CallToolResult, Tool
 from recorded import FIXTURES
-from snapshotting import CATCH, POPULATION, SYMBOLS
+from snapshotting import CATCH, POPULATION, SYMBOLS, population, retrieve
 
 from opencited.agent import tools
 from opencited.agent.model import ToolCall, ToolSchema, tool_param
@@ -31,16 +32,19 @@ from opencited.agent.tools import (
     Toolbox,
     ToolOutcome,
     calculate_schema,
+    calculation_view,
+    formatted,
+    source_view,
 )
 from opencited.calc.engine import Engine
 from opencited.calc.plan import Plan, plan_schema
 from opencited.calc.result import CalculationResult
-from opencited.gate import CalculationEvidence, Evidence, SourceEvidence
+from opencited.gate import CalculationEvidence, Evidence, SourceEvidence, check
 from opencited.http import make_client
 from opencited.http.replay import replay_transport
 from opencited.mcp import build_server
 from opencited.snapshots import SnapshotStore
-from opencited.sources import Language, QueryResult, SearchResult, TableMetadata
+from opencited.sources import Language, QueryResult, SearchResult, TableMetadata, Unit
 from opencited.sources.ssb import BASE_URL, SsbClient
 from opencited.values import NO_BREAK_SPACE, exact_text, format_number
 
@@ -680,3 +684,86 @@ def test_notes_of_a_value_stay_beside_the_compact_values() -> None:
         "notes": [],
         "time": False,
     }
+
+
+@pytest.mark.parametrize(
+    ("value", "scale", "norwegian", "english"),
+    [
+        ("1382", 3, "1\u00a0382\u00a0000", "1,382,000"),
+        ("2.5", 3, "2500", "2500"),
+        ("5511334", 6, "5\u00a0511\u00a0334 millioner", "5,511,334 million"),
+        ("3.25", 9, "3,25 milliarder", "3.25 billion"),
+        ("104.0", 0, "104,0", "104.0"),
+        # More digits than the default decimal context keeps.
+        ("1" * 30, 3, None, "111,111,111,111,111,111,111,111,111,111,000"),
+    ],
+)
+def test_a_value_is_formatted_in_its_base_unit(
+    value: str, scale: int, norwegian: str | None, english: str
+) -> None:
+    if norwegian is not None:
+        assert formatted(Decimal(value), scale, "no") == norwegian
+    assert formatted(Decimal(value), scale, "en") == english
+
+
+def test_a_query_result_in_thousands_reaches_the_model_in_persons() -> None:
+    selection = {
+        "Alder": ["15-74"],
+        "Kjonn": ["2", "1"],
+        "ContentsCode": ["Sysselsatte"],
+        "Tid": ["2026K2"],
+    }
+    result = retrieve("03778", selection, "no").result
+
+    view = source_view("E1", result, "no")
+
+    cells = cast("list[dict[str, Any]]", view["observations"])
+    assert [(cell["value"], cell["formatted"]) for cell in cells] == [
+        ("1382", "1\u00a0382\u00a0000"),
+        ("1553", "1\u00a0553\u00a0000"),
+    ]
+
+
+def test_a_per_cent_cell_reaches_the_model_as_written_whatever_its_unit_s_name_holds() -> None:
+    unit = Unit(code="Personer", base="Prosent av BNP, mill.", decimals=0)
+    result = population().result.model_copy(update={"units": (unit,)})
+
+    view = source_view("E1", result, "en")
+
+    cells = cast("list[dict[str, Any]]", view["observations"])
+    shown = [(cell["value"], cell["formatted"]) for cell in cells if cell.get("value")]
+    assert shown
+    assert all(formatted == format_number(Decimal(value), "en") for value, formatted in shown)
+
+
+def test_a_rounded_mean_in_thousands_reaches_the_model_in_a_form_the_gate_passes(
+    tmp_path: Path,
+) -> None:
+    # 03778 gives 1382 and 1553 in 1 000 personer; their mean, 1467.5, rounds to 1468.
+    selection = {
+        "Alder": ["15-74"],
+        "Kjonn": ["2", "1"],
+        "ContentsCode": ["Sysselsatte"],
+        "Tid": ["2026K2"],
+    }
+    store = SnapshotStore(tmp_path)
+    retrieval = retrieve("03778", selection, "no")
+    snapshot = store.write(retrieval).name
+    step = {
+        "name": "mean",
+        "operation": "mean",
+        "snapshot": snapshot,
+        "selection": selection,
+        "decimals": 0,
+    }
+    result = Engine(store).run(Plan.model_validate_json(json.dumps({"steps": [step]})))
+    assert result.step("mean").value == Decimal(1468)
+
+    view = calculation_view("C1", result, {}, "no")
+    shown = cast("list[dict[str, Any]]", view["steps"])[0]["formatted"]
+    report = check(
+        f"I snitt var {shown} personer sysselsatt [C1].", "no", [CalculationEvidence("C1", result)]
+    )
+
+    assert shown == "1\u00a0467\u00a0500"
+    assert report.passed, report.text()

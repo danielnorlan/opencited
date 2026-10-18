@@ -11,9 +11,10 @@ and ranks cells; all arithmetic runs on exact rational numbers in
 from __future__ import annotations
 
 import math
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Decimal, localcontext
 from fractions import Fraction
 from typing import cast
 
@@ -59,6 +60,23 @@ MAX_CELLS = 5000
 # a name such as "Prosent av befolkningen" counts too.
 PER_CENT = ("prosent", "per cent", "percent", "%")
 PERCENTAGE_POINTS = ("prosentpoeng", "percentage point")
+# A unit's own multiplier: a power of ten of a thousand or more that stands as a token
+# of its own, not the base of an index such as 1998=1000 or the end of a range such as
+# 0-1000, or a scale word of spec 0003. A power above 10**30 is none: no unit names one,
+# and a result unit's scale stops there.
+UNIT_NUMBER = re.compile(
+    r"(?<![\w.,=\-\u2013\u2014])(?<!= )(?<!- )(?<!\u2013 )"
+    r"([0-9]{1,3}(?: [0-9]{3})+|[0-9]+)(?!\w|[.,][0-9])"
+)
+POWER_OF_TEN = re.compile(r"10{3,30}")
+SCALE_WORDS = (
+    (9, ("mrd.", "milliard", "milliarder", "billion", "billions")),
+    (6, ("mill.", "million", "millioner", "millions")),
+    (3, ("tusen", "thousand", "thousands")),
+)
+# What follows "per", "pr." or "/" in a unit names a rate, such as "Fødte per tusen
+# innbyggere" or "Antall/1000 innbyggere".
+PER = re.compile(r"(?<!\w)(?:per|pr\.?)(?!\w)|/")
 FLOATING = frozenset({"DOUBLE", "FLOAT", "REAL"})
 # An arithmetic line lists the cells of a sum or a mean when there are at most this many.
 LISTED = 10
@@ -92,6 +110,34 @@ class Row:
     unit: str | None
 
 
+def unit_scale(name: str | None) -> int:
+    """Return the power of ten that a unit's name multiplies a value by.
+
+    A name names a multiplier when it holds a power of ten of a thousand or more, as
+    "1000 personer", "1 000 kr" and "NOK 1000" do, or a scale word, as "mill. kr" and
+    "NOK million" do. What follows "per", "pr." or "/" names a rate, so "per 1000" and
+    "Antall/1000 innbyggere" name none, a number in an index base or a range, as in
+    "1998 = 1000" or "0-1000", is none, and other names, such as "kg", name none
+    (spec 0003, Matching values, item 6). A per cent unit has none either;
+    ``unit_named`` sees to that.
+    """
+    if name is None:
+        return 0
+    word = " ".join(name.replace("\u00a0", " ").casefold().split())
+    word = PER.split(word, maxsplit=1)[0]
+    for match in UNIT_NUMBER.finditer(word):
+        digits = match[1].replace(" ", "")
+        if POWER_OF_TEN.fullmatch(digits):
+            return len(digits) - 1
+    for scale, words in SCALE_WORDS:
+        for item in words:
+            # A word with a point may run on into the unit, as in "mill.kr".
+            end = "" if item.endswith(".") else r"(?!\w)"
+            if re.search(rf"(?<![\w.]){re.escape(item)}{end}", word):
+                return scale
+    return 0
+
+
 def unit_named(name: str | None) -> ResultUnit:
     """Return the unit of a cell, which is per cent or percentage points when it says so."""
     word = name.lower() if name is not None else ""
@@ -99,13 +145,20 @@ def unit_named(name: str | None) -> ResultUnit:
         return ResultUnit(kind="percentage points", name=name)
     if any(percent in word for percent in PER_CENT):
         return ResultUnit(kind="per cent", name=name)
-    return ResultUnit(kind="amount", name=name)
+    return ResultUnit(kind="amount", name=name, scale=unit_scale(name))
 
 
 def same_unit(left: ResultUnit, right: ResultUnit) -> bool:
     if left.kind != right.kind:
         return False
     return left.kind != "amount" or left.name == right.name
+
+
+def base_text(value: Decimal, scale: int) -> str:
+    """Return a value in its unit's base, as a calculation line writes it."""
+    with localcontext() as context:
+        context.prec = 100
+        return text(value.scaleb(scale))
 
 
 def text(value: Decimal) -> str:
@@ -439,6 +492,17 @@ class Runner:
         first, second = (self.outcomes[name] for name in names)
         a, b = Fraction(first.value), Fraction(second.value)
         one, two = text(first.value), text(second.value)
+        if isinstance(step, ChangePercentStep | SharePercentStep) and (
+            first.unit.scale != second.unit.scale
+        ):
+            # A per cent of two amounts in units of different powers of ten, such as
+            # 1000 personer and personer, is taken of both in the base unit.
+            a = a * Fraction(10) ** first.unit.scale
+            b = b * Fraction(10) ** second.unit.scale
+            one, two = (
+                base_text(first.value, first.unit.scale),
+                base_text(second.value, second.unit.scale),
+            )
         decimals: int | None = None
         try:
             match step:
@@ -500,8 +564,9 @@ class Runner:
 
 
 def product(left: ResultUnit, right: ResultUnit, operator: str) -> ResultUnit:
-    """Return the unit of a product or a quotient of two results."""
-    return ResultUnit(kind="amount", name=f"{left.text()} {operator} {right.text()}")
+    """Return the unit of a product or a quotient of two results, with its scale."""
+    scale = left.scale + right.scale if operator == TIMES else left.scale - right.scale
+    return ResultUnit(kind="amount", name=f"{left.text()} {operator} {right.text()}", scale=scale)
 
 
 def check_types(cursor: duckdb.DuckDBPyConnection, step: str) -> None:
