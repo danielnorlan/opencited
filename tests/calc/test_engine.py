@@ -1007,10 +1007,23 @@ def test_a_snapshot_with_floating_point_values_is_refused_before_any_step(
         ("NOK millions", 6),
         ("thousands of persons", 3),
         ("mill. kr per innbygger", 6),
+        ("1000 kr/år", 3),
+        ("Personer, 1000, sesongjustert", 3),
+        ("Kr, 1 000.", 3),
+        ("1 000 000 kr", 6),
         # A rate, and units that name no multiplier.
         ("per 1000", 0),
         ("per million", 0),
         ("Fødte per tusen innbyggere", 0),
+        ("Døde pr. 1000 fødte", 0),
+        ("Antall/1000 innbyggere", 0),
+        ("Indeks (1998 = 1000)", 0),
+        ("Poeng (0-1000)", 0),
+        ("Poeng (0 - 1000)", 0),
+        ("Poeng (0 \u2013 1000)", 0),
+        ("1000,5 kr", 0),
+        # A power that no result unit can hold is no multiplier.
+        ("1" + "0" * 31 + " kr", 0),
         ("indeks (2015=100)", 0),
         ("indeks (1998=1000)", 0),
         ("100=2015", 0),
@@ -1125,3 +1138,27 @@ def test_a_per_cent_of_two_scales_is_taken_in_the_base_unit(store: SnapshotStore
 
     assert result.step("share").exact == "100000"
     assert result.step("growth").exact == "99900"
+
+
+def test_a_per_cent_of_a_negative_scale_is_exact(store: SnapshotStore) -> None:
+    # persons / 1000 personer has the scale -3: the quotient 1 is a thousandth.
+    units = [Unit(code="Personer", base="1000 personer", decimals=0)]
+    thousands = store.write(altered(population(), units=units)).name
+    persons = store.write(population()).name
+    result = run(
+        store,
+        value("big", thousands, "2026"),
+        value("small", persons, "2026"),
+        {"name": "quotient", "operation": "divide", "left": "small", "right": "big", "decimals": 3},
+        {
+            "name": "growth",
+            "operation": "change_percent",
+            "old": "quotient",
+            "new": "small",
+            "decimals": 0,
+        },
+    )
+    small = Fraction(result.step("small").exact or "0")
+
+    assert result.step("quotient").unit.scale == -3
+    assert result.step("growth").exact == str((1000 * small - 1) * 100)

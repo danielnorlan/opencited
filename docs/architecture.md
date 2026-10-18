@@ -349,20 +349,23 @@ ties away from zero to the decimals written, equals the number; for a calculatio
 is the step's exact result, and the values of the cells it ranked count too. A value
 whose unit names a multiplier is compared in the base unit:
 `opencited.calc.engine.unit_scale` reads a power of ten of a thousand or more that
-stands on its own, as in "1 000 personer" and "NOK 1000" but not in "2015=100", or a
-scale word, as in "mill. kr" and "NOK million". It reads only what comes before
-"per", so "per 1000" and "Fødte per tusen innbyggere" are rates without a multiplier,
-and a per cent unit has none whatever its name holds. So 138 in "1000 personer"
-matches "138 000" and "138 tusen" and fails "138". The result unit of a calculation
-carries the power of ten: a sum or a difference keeps it, a product adds and a
-quotient subtracts the two, a per cent result has none, and a change or a share of
-two values whose units differ in it is taken in the base unit. The model gets such
-values formatted in the base
-unit, as "138 000" or "5 511 334 millioner", and the prompt tells it to write them
-so. A number with a percent word matches only per cent values, one with a percentage
-point word only percentage point values, and any other number only values that are
-not per cent, so the sign and the unit must both fit. A citation of an evidence ID that the run does
-not have fails. The rule checks which value a number may be and leaves what the number
+stands on its own, as in "1 000 personer" and "NOK 1000" but not in an index base or
+a range such as "1998=1000" or "0-1000", or a scale word in the singular or the
+plural, as in "mill. kr" and "NOK millions". It reads only what comes before "per",
+"pr." or "/", so "per 1000" and "Antall/1000 innbyggere" are rates without a
+multiplier, and `unit_named` gives a per cent unit none whatever its name holds. So
+138 in "1000 personer" matches "138 000" and "138 tusen" and fails "138". The result
+unit of a calculation carries the power of ten: a sum or a difference keeps it, a
+product adds and a quotient subtracts the two, a per cent result has none, and a
+change or a share of two values whose units differ in it is taken in the base unit.
+The model gets such values formatted in the base unit, as "138 000" or "5 511 334
+millioner", and a rounded result whose power of ten has no scale word formatted from
+its exact value, as "1 467 500" for a mean of 1467.5 thousand rounded to 1468, so the
+gate passes what the model copies; the prompt tells it to write them so. A number
+with a percent word matches only per cent values, one with a percentage point word
+only percentage point values, and any other number only values that are not per
+cent, so the sign and the unit must both fit. A citation of an evidence ID that the
+run does not have fails. The rule checks which value a number may be and leaves what the number
 refers to to the evaluation suite, so `5.6 million in 2026` passes when any cited
 value rounds to 5.6 million.
 

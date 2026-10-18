@@ -61,16 +61,22 @@ MAX_CELLS = 5000
 PER_CENT = ("prosent", "per cent", "percent", "%")
 PERCENTAGE_POINTS = ("prosentpoeng", "percentage point")
 # A unit's own multiplier: a power of ten of a thousand or more that stands as a token
-# of its own, not the base of an index such as 1998=1000, or a scale word of spec 0003.
-UNIT_NUMBER = re.compile(r"(?<![\w.,=])([0-9]{1,3}(?: [0-9]{3})+|[0-9]+)(?![\w.,])")
-POWER_OF_TEN = re.compile(r"10{3,}")
+# of its own, not the base of an index such as 1998=1000 or the end of a range such as
+# 0-1000, or a scale word of spec 0003. A power above 10**30 is none: no unit names one,
+# and a result unit's scale stops there.
+UNIT_NUMBER = re.compile(
+    r"(?<![\w.,=\-\u2013\u2014])(?<!= )(?<!- )(?<!\u2013 )"
+    r"([0-9]{1,3}(?: [0-9]{3})+|[0-9]+)(?!\w|[.,][0-9])"
+)
+POWER_OF_TEN = re.compile(r"10{3,30}")
 SCALE_WORDS = (
     (9, ("mrd.", "milliard", "milliarder", "billion", "billions")),
     (6, ("mill.", "million", "millioner", "millions")),
     (3, ("tusen", "thousand", "thousands")),
 )
-# What follows "per" in a unit names a rate, such as "Fødte per tusen innbyggere".
-PER = re.compile(r"(?<!\w)per(?!\w)")
+# What follows "per", "pr." or "/" in a unit names a rate, such as "Fødte per tusen
+# innbyggere" or "Antall/1000 innbyggere".
+PER = re.compile(r"(?<!\w)(?:per|pr\.?)(?!\w)|/")
 FLOATING = frozenset({"DOUBLE", "FLOAT", "REAL"})
 # An arithmetic line lists the cells of a sum or a mean when there are at most this many.
 LISTED = 10
@@ -109,10 +115,11 @@ def unit_scale(name: str | None) -> int:
 
     A name names a multiplier when it holds a power of ten of a thousand or more, as
     "1000 personer", "1 000 kr" and "NOK 1000" do, or a scale word, as "mill. kr" and
-    "NOK million" do. What follows "per" names a rate, so "per 1000" and "Fødte per
-    tusen innbyggere" name none, and nor do other names, such as "kg" (spec 0003,
-    Matching values, item 6). A per cent unit has none either; ``unit_named`` sees to
-    that.
+    "NOK million" do. What follows "per", "pr." or "/" names a rate, so "per 1000" and
+    "Antall/1000 innbyggere" name none, a number in an index base or a range, as in
+    "1998 = 1000" or "0-1000", is none, and other names, such as "kg", name none
+    (spec 0003, Matching values, item 6). A per cent unit has none either;
+    ``unit_named`` sees to that.
     """
     if name is None:
         return 0
@@ -490,7 +497,8 @@ class Runner:
         ):
             # A per cent of two amounts in units of different powers of ten, such as
             # 1000 personer and personer, is taken of both in the base unit.
-            a, b = a * 10**first.unit.scale, b * 10**second.unit.scale
+            a = a * Fraction(10) ** first.unit.scale
+            b = b * Fraction(10) ** second.unit.scale
             one, two = (
                 base_text(first.value, first.unit.scale),
                 base_text(second.value, second.unit.scale),

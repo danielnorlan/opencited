@@ -32,13 +32,14 @@ from opencited.agent.tools import (
     Toolbox,
     ToolOutcome,
     calculate_schema,
+    calculation_view,
     formatted,
     source_view,
 )
 from opencited.calc.engine import Engine
 from opencited.calc.plan import Plan, plan_schema
 from opencited.calc.result import CalculationResult
-from opencited.gate import CalculationEvidence, Evidence, SourceEvidence
+from opencited.gate import CalculationEvidence, Evidence, SourceEvidence, check
 from opencited.http import make_client
 from opencited.http.replay import replay_transport
 from opencited.mcp import build_server
@@ -733,3 +734,36 @@ def test_a_per_cent_cell_reaches_the_model_as_written_whatever_its_unit_s_name_h
     shown = [(cell["value"], cell["formatted"]) for cell in cells if cell.get("value")]
     assert shown
     assert all(formatted == format_number(Decimal(value), "en") for value, formatted in shown)
+
+
+def test_a_rounded_mean_in_thousands_reaches_the_model_in_a_form_the_gate_passes(
+    tmp_path: Path,
+) -> None:
+    # 03778 gives 1382 and 1553 in 1 000 personer; their mean, 1467.5, rounds to 1468.
+    selection = {
+        "Alder": ["15-74"],
+        "Kjonn": ["2", "1"],
+        "ContentsCode": ["Sysselsatte"],
+        "Tid": ["2026K2"],
+    }
+    store = SnapshotStore(tmp_path)
+    retrieval = retrieve("03778", selection, "no")
+    snapshot = store.write(retrieval).name
+    step = {
+        "name": "mean",
+        "operation": "mean",
+        "snapshot": snapshot,
+        "selection": selection,
+        "decimals": 0,
+    }
+    result = Engine(store).run(Plan.model_validate_json(json.dumps({"steps": [step]})))
+    assert result.step("mean").value == Decimal(1468)
+
+    view = calculation_view("C1", result, {}, "no")
+    shown = cast("list[dict[str, Any]]", view["steps"])[0]["formatted"]
+    report = check(
+        f"I snitt var {shown} personer sysselsatt [C1].", "no", [CalculationEvidence("C1", result)]
+    )
+
+    assert shown == "1\u00a0467\u00a0500"
+    assert report.passed, report.text()

@@ -21,6 +21,7 @@ import unicodedata
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal, localcontext
+from fractions import Fraction
 from typing import Any, Literal, cast
 
 import anyio.to_thread
@@ -30,9 +31,10 @@ from mcp.types import CallToolResult, TextContent, Tool
 from pydantic import ValidationError
 
 from opencited.agent.model import ToolCall, ToolSchema
+from opencited.calc.arithmetic import round_away
 from opencited.calc.engine import CalculationError, Engine, unit_named
 from opencited.calc.plan import Plan, plan_schema
-from opencited.calc.result import CalculationResult
+from opencited.calc.result import CalculationResult, StepResult
 from opencited.gate import CalculationEvidence, Evidence, SourceEvidence
 from opencited.snapshots import SnapshotError, SnapshotStore
 from opencited.sources import Language, QueryResult, SearchResult, TableMetadata
@@ -265,6 +267,21 @@ def formatted(value: Decimal, scale: int, language: Language) -> str:
     return format_number(base, language)
 
 
+def step_formatted(step: StepResult, language: Language) -> str:
+    """Return a step's result for the model to write, in a form the gate accepts.
+
+    A rounded result in a unit whose power of ten has no scale word is written from its
+    exact result: a mean of 1467.5 in 1000 personer, rounded to 1468, would otherwise
+    read 1 468 000, which the gate compares with 1 467 500 and blocks.
+    """
+    value = cast("Decimal", step.value)
+    scale = step.unit.scale
+    if step.decimals is None or step.exact is None or scale == 0 or scale in SCALE_WORDS:
+        return formatted(value, scale, language)
+    exact = Fraction(step.exact) * Fraction(10) ** scale
+    return format_number(round_away(exact, max(0, step.decimals - scale)), language)
+
+
 def source_view(
     evidence_id: str, result: QueryResult | TableMetadata | SearchResult, language: Language
 ) -> dict[str, Any]:
@@ -301,7 +318,7 @@ def calculation_view(
         if step.name in reads:
             view["read"] = reads[step.name]
         if step.value is not None:
-            view["formatted"] = formatted(step.value, step.unit.scale, language)
+            view["formatted"] = step_formatted(step, language)
         cells = cast("list[dict[str, Any]]", view["ranked"])
         for cell, ranked in zip(cells, step.ranked, strict=True):
             cell["formatted"] = formatted(ranked.value, step.unit.scale, language)
