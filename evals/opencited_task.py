@@ -53,6 +53,7 @@ from opencited.snapshots import SnapshotStore
 from opencited.sources.ssb import BASE_URL, SsbClient
 
 ROOT = Path(__file__).resolve().parent
+REPOSITORY = ROOT.parent
 QUESTIONS = ROOT / "questions" / "v1.jsonl"
 RUNS = ROOT / "runs"
 # The bridge answers requests for the model "inspect" without sending them anywhere,
@@ -92,6 +93,16 @@ def kept(outcome: Outcome) -> object:
 def outcome_of(stored: object) -> Outcome:
     """Read an outcome back from a sample's store; the strict models read it as JSON."""
     return OUTCOMES.validate_json(json.dumps(stored))
+
+
+def from_repository(path: str) -> Path:
+    """Return a path given to the task, read from the repository's root when relative.
+
+    Inspect runs a task from the task file's folder, so a relative path such as
+    ``evals/questions/v2.jsonl`` would otherwise not be found.
+    """
+    given = Path(path)
+    return given if given.is_absolute() else REPOSITORY / given
 
 
 def bridge_config(
@@ -216,19 +227,21 @@ def opencited(
     temperature: Setting | None = None,
     seed: int | None = None,
 ) -> Task:
-    """The first question set, answered by the agent and scored without a model.
+    """A question set, v1 unless ``questions`` names another, answered by the agent and
+    scored without a model.
 
     Each run keeps its snapshots and SSB's responses in a folder of its own under
-    ``run_dir``, so no run reads data that an earlier one fetched.
+    ``run_dir``, so no run reads data that an earlier one fetched. Relative paths are
+    read from the repository's root.
     """
-    question_set = load_questions(Path(questions))
+    question_set = load_questions(from_repository(questions))
     prices = Prices(
         input=decimal_of("price_input", price_input),
         output=decimal_of("price_output", price_output),
     )
     limits = Limits(cost=decimal_of("max_cost", max_cost))
     config = bridge_config(temperature=temperature, seed=seed, prices=prices, limits=limits)
-    folder = Path(run_dir) / datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    folder = from_repository(run_dir) / datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     return Task(
         dataset=MemoryDataset(samples(question_set)),
         solver=answer_questions(question_set, config, folder),
