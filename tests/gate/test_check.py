@@ -643,3 +643,15 @@ def test_a_calculation_carries_the_multiplier_and_a_share_has_none(tmp_path: Pat
     assert passes("Til sammen var 2 935 000 sysselsatt [C1].")
     assert not passes("Til sammen var 2 935 sysselsatt [C1].")
     assert passes("Kvinnene var 47,1 prosent av de sysselsatte [C1].")
+
+
+def test_a_per_cent_cell_is_compared_as_written_whatever_its_unit_s_name_holds() -> None:
+    unit = Unit(code="Personer", base="Prosent av BNP, mill.", decimals=0)
+    result = population().result.model_copy(update={"units": (unit,)})
+    cell = next(item for item in result.observations if item.value is not None)
+    assert cell.value is not None
+    written = format_number(cell.value, "en")
+
+    report = check(f"It was {written} per cent [E1].", "en", [SourceEvidence("E1", result)])
+
+    assert report.passed, report.text()

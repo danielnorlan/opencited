@@ -28,7 +28,7 @@ from opencited.calc import (
     parse_plan,
     plan_schema,
 )
-from opencited.calc.engine import check_types, locked, unit_scale
+from opencited.calc.engine import check_types, locked, unit_named, unit_scale
 from opencited.snapshots import MANIFEST, OBSERVATIONS, SnapshotStore
 from opencited.sources import Unit
 
@@ -1000,9 +1000,21 @@ def test_a_snapshot_with_floating_point_values_is_refused_before_any_step(
         ("NOK million", 6),
         ("mrd. kr", 9),
         ("tusen kroner", 3),
+        ("NOK 1000", 3),
+        ("NOK 1 000", 3),
+        ("Antall (1000)", 3),
+        ("mill.kr", 6),
+        ("NOK millions", 6),
+        ("thousands of persons", 3),
+        ("mill. kr per innbygger", 6),
         # A rate, and units that name no multiplier.
         ("per 1000", 0),
         ("per million", 0),
+        ("Fødte per tusen innbyggere", 0),
+        ("indeks (2015=100)", 0),
+        ("indeks (1998=1000)", 0),
+        ("100=2015", 0),
+        ("100 personer", 0),
         ("12 måneder", 0),
         ("Lovbrudd per 1000 innbyggere", 0),
         ("personer", 0),
@@ -1075,3 +1087,41 @@ def test_a_quotient_of_two_units_subtracts_their_scales(store: SnapshotStore) ->
     # kg per 1000 personer is a thousandth of kg per person, and the other way round.
     assert result.step("per_person").unit.scale == -3
     assert result.step("persons_per_kg").unit.scale == 3
+
+
+def test_a_per_cent_unit_has_no_multiplier_whatever_its_name_holds() -> None:
+    assert unit_named("Prosent av BNP, mill.").model_dump() == {
+        "kind": "per cent",
+        "name": "Prosent av BNP, mill.",
+        "scale": 0,
+    }
+
+
+def test_a_per_cent_of_two_scales_is_taken_in_the_base_unit(store: SnapshotStore) -> None:
+    # The same cell, once in 1000 personer and once in persons: the first is a thousand
+    # times the second.
+    units = [Unit(code="Personer", base="1000 personer", decimals=0)]
+    thousands = store.write(altered(population(), units=units)).name
+    persons = store.write(population()).name
+    result = run(
+        store,
+        value("big", thousands, "2026"),
+        value("small", persons, "2026"),
+        {
+            "name": "share",
+            "operation": "share_percent",
+            "part": "big",
+            "total": "small",
+            "decimals": 0,
+        },
+        {
+            "name": "growth",
+            "operation": "change_percent",
+            "old": "small",
+            "new": "big",
+            "decimals": 0,
+        },
+    )
+
+    assert result.step("share").exact == "100000"
+    assert result.step("growth").exact == "99900"

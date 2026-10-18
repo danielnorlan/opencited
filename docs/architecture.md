@@ -348,12 +348,16 @@ when a cited result holds a value `v` that, divided by any scale word and rounde
 ties away from zero to the decimals written, equals the number; for a calculation, `v`
 is the step's exact result, and the values of the cells it ranked count too. A value
 whose unit names a multiplier is compared in the base unit:
-`opencited.calc.engine.unit_scale` reads a leading power of ten, as in "1 000
-personer", or a scale word, as in "mill. kr" and "NOK million", and gives no
-multiplier to a rate such as "per 1000". So 138 in "1000 personer" matches "138 000"
-and "138 tusen" and fails "138". The result unit of a calculation carries the power
-of ten: a sum or a difference keeps it, a product adds and a quotient subtracts the
-two, and a per cent result has none. The model gets such values formatted in the base
+`opencited.calc.engine.unit_scale` reads a power of ten of a thousand or more that
+stands on its own, as in "1 000 personer" and "NOK 1000" but not in "2015=100", or a
+scale word, as in "mill. kr" and "NOK million". It reads only what comes before
+"per", so "per 1000" and "Fødte per tusen innbyggere" are rates without a multiplier,
+and a per cent unit has none whatever its name holds. So 138 in "1000 personer"
+matches "138 000" and "138 tusen" and fails "138". The result unit of a calculation
+carries the power of ten: a sum or a difference keeps it, a product adds and a
+quotient subtracts the two, a per cent result has none, and a change or a share of
+two values whose units differ in it is taken in the base unit. The model gets such
+values formatted in the base
 unit, as "138 000" or "5 511 334 millioner", and the prompt tells it to write them
 so. A number with a percent word matches only per cent values, one with a percentage
 point word only percentage point values, and any other number only values that are

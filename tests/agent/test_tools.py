@@ -21,7 +21,7 @@ import pytest
 from mcp import Client
 from mcp.types import CallToolResult, Tool
 from recorded import FIXTURES
-from snapshotting import CATCH, POPULATION, SYMBOLS, retrieve
+from snapshotting import CATCH, POPULATION, SYMBOLS, population, retrieve
 
 from opencited.agent import tools
 from opencited.agent.model import ToolCall, ToolSchema, tool_param
@@ -43,7 +43,7 @@ from opencited.http import make_client
 from opencited.http.replay import replay_transport
 from opencited.mcp import build_server
 from opencited.snapshots import SnapshotStore
-from opencited.sources import Language, QueryResult, SearchResult, TableMetadata
+from opencited.sources import Language, QueryResult, SearchResult, TableMetadata, Unit
 from opencited.sources.ssb import BASE_URL, SsbClient
 from opencited.values import NO_BREAK_SPACE, exact_text, format_number
 
@@ -693,12 +693,15 @@ def test_notes_of_a_value_stay_beside_the_compact_values() -> None:
         ("5511334", 6, "5\u00a0511\u00a0334 millioner", "5,511,334 million"),
         ("3.25", 9, "3,25 milliarder", "3.25 billion"),
         ("104.0", 0, "104,0", "104.0"),
+        # More digits than the default decimal context keeps.
+        ("1" * 30, 3, None, "111,111,111,111,111,111,111,111,111,111,000"),
     ],
 )
 def test_a_value_is_formatted_in_its_base_unit(
-    value: str, scale: int, norwegian: str, english: str
+    value: str, scale: int, norwegian: str | None, english: str
 ) -> None:
-    assert formatted(Decimal(value), scale, "no") == norwegian
+    if norwegian is not None:
+        assert formatted(Decimal(value), scale, "no") == norwegian
     assert formatted(Decimal(value), scale, "en") == english
 
 
@@ -718,3 +721,15 @@ def test_a_query_result_in_thousands_reaches_the_model_in_persons() -> None:
         ("1382", "1\u00a0382\u00a0000"),
         ("1553", "1\u00a0553\u00a0000"),
     ]
+
+
+def test_a_per_cent_cell_reaches_the_model_as_written_whatever_its_unit_s_name_holds() -> None:
+    unit = Unit(code="Personer", base="Prosent av BNP, mill.", decimals=0)
+    result = population().result.model_copy(update={"units": (unit,)})
+
+    view = source_view("E1", result, "en")
+
+    cells = cast("list[dict[str, Any]]", view["observations"])
+    shown = [(cell["value"], cell["formatted"]) for cell in cells if cell.get("value")]
+    assert shown
+    assert all(formatted == format_number(Decimal(value), "en") for value, formatted in shown)

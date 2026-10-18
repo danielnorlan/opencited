@@ -14,7 +14,7 @@ import math
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Decimal, localcontext
 from fractions import Fraction
 from typing import cast
 
@@ -60,14 +60,17 @@ MAX_CELLS = 5000
 # a name such as "Prosent av befolkningen" counts too.
 PER_CENT = ("prosent", "per cent", "percent", "%")
 PERCENTAGE_POINTS = ("prosentpoeng", "percentage point")
-# A unit's own multiplier: a leading power of ten, or the scale words of spec 0003.
-LEADING_NUMBER = re.compile(r"^([0-9]{1,3}(?: [0-9]{3})*|[0-9]+)(?![0-9.,])")
-POWER_OF_TEN = re.compile(r"10*")
+# A unit's own multiplier: a power of ten of a thousand or more that stands as a token
+# of its own, not the base of an index such as 1998=1000, or a scale word of spec 0003.
+UNIT_NUMBER = re.compile(r"(?<![\w.,=])([0-9]{1,3}(?: [0-9]{3})+|[0-9]+)(?![\w.,])")
+POWER_OF_TEN = re.compile(r"10{3,}")
 SCALE_WORDS = (
-    (9, ("mrd.", "milliard", "milliarder", "billion")),
-    (6, ("mill.", "million", "millioner")),
-    (3, ("tusen", "thousand")),
+    (9, ("mrd.", "milliard", "milliarder", "billion", "billions")),
+    (6, ("mill.", "million", "millioner", "millions")),
+    (3, ("tusen", "thousand", "thousands")),
 )
+# What follows "per" in a unit names a rate, such as "Fødte per tusen innbyggere".
+PER = re.compile(r"(?<!\w)per(?!\w)")
 FLOATING = frozenset({"DOUBLE", "FLOAT", "REAL"})
 # An arithmetic line lists the cells of a sum or a mean when there are at most this many.
 LISTED = 10
@@ -104,24 +107,27 @@ class Row:
 def unit_scale(name: str | None) -> int:
     """Return the power of ten that a unit's name multiplies a value by.
 
-    A name names a multiplier when it begins with a power of ten, as "1000 personer"
-    and "1 000 kr" do, or holds a scale word, as "mill. kr" and "NOK million" do. A
-    name that begins with "per", such as "per 1000", is a rate, and other names, such
-    as "kg", name none (spec 0003, Matching values, item 6).
+    A name names a multiplier when it holds a power of ten of a thousand or more, as
+    "1000 personer", "1 000 kr" and "NOK 1000" do, or a scale word, as "mill. kr" and
+    "NOK million" do. What follows "per" names a rate, so "per 1000" and "Fødte per
+    tusen innbyggere" name none, and nor do other names, such as "kg" (spec 0003,
+    Matching values, item 6). A per cent unit has none either; ``unit_named`` sees to
+    that.
     """
     if name is None:
         return 0
     word = " ".join(name.replace("\u00a0", " ").casefold().split())
-    if word.startswith("per ") or word == "per":
-        return 0
-    leading = LEADING_NUMBER.match(word)
-    if leading is not None:
-        digits = leading[1].replace(" ", "")
+    word = PER.split(word, maxsplit=1)[0]
+    for match in UNIT_NUMBER.finditer(word):
+        digits = match[1].replace(" ", "")
         if POWER_OF_TEN.fullmatch(digits):
             return len(digits) - 1
     for scale, words in SCALE_WORDS:
-        if any(re.search(rf"(?<![\w.]){re.escape(item)}(?!\w)", word) for item in words):
-            return scale
+        for item in words:
+            # A word with a point may run on into the unit, as in "mill.kr".
+            end = "" if item.endswith(".") else r"(?!\w)"
+            if re.search(rf"(?<![\w.]){re.escape(item)}{end}", word):
+                return scale
     return 0
 
 
@@ -139,6 +145,13 @@ def same_unit(left: ResultUnit, right: ResultUnit) -> bool:
     if left.kind != right.kind:
         return False
     return left.kind != "amount" or left.name == right.name
+
+
+def base_text(value: Decimal, scale: int) -> str:
+    """Return a value in its unit's base, as a calculation line writes it."""
+    with localcontext() as context:
+        context.prec = 100
+        return text(value.scaleb(scale))
 
 
 def text(value: Decimal) -> str:
@@ -472,6 +485,16 @@ class Runner:
         first, second = (self.outcomes[name] for name in names)
         a, b = Fraction(first.value), Fraction(second.value)
         one, two = text(first.value), text(second.value)
+        if isinstance(step, ChangePercentStep | SharePercentStep) and (
+            first.unit.scale != second.unit.scale
+        ):
+            # A per cent of two amounts in units of different powers of ten, such as
+            # 1000 personer and personer, is taken of both in the base unit.
+            a, b = a * 10**first.unit.scale, b * 10**second.unit.scale
+            one, two = (
+                base_text(first.value, first.unit.scale),
+                base_text(second.value, second.unit.scale),
+            )
         decimals: int | None = None
         try:
             match step:

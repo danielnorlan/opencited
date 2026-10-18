@@ -20,7 +20,7 @@ import logging
 import unicodedata
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Decimal, localcontext
 from typing import Any, Literal, cast
 
 import anyio.to_thread
@@ -30,7 +30,7 @@ from mcp.types import CallToolResult, TextContent, Tool
 from pydantic import ValidationError
 
 from opencited.agent.model import ToolCall, ToolSchema
-from opencited.calc.engine import CalculationError, Engine, unit_scale
+from opencited.calc.engine import CalculationError, Engine, unit_named
 from opencited.calc.plan import Plan, plan_schema
 from opencited.calc.result import CalculationResult
 from opencited.gate import CalculationEvidence, Evidence, SourceEvidence
@@ -258,7 +258,10 @@ def formatted(value: Decimal, scale: int, language: Language) -> str:
         text = format_number(value, language)
         return f"{text} {word[language]}" if word is not None else text
     decimals = max(0, -int(value.as_tuple().exponent) - scale)
-    base = (value * Decimal(10) ** scale).quantize(Decimal(1).scaleb(-decimals))
+    # The default context rounds to 28 digits; a value may have up to 38 (DuckDB's limit).
+    with localcontext() as context:
+        context.prec = 100
+        base = (value * Decimal(10) ** scale).quantize(Decimal(1).scaleb(-decimals))
     return format_number(base, language)
 
 
@@ -282,7 +285,7 @@ def source_view(
         for cell, observation in zip(cells, result.observations, strict=True):
             if observation.value is not None:
                 base = units.get(observation.codes[contents[0]]) if contents else None
-                cell["formatted"] = formatted(observation.value, unit_scale(base), language)
+                cell["formatted"] = formatted(observation.value, unit_named(base).scale, language)
     return {"evidence_id": evidence_id, **data}
 
 

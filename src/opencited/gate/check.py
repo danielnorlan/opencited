@@ -32,7 +32,7 @@ from zoneinfo import ZoneInfo
 from pydantic import Field
 
 from opencited.calc.arithmetic import round_away
-from opencited.calc.engine import unit_named, unit_scale
+from opencited.calc.engine import unit_named
 from opencited.calc.result import CalculationResult
 from opencited.gate.blocks import blocks
 from opencited.gate.numbers import (
@@ -306,10 +306,10 @@ def hold(holdings: Holdings, evidence: Evidence) -> None:
             if cell.value is None:
                 continue
             base = units.get(cell.codes[contents[0]]) if contents else None
-            kind = unit_named(base).kind
+            unit = unit_named(base)
             where = f"cell {', '.join(cell.codes)}"
-            exact = Fraction(cell.value) * Fraction(10) ** unit_scale(base)
-            candidate = Candidate(exact, kind, where, cell=cell.codes)
+            exact = Fraction(cell.value) * Fraction(10) ** unit.scale
+            candidate = Candidate(exact, unit.kind, where, cell=cell.codes)
             holdings.values.append((name, candidate))
         for dimension in result.dimensions:
             for value in dimension.values:
