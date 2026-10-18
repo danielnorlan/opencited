@@ -34,13 +34,13 @@ from opencited.gate.check import (
     cited_ids,
     day_months,
     language_of,
-    read_labels,
+    read_codes,
     reference_dates,
-    step_codes,
+    value_label_numbers,
 )
 from opencited.http import make_client
 from opencited.http.replay import replay_transport
-from opencited.snapshots import SnapshotStore, quoted
+from opencited.snapshots import SnapshotStore
 from opencited.sources import (
     Language,
     QueryResult,
@@ -978,7 +978,7 @@ def test_a_ranking_gives_the_numbers_of_the_labels_it_ranked(tmp_path: Path) -> 
     assert report.passed, report.text()
 
 
-def test_a_step_s_codes_are_bound_to_their_dimensions(tmp_path: Path) -> None:
+def test_a_step_s_codes_are_read_with_their_dimensions(tmp_path: Path) -> None:
     codes = {"ContentsCode": "Skilsmisse", "Tid": "2025"}
     evidence = calculated(
         SnapshotStore(tmp_path),
@@ -993,55 +993,155 @@ def test_a_step_s_codes_are_bound_to_their_dimensions(tmp_path: Path) -> None:
     assert isinstance(source.result, QueryResult)
     assert isinstance(calculation, CalculationEvidence)
     total, short = calculation.result.steps
+    numbers = value_label_numbers(source.result)
 
-    assert step_codes(total) == [
+    assert read_codes(total, source.result) == (
         *(("VarighetIAar", code) for code in DIVORCES["VarighetIAar"]),
         ("ContentsCode", "Skilsmisse"),
         ("Tid", "2025"),
-    ]
-    assert step_codes(short) == [
+    )
+    assert read_codes(short, source.result) == (
         ("VarighetIAar", "00-02"),
         ("ContentsCode", "Skilsmisse"),
         ("Tid", "2025"),
-    ]
-    # The period is not a label: it passes as a period of the result (item 6).
-    assert read_labels(short, source.result) == ["0-2 år", "Skilsmisser"]
-
-
-@pytest.mark.parametrize(
-    ("sql", "parameters"),
-    [
-        ('SELECT * FROM snapshot_1 WHERE "Tid" = ?', ("2025",)),
-        # One dimension in the expected form and one not: nothing, rather than half.
-        ('SELECT * FROM snapshot_1 WHERE "Tid" IN (?) AND "Region" = ?', ("2025", "0")),
-    ],
-)
-def test_a_statement_in_another_form_gives_no_codes(sql: str, parameters: tuple[str, ...]) -> None:
-    assert step_codes(statement(sql, parameters)) == []
-
-
-def test_a_dimension_code_with_a_quote_is_read_as_the_engine_quoted_it() -> None:
-    sql = 'SELECT * FROM snapshot_1 WHERE "A ""B""" IN (?, ?) AND "Tid" IN (?)'
-
-    assert quoted('A "B"') in sql
-    assert step_codes(statement(sql, ("1", "2", "2025"))) == [
-        ('A "B"', "1"),
-        ('A "B"', "2"),
-        ("Tid", "2025"),
-    ]
-
-
-def statement(sql: str, parameters: tuple[str, ...]) -> StepResult:
-    return StepResult(
-        name="odd",
-        operation="value",
-        inputs=(),
-        snapshot=None,
-        sql=(sql,),
-        parameters=(parameters,),
-        arithmetic="",
-        exact=None,
-        value=None,
-        decimals=None,
-        unit=ResultUnit(kind="amount"),
     )
+    assert numbers[("VarighetIAar", "00-02")] == ["0", "2"]
+    # The period is not a label: it passes as a period of the result (item 6).
+    assert ("Tid", "2025") not in numbers
+
+
+def test_a_step_reads_no_codes_in_a_result_of_another_table(tmp_path: Path) -> None:
+    evidence = calculated(
+        SnapshotStore(tmp_path),
+        "05692",
+        DIVORCES,
+        "no",
+        {"name": "all", "operation": "sum", "selection": DIVORCES},
+    )
+    calculation = evidence[1]
+    assert isinstance(calculation, CalculationEvidence)
+    [step] = calculation.result.steps
+
+    assert read_codes(step, population().result) == ()
+
+
+def divorce_values(store: SnapshotStore, snapshot: str, code: str) -> CalculationResult:
+    """Return a calculation of one value of 05692: the divorces of one duration in 2025."""
+    codes = {"VarighetIAar": code, "ContentsCode": "Skilsmisse", "Tid": "2025"}
+    step = {"name": "value", "operation": "value", "snapshot": snapshot, "codes": codes}
+    return Engine(store).run(Plan.model_validate_json(json.dumps({"steps": [step]})))
+
+
+def test_a_label_that_another_calculation_read_fails_beside_this_one(tmp_path: Path) -> None:
+    store = SnapshotStore(tmp_path)
+    retrieval = retrieve("05692", DIVORCES, "no")
+    snapshot = store.write(retrieval).name
+    evidence = [
+        SourceEvidence("E1", retrieval.result),
+        CalculationEvidence("C1", divorce_values(store, snapshot, "00-02")),
+        CalculationEvidence("C2", divorce_values(store, snapshot, "03-04")),
+    ]
+
+    def passes(text: str) -> bool:
+        return check(text, "no", evidence).passed
+
+    assert not passes("Ekteskap som hadde vart 3-4 år, telles også [C1].")
+    assert passes("Ekteskap som hadde vart 3-4 år, telles også [C2].")
+
+
+def test_a_calculation_gives_labels_only_of_the_result_its_step_read(tmp_path: Path) -> None:
+    # E2 is E1 with the label of 00-02 altered, so it has a response and a hash of its
+    # own; C1 read E1.
+    store = SnapshotStore(tmp_path)
+    retrieval = retrieve("05692", DIVORCES, "no")
+    durations = next(item for item in retrieval.result.dimensions if item.code == "VarighetIAar")
+    relabelled = durations.model_copy(
+        update={
+            "values": tuple(
+                value.model_copy(update={"label": "0-12 år"}) if value.code == "00-02" else value
+                for value in durations.values
+            )
+        }
+    )
+    other = altered(
+        retrieval,
+        dimensions=[
+            relabelled if item.code == "VarighetIAar" else item
+            for item in retrieval.result.dimensions
+        ],
+    )
+    snapshot = store.write(retrieval).name
+    evidence = [
+        SourceEvidence("E1", retrieval.result),
+        SourceEvidence("E2", other.result),
+        CalculationEvidence("C1", divorce_values(store, snapshot, "00-02")),
+    ]
+
+    def passes(text: str) -> bool:
+        return check(text, "no", evidence).passed
+
+    assert passes("Ekteskap som hadde vart 0-2 år, telles [C1].")
+    assert not passes("Ekteskap som hadde vart 0-12 år, telles [C1].")
+    assert passes("Ekteskap som hadde vart 0-12 år, telles [C1] [E2].")
+
+
+def test_a_calculation_that_read_two_tables_gives_the_labels_of_each(tmp_path: Path) -> None:
+    store = SnapshotStore(tmp_path)
+    divorces = retrieve("05692", DIVORCES, "no")
+    children = retrieve(
+        "05810",
+        {"Kjonn": ["0"], "Alder": ["999B", "00-06"], "ContentsCode": ["Personer"], "Tid": ["2025"]},
+        "en",
+    )
+    steps = [
+        {
+            "name": "short",
+            "operation": "value",
+            "snapshot": store.write(divorces).name,
+            "codes": {"VarighetIAar": "00-02", "ContentsCode": "Skilsmisse", "Tid": "2025"},
+        },
+        {
+            "name": "young",
+            "operation": "value",
+            "snapshot": store.write(children).name,
+            "codes": {"Kjonn": "0", "Alder": "00-06", "ContentsCode": "Personer", "Tid": "2025"},
+        },
+    ]
+    calculation = Engine(store).run(Plan.model_validate_json(json.dumps({"steps": steps})))
+    evidence = [
+        SourceEvidence("E1", divorces.result),
+        SourceEvidence("E2", children.result),
+        CalculationEvidence("C1", calculation),
+    ]
+
+    report = check("Barn i alderen 0-6 år og ekteskap som varte 0-2 år [C1].", "no", evidence)
+
+    assert report.passed, report.text()
+
+
+CPI_MONTHS = {"ContentsCode": ["KpiIndMnd"], "Tid": ["2025M09", "2026M09"]}
+
+
+def test_a_calculation_gives_no_number_of_the_title_of_its_source(tmp_path: Path) -> None:
+    # The title of 14710 is "Consumer price index (2025=100), by month", and the label of
+    # the value that the steps read, "Consumer Price Index", holds no number.
+    store = SnapshotStore(tmp_path)
+    retrieval = retrieve("14710", CPI_MONTHS, "en")
+    snapshot = store.write(retrieval).name
+    steps = [
+        {
+            "name": name,
+            "operation": "value",
+            "snapshot": snapshot,
+            "codes": {"ContentsCode": "KpiIndMnd", "Tid": period},
+        }
+        for name, period in (("before", "2025M09"), ("after", "2026M09"))
+    ]
+    calculation = Engine(store).run(Plan.model_validate_json(json.dumps({"steps": steps})))
+    evidence = [SourceEvidence("E1", retrieval.result), CalculationEvidence("C1", calculation)]
+
+    def passes(text: str) -> bool:
+        return check(text, "en", evidence).passed
+
+    assert not passes("The index is 100 in its base year [C1].")
+    assert passes("The index is 100 in its base year [C1] [E1].")

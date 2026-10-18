@@ -16,6 +16,8 @@ from typing import Any, cast
 
 import duckdb
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 from pydantic import ValidationError
 from recorded import recorded_cells
 from snapshotting import altered, catch, population, symbols, wide
@@ -28,12 +30,20 @@ from opencited.calc import (
     parse_plan,
     plan_schema,
 )
-from opencited.calc.engine import check_types, locked, unit_named, unit_scale
+from opencited.calc.engine import (
+    bound_codes,
+    check_types,
+    locked,
+    select_statement,
+    unit_named,
+    unit_scale,
+)
 from opencited.snapshots import MANIFEST, OBSERVATIONS, SnapshotStore
 from opencited.sources import Unit
 
 POPULATION = "data-05810-expressions-en"
 TOTAL = {"Kjonn": "0", "Alder": "999B", "ContentsCode": "Personer"}
+TOTAL_CODES = {code: [item] for code, item in TOTAL.items()}
 
 
 def recorded(name: str, *codes: str) -> Decimal:
@@ -1162,3 +1172,105 @@ def test_a_per_cent_of_a_negative_scale_is_exact(store: SnapshotStore) -> None:
 
     assert result.step("quotient").unit.scale == -3
     assert result.step("growth").exact == str((1000 * small - 1) * 100)
+
+
+# Pieces of the statement itself, so that a dimension code built from them would
+# mislead a reader that searched the statement. No SSB code holds them.
+PIECES = ['"', " IN (?", ", ?", ")", " AND ", " WHERE ", " ORDER BY ", "snapshot_1", "x", "1"]
+
+
+@st.composite
+def statements(draw: st.DrawFn) -> tuple[str, list[str], list[str], tuple[tuple[str, str], ...]]:
+    """A statement that the engine writes, its parameters, dimensions and bound codes."""
+    code = st.lists(st.sampled_from(PIECES), min_size=1, max_size=4).map("".join)
+    dimensions = draw(st.lists(code, min_size=1, max_size=4, unique=True))
+    counts = [draw(st.integers(1, 4)) for _ in dimensions]
+    parameters = [f"{draw(st.sampled_from(PIECES))}{index}" for index in range(sum(counts))]
+    bound: list[tuple[str, str]] = []
+    for dimension, count in zip(dimensions, counts, strict=True):
+        bound += [(dimension, parameters[len(bound) + place]) for place in range(count)]
+    table = f"snapshot_{draw(st.integers(1, 20))}"
+    return select_statement(table, dimensions, counts), parameters, dimensions, tuple(bound)
+
+
+@given(statements())
+def test_a_statement_that_the_engine_writes_reads_back_as_its_codes(
+    statement: tuple[str, list[str], list[str], tuple[tuple[str, str], ...]],
+) -> None:
+    sql, parameters, dimensions, bound = statement
+
+    assert bound_codes(sql, parameters, dimensions) == bound
+    # With a parameter too few or too many, or the dimensions in another order, the
+    # statement is not one that the engine wrote for them.
+    assert bound_codes(sql, parameters[:-1], dimensions) is None
+    assert bound_codes(sql, [*parameters, "x"], dimensions) is None
+    if len(dimensions) > 1:
+        assert bound_codes(sql, parameters, dimensions[::-1]) is None
+
+
+STATEMENT = select_statement("snapshot_1", ["Kjonn", "Tid"], [2, 1])
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        STATEMENT.replace(" AND ", " OR "),
+        STATEMENT.replace(" ORDER BY", " AND 1 = 1 ORDER BY"),
+        f"{STATEMENT} LIMIT 1",
+        STATEMENT.replace("snapshot_1", "snapshot_0"),
+        STATEMENT.replace("snapshot_1", "cells"),
+        STATEMENT.replace('"Tid" IN (?)', '"Tid" = ?'),
+        STATEMENT.replace('"Kjonn" IN', '"Kjonn" NOT IN'),
+        STATEMENT.replace("(?, ?)", "(?,?)"),
+        STATEMENT.replace("SELECT", "select"),
+    ],
+)
+def test_a_statement_in_another_form_reads_as_no_codes(sql: str) -> None:
+    assert bound_codes(STATEMENT, ["1", "2", "2026"], ["Kjonn", "Tid"]) == (
+        ("Kjonn", "1"),
+        ("Kjonn", "2"),
+        ("Tid", "2026"),
+    )
+    assert bound_codes(sql, ["1", "2", "2026"], ["Kjonn", "Tid"]) is None
+
+
+def test_each_step_s_statement_reads_back_as_the_cells_it_selected(store: SnapshotStore) -> None:
+    people = store.write(population()).name
+    dimensions = [dimension.code for dimension in store.read(people).manifest.dimensions]
+    both = {"Kjonn": ["1", "2"], "Alder": ["999B"], "ContentsCode": ["Personer"], "Tid": ["2026"]}
+    years = {**both, "Kjonn": ["0"], "Tid": ["2024", "2025", "2026"]}
+    result = run(
+        store,
+        value("now", people, "2026"),
+        {"name": "sexes", "operation": "sum", "snapshot": people, "selection": both},
+        {
+            "name": "average",
+            "operation": "mean",
+            "snapshot": people,
+            "selection": years,
+            "decimals": 0,
+        },
+        {
+            "name": "top",
+            "operation": "rank",
+            "snapshot": people,
+            "selection": both,
+            "by": "Kjonn",
+            "order": "highest",
+            "count": 1,
+        },
+    )
+
+    def read(name: str, statement: int = 0) -> tuple[tuple[str, str], ...] | None:
+        step = result.step(name)
+        return bound_codes(step.sql[statement], step.parameters[statement], dimensions)
+
+    def cells(selection: dict[str, list[str]]) -> tuple[tuple[str, str], ...]:
+        return tuple((code, item) for code in dimensions for item in selection[code])
+
+    assert read("now") == cells({**TOTAL_CODES, "Tid": ["2026"]})
+    assert read("sexes") == cells(both)
+    assert read("average") == cells(years)
+    assert read("top") == cells(both)
+    # The ranking statement adds a window and a limit, so it is in another form.
+    assert read("top", 1) is None
