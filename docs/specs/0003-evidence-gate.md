@@ -99,6 +99,15 @@ gate says which number failed and why.
    Other numbers match only values that are not per cent.
 4. The sign must match, so a negative value is written with a minus sign.
 5. No tolerance applies beyond this rounding rule.
+6. When the unit of a value names a multiplier, `v` is the value times that
+   multiplier. A unit names one when it holds a power of ten of a thousand or more,
+   as `1000 personer`, `1 000 kr` and `NOK 1000` do, or a scale word from item 5 of
+   Finding numbers in the singular or the plural, as `mill. kr`, `NOK million` and
+   `NOK millions` do. A number in an index base or a range, as in `1998=1000` or
+   `0-1000`, names none. What follows `per`, `pr.` or `/` in a unit, as in
+   `per 1000` or `Antall/1000 innbyggere`, names a rate and no multiplier, and a per
+   cent unit names none. So 138 in `1000 personer` matches "138 000" and "138
+   tusen", and not "138".
 
 ### Report
 
