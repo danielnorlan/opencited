@@ -34,6 +34,7 @@ from opencited.evals.score import (
     NumberFound,
     Verdict,
     has_label,
+    rounded,
     score,
 )
 from opencited.gate import CalculationEvidence, Evidence, SourceEvidence, check
@@ -435,12 +436,119 @@ def test_a_rate_of_nothing_is_none() -> None:
         ("Oslo", "<!-- Oslo --> Bergen had the most.", False),
         # The documented limit: a label that begins another one still counts.
         ("Troms", "Troms og Finnmark had the most.", True),
+        # A genitive may follow a label; the first is from an answer of the published
+        # run of set v2 on 2026-10-18.
+        ("5-9 år", "Flest skilsmisser kom etter 5\u20139 års ekteskap.", True),
+        ("Oslo", "Oslos befolkning vokste.", True),
+        ("Oslo", "Oslo's population grew.", True),
+        ("Oslo", "Oslo\u2019s population grew.", True),
+        ("Troms", "Troms' befolkning vokste.", True),
+        ("Ås", "Åssiden hadde flest.", False),
     ],
 )
 def test_a_label_counts_only_as_a_whole_in_the_shown_text(
     label: str, text: str, found: bool
 ) -> None:
     assert has_label(text, label) is found
+
+
+CPI = {"ContentsCode": ["KpiIndMnd"], "Tid": ["2025M09", "2026M09"]}
+
+
+@pytest.mark.parametrize(
+    ("period", "month", "written", "held"),
+    [
+        # SSB gives the index as 104 in a unit of one decimal, so 104 leaves out a zero.
+        ("2026M09", "September 2026", "104", True),
+        ("2026M09", "September 2026", "104.0", True),
+        # 101 fits 100.6 under the gate's rule and leaves out a 6.
+        ("2025M09", "September 2025", "101", False),
+        ("2025M09", "September 2025", "100.6", True),
+    ],
+)
+def test_a_number_may_leave_out_decimals_that_are_zeros(
+    period: str, month: str, written: str, held: bool
+) -> None:
+    result = retrieve("14710", CPI, "en").result
+    value = next(cell.value for cell in result.observations if cell.codes[1] == period)
+    assert value is not None
+    expected = ExpectedNumber(step="index", exact=str(Fraction(value)), kind="amount", decimals=1)
+    evidence = [SourceEvidence("E1", result)]
+    answer = answered_from(evidence, f"The index was {written} in {month} [E1].", "en")
+
+    verdict = score(expect("lookup-8", "en", "lookup", (expected,)), answer, evidence)
+
+    assert verdict.passes_gate is True
+    assert verdict.numbers == (NumberFound(step="index", text=written if held else None),)
+    assert verdict.correct is held
+
+
+@pytest.mark.parametrize(("written", "held"), [("3.38", True), ("3.4", False), ("3.380", True)])
+def test_a_change_may_leave_out_decimals_that_round_to_zeros(
+    tmp_path: Path, written: str, held: bool
+) -> None:
+    # The index rose from 100.6 to 104, by 3.3797... per cent, which is 3.380 to three
+    # decimals.
+    store = SnapshotStore(tmp_path)
+    retrieval = retrieve("14710", CPI, "en")
+    snapshot = store.write(retrieval).name
+    codes = {"ContentsCode": "KpiIndMnd"}
+    steps = [
+        {
+            "name": "before",
+            "operation": "value",
+            "snapshot": snapshot,
+            "codes": {**codes, "Tid": "2025M09"},
+        },
+        {
+            "name": "after",
+            "operation": "value",
+            "snapshot": snapshot,
+            "codes": {**codes, "Tid": "2026M09"},
+        },
+        {
+            "name": "growth",
+            "operation": "change_percent",
+            "old": "before",
+            "new": "after",
+            "decimals": 3,
+        },
+    ]
+    calculation = Engine(store).run(Plan.model_validate_json(json.dumps({"steps": steps})))
+    exact = calculation.step("growth").exact
+    assert exact is not None
+    expected = ExpectedNumber(step="growth", exact=exact, kind="per cent", decimals=3)
+    evidence: list[Evidence] = [
+        SourceEvidence("E1", retrieval.result),
+        CalculationEvidence("C1", calculation),
+    ]
+    text = f"The index rose by {written} per cent from September 2025 to September 2026 [C1] [E1]."
+
+    verdict = score(
+        expect("change-5", "en", "change", (expected,)),
+        answered_from(evidence, text, "en"),
+        evidence,
+    )
+
+    assert verdict.passes_gate is True
+    assert verdict.numbers == (
+        NumberFound(step="growth", text=f"{written} per cent" if held else None),
+    )
+
+
+@pytest.mark.parametrize(
+    ("value", "places", "result"),
+    [
+        (Fraction("104.04"), 1, Fraction("104.0")),
+        (Fraction(5627400), -3, Fraction(5627000)),
+        (Fraction(2500), -3, Fraction(3000)),
+        (Fraction(-2500), -3, Fraction(-3000)),
+    ],
+)
+def test_a_value_rounds_to_any_place_with_ties_away_from_zero(
+    value: Fraction, places: int, result: Fraction
+) -> None:
+    assert rounded(value, places) == result
 
 
 def test_every_expected_number_must_be_in_the_answer(world: World) -> None:
@@ -568,11 +676,18 @@ EMPLOYED = {
 
 
 @pytest.mark.parametrize(
-    ("written", "found"),
-    [("2 935 000", True), ("2 935 tusen", True), ("2,9 millioner", False), ("2 935", False)],
+    ("written", "decimals", "found"),
+    [
+        ("2 935 000", -3, True),
+        ("2 935 tusen", -3, True),
+        ("2,9 millioner", -3, False),
+        ("2 935", -3, False),
+        # To the hundred, 2 935 tusen leaves out a zero.
+        ("2 935 tusen", -2, True),
+    ],
 )
 def test_a_value_in_thousands_is_expected_in_persons_to_the_thousand(
-    tmp_path: Path, written: str, found: bool
+    tmp_path: Path, written: str, decimals: int, found: bool
 ) -> None:
     # 03778 gives employment in 1 000 personer, and the question asks for whole thousands.
     store = SnapshotStore(tmp_path)
@@ -584,7 +699,7 @@ def test_a_value_in_thousands_is_expected_in_persons_to_the_thousand(
         SourceEvidence("E1", retrieval.result),
         CalculationEvidence("C1", Engine(store).run(plan)),
     ]
-    expected = ExpectedNumber(step="employed", exact="2935000", kind="amount", decimals=-3)
+    expected = ExpectedNumber(step="employed", exact="2935000", kind="amount", decimals=decimals)
     text = f"I 2. kvartal 2026 var {written} personer sysselsatt [C1] [E1]."
 
     verdict = score(

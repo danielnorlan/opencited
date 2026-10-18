@@ -58,6 +58,9 @@ Notable changes to OpenCited are recorded here. The format follows
   the prompt texts holds the notes.
 - A number that the gate blocks because its block cites nothing gets a retry hint to
   cite the result in that block, in version 7 of the prompt texts.
+- The scorer counts a ranking label followed by a genitive s, so "5–9 års" holds the
+  label "5-9 år", and a number that leaves out decimals that are zeros, so "104" holds
+  an index of 104.0 and "101" does not hold 100.6.
 - A query that names a code which equals an earlier code of its dimension in all but
   case fails before the data request and names the earlier code, since SSB's API
   returns the earlier code's cell for both.
