@@ -4,9 +4,12 @@
 each number against the results that the block cites (spec 0003, tasks 3 and 4):
 
 - A period passes when a cited query result selected it, a date when it is the last
-  update or the retrieval date of a cited result, a five-digit table ID when it is the
-  ID of a cited result, and a number from the title of a cited result or from the label
-  of a value that the result selected when it has no unit, percent or scale word.
+  update or the retrieval date of a cited result or a day that a cited query result's
+  label names in a year it selected, a day and month without a year when such a label
+  names it, a five-digit table ID when it is the ID of a cited result, and a number
+  from the title of a cited result or from the label of a value that the result
+  selected when it has no unit, percent or scale word. For periods and dates, a cited
+  calculation also counts as citing the query results its steps read.
 - Every other number is a value. It must stand in a block that cites a result, and
   equal a value ``v`` of a cited result after ``v``, divided by any scale word, is
   rounded with ties away from zero to the decimals written. For a calculation, ``v``
@@ -58,7 +61,7 @@ MONTH_NUMBERS = {
 # "Population per 1.1.". English months need their capital, as in answers, which
 # keeps "may" the verb out.
 DAY_IN_WORDS = re.compile(
-    rf"(?<![0-9.])([0-9]{{1,2}})\.?\s+((?i:{alternatives(MONTHS_NO)})|{alternatives(MONTHS_EN)})\b"
+    rf"(?<![0-9.])([0-9]{{1,2}})\.?\s+((?ai:{alternatives(MONTHS_NO)})|{alternatives(MONTHS_EN)})\b"
 )
 DAY_IN_DIGITS = re.compile(r"(?<![0-9.])([0-9]{1,2})\.([0-9]{1,2})\.(?![0-9])")
 COMMENT = re.compile(r"<!--.*?(?:-->|$)", re.DOTALL)
@@ -262,7 +265,10 @@ def language_of(url: str) -> Language:
 
 def label_numbers(text: str, language: Language) -> list[str]:
     """Return the numbers in a title or a label as they are written there."""
-    return [number.text for number in read_numbers(text, language) if number.kind == "number"]
+    numbers = read_numbers(text, language)
+    # The day of "Befolkning 1. januar" is a number of the label too.
+    days = [str(number.day[1]) for number in numbers if number.day is not None]
+    return [number.text for number in numbers if number.kind == "number"] + days
 
 
 def days(moment: datetime) -> list[date]:
@@ -558,16 +564,16 @@ def check(answer: str, language: Language, evidence: Sequence[Evidence]) -> Repo
     holdings_of = {name: held(item) for name, item in known.items()}
     # For periods and dates, a calculation also counts as citing every query result
     # that its steps read (spec 0003, Numbers that are not values, item 6).
-    responses = {
-        item.result.provenance.response_sha256: name
-        for name, item in known.items()
-        if isinstance(item, SourceEvidence) and isinstance(item.result, QueryResult)
-    }
+    # The same response fetched twice gives two results with one hash and two retrieval
+    # dates, so a hash keeps every result that has it.
+    responses: dict[str, list[str]] = {}
+    for name, item in known.items():
+        if isinstance(item, SourceEvidence) and isinstance(item.result, QueryResult):
+            responses.setdefault(item.result.provenance.response_sha256, []).append(name)
     for name, item in known.items():
         if isinstance(item, CalculationEvidence):
             for use in item.result.snapshots:
-                source = responses.get(use.provenance.response_sha256)
-                if source is not None:
+                for source in responses.get(use.provenance.response_sha256, []):
                     holdings_of[name].add_times(holdings_of[source])
     findings: list[Finding] = []
     for block in blocks(text):

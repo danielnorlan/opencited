@@ -1,8 +1,8 @@
 """Reading the numbers in an answer, in Norwegian or English (spec 0003, tasks 1 and 2).
 
 The tokenizer normalises the text to Unicode NFC and finds, in this order, citation
-markers, dates, periods, the numbers of ordered list items, the forms that block an
-answer, and other numbers. Each pass claims its span of text, so a later pass never
+markers, dates, periods, the numbers of ordered list items, days and months without a
+year, the forms that block an answer, and other numbers. Each pass claims its span of text, so a later pass never
 reads a digit that an earlier one read. It uses no model and no network. Positions are
 offsets in ``normalise(text)``.
 
@@ -301,7 +301,7 @@ def date_patterns() -> list[tuple[re.Pattern[str], str]]:
         ),
         (
             re.compile(
-                rf"(?<![\w.,])([0-9]{{1,2}})\.?{SPACE}((?i:{norwegian})){SPACE}([0-9]{{4}})(?!\w)"
+                rf"(?<![\w.,])([0-9]{{1,2}})\.?{SPACE}((?ai:{norwegian})){SPACE}([0-9]{{4}})(?!\w)"
             ),
             "day month",
         ),
@@ -321,7 +321,7 @@ def day_patterns() -> list[re.Pattern[str]]:
     norwegian = alternatives(MONTHS_NO)
     english = alternatives(MONTHS_EN)
     return [
-        re.compile(rf"(?<![\w.,])([0-9]{{1,2}})\.?{SPACE}((?i:{norwegian}))(?!\w)"),
+        re.compile(rf"(?<![\w.,])([0-9]{{1,2}})\.?{SPACE}((?ai:{norwegian}))(?!\w)"),
         re.compile(rf"(?<![\w.,])([0-9]{{1,2}}){SPACE}({english})(?!\w)"),
     ]
 
@@ -376,7 +376,7 @@ def period_patterns() -> list[tuple[re.Pattern[str], str]]:
         ),
         (re.compile(rf"(?<!\w)Q([1-4]){SPACE}([0-9]{{4}})(?!\w)"), "number quarter"),
         (
-            re.compile(rf"(?<!\w)((?i:{norwegian})){SPACE}(?:i{SPACE})?([0-9]{{4}})(?!\w)"),
+            re.compile(rf"(?<!\w)((?ai:{norwegian})){SPACE}(?:i{SPACE})?([0-9]{{4}})(?!\w)"),
             "month",
         ),
         (re.compile(rf"(?<!\w)({english}){SPACE}(?:of{SPACE})?([0-9]{{4}})(?!\w)"), "month"),
@@ -430,8 +430,9 @@ class Reader:
         self.markers()
         self.dates()
         self.periods()
-        self.days()
+        # After list numbers, so that a list such as "1. August" and "2. July" stays one.
         self.list_numbers()
+        self.days()
         self.blocking_forms()
         self.numbers()
         return tuple(sorted(self.found, key=lambda number: (number.position, number.end)))

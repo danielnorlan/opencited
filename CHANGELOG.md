@@ -34,6 +34,8 @@ Notable changes to OpenCited are recorded here. The format follows
 - For periods and dates, a cited calculation counts as citing the query results its
   steps read, so "fra 2025 til 2026 [C1]" passes, and a day and month without a year,
   such as "per 1. januar", passes when a cited query result's label names that day.
+  A list whose items start with a month stays a list, and a month name with a letter
+  that only folds to a month's letter, such as "auguſt", no longer stops the gate.
 - Question set v2 with 43 questions over ten more tables, among them prices, wages,
   the national accounts, crime, marriages, income and employment, and 12 questions
   that should be refused, each with the reason the sources cannot answer it.

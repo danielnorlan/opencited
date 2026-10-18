@@ -631,3 +631,94 @@ def test_a_calculation_carries_only_periods_and_dates_of_sources_in_the_run(
 
     assert not table.passed
     assert not alone.passed
+
+
+def test_a_day_that_no_label_names_fails_though_its_number_is_in_one() -> None:
+    # "Befolkning 1. januar" holds the number 1, and 1 February is still another day.
+    report = check(
+        "Tallene gjelder per 1. februar [E1].",
+        "no",
+        [SourceEvidence("E1", population_of(NORWAY, "no"))],
+    )
+
+    assert not report.passed
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["The figures are for 1 January [E1].", "As of January 1 [E1]."],
+)
+def test_an_english_label_gives_its_day_and_its_number(text: str) -> None:
+    report = check(text, "en", [SourceEvidence("E1", population_of(OSLO_EN, "en"))])
+
+    assert report.passed, report.text()
+
+
+def test_a_label_with_a_letter_that_folds_to_a_month_s_letter_names_no_day() -> None:
+    # U+017F, the long s, folds to s.
+    assert day_months("Befolkning 1. augu\u017ft") == set()
+
+
+def test_a_calculation_gives_the_days_of_its_sources_and_not_their_label_numbers(
+    tmp_path: Path,
+) -> None:
+    retrieval = retrieve("06913", NORWAY, "no")
+    result = calculation_over(SnapshotStore(tmp_path), retrieval)
+    evidence: list[Evidence] = [
+        SourceEvidence("E1", retrieval.result),
+        CalculationEvidence("C1", result),
+    ]
+
+    def passes(text: str) -> bool:
+        return check(text, "no", evidence).passed
+
+    assert passes("Tallene gjelder per 1. januar [C1].")
+    assert passes("Etiketten nevner 1 [E1].")
+    assert not passes("Etiketten nevner 1 [C1].")
+
+
+def test_a_calculation_gets_periods_only_from_the_results_it_read(tmp_path: Path) -> None:
+    # C1 read 06913, which selected 2025 and 2026; 05810 selected 2024 and was not read.
+    retrieval = retrieve("06913", NORWAY, "no")
+    result = calculation_over(SnapshotStore(tmp_path), retrieval)
+    other = population().result
+    assert any(value.code == "2024" for dimension in other.dimensions for value in dimension.values)
+    evidence: list[Evidence] = [
+        SourceEvidence("E1", retrieval.result),
+        SourceEvidence("E2", other),
+        CalculationEvidence("C1", result),
+    ]
+
+    assert check("Endringen gjelder fra 2025 til 2026 [C1].", "no", evidence).passed
+    assert not check("Endringen gjelder fra 2024 til 2026 [C1].", "no", evidence).passed
+
+
+def test_a_calculation_gets_the_dates_of_every_fetch_of_the_response_it_read(
+    tmp_path: Path,
+) -> None:
+    # The same response fetched twice has one hash and two retrieval dates.
+    retrieval = retrieve("06913", NORWAY, "no")
+    result = calculation_over(SnapshotStore(tmp_path), retrieval)
+    first = retrieval.result
+    earlier = datetime(2026, 10, 1, 10, 0, tzinfo=UTC)
+    second = first.model_copy(
+        update={"provenance": first.provenance.model_copy(update={"retrieved_at": earlier})}
+    )
+    fetched = first.provenance.retrieved_at.astimezone(UTC).date()
+    assert fetched != earlier.date()
+    # Both dates must pass, so the calculation needs both fetches.
+    text = f"Tallene ble hentet {fetched.isoformat()} og 2026-10-01 [C1]."
+
+    with_both = check(
+        text,
+        "no",
+        [
+            SourceEvidence("E1", first),
+            SourceEvidence("E2", second),
+            CalculationEvidence("C1", result),
+        ],
+    )
+    with_one = check(text, "no", [SourceEvidence("E1", first), CalculationEvidence("C1", result)])
+
+    assert with_both.passed, with_both.text()
+    assert not with_one.passed

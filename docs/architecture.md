@@ -344,9 +344,12 @@ as "per 1. januar" or "1 January", passes when the label of a value that a cited
 query result selected names that day. For periods and dates, a cited calculation also
 counts as citing every query result whose snapshot its steps read, found by the
 response hash in the snapshot's provenance; it gives no other number of those
-results. Citation markers are not findings, and the numbers of an ordered list are
-ignored when they count up from 1; any other number at the start of a line is read
-as a number.
+results; when one response was fetched twice, it gives the dates of both fetches.
+Citation markers are not findings, and the numbers of an ordered list are ignored
+when they count up from 1, also when an item starts with a month, as "1. August"
+does; any other number at the start of a line is read as a number. Month names are
+read in any case of their ASCII letters only, so a letter that merely folds to one,
+such as the long s in "auguſt", makes no month.
 
 Every other number is a value. It fails in a block that cites no result. It passes
 when a cited result holds a value `v` that, divided by any scale word and rounded with
