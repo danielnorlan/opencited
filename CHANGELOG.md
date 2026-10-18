@@ -50,6 +50,10 @@ Notable changes to OpenCited are recorded here. The format follows
   given a result, and instead of a table's metadata once that table was queried, so
   the metadata of a large table no longer rides along in every call. Version 4 of
   the prompt texts holds the notes.
+- Published runs of question sets v1 and v2 with DeepSeek's `deepseek-flash` on
+  2026-10-18: 40 of 44 and 33 of 43 correct, and none of the 24 questions that should
+  be refused answered. The Inspect task reads relative paths from the repository's
+  root, so the command in `evals/README.md` finds set v2.
 - The first published run of the evaluation suite, in `evals/results/`: question set
   v1 with DeepSeek's `deepseek-flash`, 27 of 44 correct, with all 15 released answers
   correct. Decision records 0010 and 0012 are accepted.
