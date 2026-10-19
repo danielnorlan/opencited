@@ -6,6 +6,8 @@ Notable changes to OpenCited are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-19
+
 ### Added
 
 - Project foundation: licence, CI, pre-commit hooks, decision records 0001 to 0006

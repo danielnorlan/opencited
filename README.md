@@ -11,16 +11,16 @@ checked, and the agent refuses to answer when it cannot back a number. The first
 source is Statistics Norway (SSB).
 
 > [!NOTE]
-> OpenCited is in early development. The MCP server for StatBank runs from a clone of
-> this repository and is not on PyPI yet. The calculation engine, the evidence gate,
-> the agent and the evaluation suite are built, and the
+> OpenCited is in early development. The MCP server for StatBank is on PyPI as
+> `opencited`. The calculation engine, the evidence gate, the agent and the evaluation
+> suite are built, and the
 > [latest published runs](https://github.com/danielnorlan/opencited/blob/main/evals/results/README.md)
 > of the suite answered 40 of 44 questions of set v1 and 40 of 43 of set v3 correctly
 > with DeepSeek's `deepseek-flash`.
 > See the
 > [roadmap](https://github.com/danielnorlan/opencited/blob/main/docs/roadmap.md).
 
-## How it will work
+## How it works
 
 ```mermaid
 flowchart LR
@@ -52,10 +52,8 @@ or connect over Streamable HTTP. It offers three tools, `search_tables`,
 `get_table_metadata` and `query_table`, and every query result carries a provenance
 record.
 
-The commands below use `uvx opencited mcp`, which works once the package is on PyPI.
-Until then, run the server from a clone of this repository with
-`uv run --directory /path/to/opencited opencited mcp` in place of
-`uvx opencited mcp`.
+The commands below start the server with `uvx opencited mcp`, which runs the package
+from PyPI.
 
 ### Claude Code
 
