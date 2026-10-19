@@ -16,6 +16,74 @@ every question ([spec 0005](../../docs/specs/0005-evaluation-suite.md)).
 | [2026-10-18T1350-v3-deepseek-deepseek-flash.json](2026-10-18T1350-v3-deepseek-deepseek-flash.json) | v3 | `deepseek-flash` | 40 of 43 |
 | [2026-10-18T1440-v1-deepseek-deepseek-flash.json](2026-10-18T1440-v1-deepseek-deepseek-flash.json) | v1 | `deepseek-flash` | 40 of 44 |
 | [2026-10-18T1447-v3-deepseek-deepseek-flash.json](2026-10-18T1447-v3-deepseek-deepseek-flash.json) | v3 | `deepseek-flash` | 40 of 43 |
+| [2026-10-19T1320-v1-deepseek-deepseek-flash.json](2026-10-19T1320-v1-deepseek-deepseek-flash.json) | v1 | `deepseek-flash` | 38 of 44 |
+| [2026-10-19T1328-v3-deepseek-deepseek-flash.json](2026-10-19T1328-v3-deepseek-deepseek-flash.json) | v3 | `deepseek-flash` | 39 of 43 |
+
+## 2026-10-19, question sets v1 and v3 from release 0.1.0, `deepseek-flash`
+
+Both runs started from commit `ec5b246`, tagged `v0.1.0`, on 2026-10-19, set v1 at
+13:20 UTC and set v3 at 13:28 UTC, with the model, settings, prices and limits of the
+earlier runs. Since the runs from `5d737f2`, a refusal line with its reason in
+Norwegian counts as a refusal (#84) and weeks count as periods in the gate (#86), in
+version 11 of the prompt texts.
+
+| | v1, `5d737f2` | v1, `ec5b246` | v3, `5d737f2` | v3, `ec5b246` |
+| --- | --- | --- | --- | --- |
+| Correct | 40 of 44 | 38 of 44 | 40 of 43 | 39 of 43 |
+| Released answers counted correct | 29 of 30 | 26 of 26 | 28 of 29 | 27 of 29 |
+| Answers to questions that should be refused | 1 of 12 | 0 of 12 | 0 of 12 | 0 of 12 |
+| Answerable questions refused | 3 | 6 | 2 | 2 |
+| Refusals after three blocked attempts | 0 | 0 | 0 | 0 |
+| First attempts that the gate blocked | 17 of 30 | 12 of 26 | 14 of 29 | 15 of 29 |
+| Retries | 20 | 12 | 15 | 17 |
+| Tokens | 1,715,899 | 1,727,525 | 1,393,664 | 1,372,405 |
+
+`out-of-scope-stockholm` (v1), which the run from `5d737f2` released as an answer
+because its reply opened with the refusal line in Norwegian, was refused with the
+same line, "REFUSE: utenfor kildene".
+
+Set v1 had 38 of 44 correct: 17 of 22 in Norwegian and 21 of 22 in English. Lookup had
+6 of 7, change 5 of 5, share 2 of 5, sum 4 of 5, ranking 4 of 5, false premise 5 of 5,
+unanswerable 5 of 5 and out of scope 7 of 7. All 26 released answers were correct.
+The six wrong verdicts are refusals at the token limit of 100,000 tokens, all in
+questions about the population. Three of them, `share-children-norway-2025`,
+`share-net-migration-norway-2025` and `ranking-largest-age-group-2026`, were correct in
+the v1 run from `5d737f2`, and the other three reached the limit there as well.
+
+- `lookup-population-norway-2026` reached 104,929 tokens after four searches, the
+  metadata of tables 05277 and 11342 and a query of 11342, and
+  `ranking-largest-age-group-2026` reached 104,200 after five searches, two queries of
+  table 07459 by single years of age and a calculation. The last reply of each held
+  the answer that the v1 run at 13:42 on 2026-10-18 released and that was scored
+  correct, "5 627 400 personer" and "16–44 år" with 2 142 123 persons. The agent does
+  not check a reply once a limit is reached (spec 0004).
+- `share-80-plus-norway-2026` reached 117,794 tokens after six searches and a query of
+  table 11805, and `sum-67-plus-norway-2026` reached 117,501 after eight searches.
+- `share-children-norway-2025` reached 112,253 tokens after three queries of table
+  10211, one of them for every age, and two calculations; its last reply said that it
+  still needed the total population. `share-net-migration-norway-2025` reached 104,441
+  after eight searches and queries of tables 05395 and 10516.
+
+Set v3 had 39 of 43 correct: 22 of 23 in Norwegian and 17 of 20 in English. Lookup had
+7 of 7, change 5 of 6, share 5 of 5, sum 5 of 5, ranking 3 of 4, false premise 2 of 4,
+unanswerable 8 of 8 and out of scope 4 of 4.
+
+- `change-offences-2015-2025` reached the token limit with 101,339 tokens, and
+  `false-premise-offences-doubled` refused with "no data" after 12 model calls. Each
+  queried table 08484 four times with the offence code `0-999`, whose cells for 2015
+  and 2025 are ".". The code `1AAAAA-9ZZZZz` holds the totals that the reference plans
+  read, 351,459 and 348,508.
+- `ranking-age-group-highest-wage-2025` searched once and read table 11421, whose
+  five-year bands differ from the groups that the question names, and answered with
+  the band "55-59 years", saying that the table does not hold those groups. The run
+  from `5d737f2` read table 13312, which holds them.
+- `false-premise-women-earn-more-gap-2025` gave the gap as women's wage minus men's,
+  "−6 870 kr per måned", as in the earlier runs.
+
+The two runs used 1,727,525 and 1,372,405 tokens, and the largest correct answer used
+57,814. With every input token counted at the price without a cache hit, the agent's
+estimates of the cost are $0.5389 and $0.4345. The account's balance at DeepSeek fell
+from $3.83 to $3.70 over both runs.
 
 ## 2026-10-18, question sets v1 and v3 with prompt texts v10, `deepseek-flash`
 

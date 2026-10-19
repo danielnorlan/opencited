@@ -6,6 +6,12 @@ Notable changes to OpenCited are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Published runs of question sets v1 and v3 from release 0.1.0 on 2026-10-19: 38 of
+  44 and 39 of 43 correct. All 26 answers released in set v1 were correct, and no
+  question that should be refused was answered.
+
 ## [0.1.0] - 2026-10-19
 
 The first release.
