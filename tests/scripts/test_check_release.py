@@ -39,19 +39,20 @@ def test_the_script_passes_on_the_repository() -> None:
     assert finished.returncode == 0, finished.stdout
 
 
-def test_the_script_checks_the_tag_and_the_readme_of_a_release() -> None:
+def test_the_script_checks_the_tag_of_a_release() -> None:
     finished = run("--tag", "v9.9.9")
     assert finished.returncode == 1
     assert "the tag 'v9.9.9' is not" in finished.stdout
-    # Until the first release the README says that the package is not on PyPI.
-    assert "the README still says" in finished.stdout
+    # The README of a release says nothing of the package not being on PyPI.
+    assert "the README still says" not in finished.stdout
 
 
 def test_a_release_needs_a_readme_without_the_note_before_release() -> None:
     tag = f"v{PROJECT['version']}"
-    released = "\n".join(line for line in README.splitlines() if release.BEFORE_RELEASE not in line)
-    assert release.problems(PROJECT, SERVER, released, tag) == []
-    [problem] = release.problems(PROJECT, SERVER, README, tag)
+    # The note that the README held until the first release.
+    unreleased = f"{README}\nThe package is {release.BEFORE_RELEASE} yet.\n"
+    assert release.problems(PROJECT, SERVER, README, tag) == []
+    [problem] = release.problems(PROJECT, SERVER, unreleased, tag)
     assert "not on PyPI" in problem
 
 

@@ -11,16 +11,16 @@ checked, and the agent refuses to answer when it cannot back a number. The first
 source is Statistics Norway (SSB).
 
 > [!NOTE]
-> OpenCited is in early development. The MCP server for StatBank runs from a clone of
-> this repository and is not on PyPI yet. The calculation engine, the evidence gate,
-> the agent and the evaluation suite are built, and the
+> OpenCited is in early development. The MCP server for StatBank is on PyPI as
+> `opencited`. The calculation engine, the evidence gate, the agent and the evaluation
+> suite are built, and the
 > [latest published runs](https://github.com/danielnorlan/opencited/blob/main/evals/results/README.md)
 > of the suite answered 40 of 44 questions of set v1 and 40 of 43 of set v3 correctly
 > with DeepSeek's `deepseek-flash`.
 > See the
 > [roadmap](https://github.com/danielnorlan/opencited/blob/main/docs/roadmap.md).
 
-## How it will work
+## How it works
 
 ```mermaid
 flowchart LR
@@ -45,6 +45,20 @@ flowchart LR
    with a reason.
 5. An open evaluation suite measures how often the answers are right.
 
+## Installation
+
+OpenCited needs Python 3.13 or newer. Install it with
+[uv](https://docs.astral.sh/uv/) or pip:
+
+```sh
+uv tool install opencited
+pip install opencited
+```
+
+Either gives the command `opencited`, with `opencited mcp` for the MCP server and
+`opencited ask` for questions. An MCP client can also start the server without an
+installation, with `uvx opencited mcp`, as below.
+
 ## The MCP server
 
 The MCP server also works on its own, for MCP clients that start a server over stdio
@@ -52,10 +66,8 @@ or connect over Streamable HTTP. It offers three tools, `search_tables`,
 `get_table_metadata` and `query_table`, and every query result carries a provenance
 record.
 
-The commands below use `uvx opencited mcp`, which works once the package is on PyPI.
-Until then, run the server from a clone of this repository with
-`uv run --directory /path/to/opencited opencited mcp` in place of
-`uvx opencited mcp`.
+The commands below start the server with `uvx opencited mcp`, which runs the package
+from PyPI.
 
 ### Claude Code
 
@@ -109,6 +121,20 @@ export OPENCITED_MODEL_URL=https://api.example.org/v1
 export OPENCITED_MODEL=model-name
 export OPENCITED_MODEL_KEY_VARIABLE=EXAMPLE_API_KEY
 opencited ask "Hvor mange bor i Norge?"
+```
+
+For example, in the published run of 2026-10-18, the question "By how many per cent
+did the consumer price index change from September 2025 to September 2026?" got this
+answer:
+
+```text
+The consumer price index rose by 3.4 per cent from September 2025 to September 2026 [1].
+
+The index stood at 100.6 in 2025M09 and 104.0 in 2026M09, in the series with 2025=100 [2]. The change is calculated from those two index values [1] [2].
+
+Sources:
+[1] Calculation from table 14710, https://www.ssb.no/en/statbank/table/14710, retrieved 2026-10-18 14:50 UTC. Steps: chg, sep25, sep26. The steps with their SQL are in --json.
+[2] Statistics Norway (SSB), table 14710: Consumer price index (2025=100), by month. https://www.ssb.no/en/statbank/table/14710, retrieved 2026-10-18 14:50 UTC
 ```
 
 The answer comes in the language of the question, or in the one `--language no` or

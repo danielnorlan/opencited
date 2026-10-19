@@ -1,6 +1,6 @@
 [project]
 name = "opencited"
-version = "0.1.0.dev0"
+version = "0.1.0"
 description = "Answers from authoritative public sources, with a citation for every number."
 readme = "README.md"
 license = "Apache-2.0"
@@ -9,7 +9,7 @@ authors = [{ name = "Daniel Norlan" }]
 requires-python = ">=3.13"
 keywords = ["mcp", "agents", "statistics", "provenance", "evaluation", "open-data"]
 classifiers = [
-  "Development Status :: 1 - Planning",
+  "Development Status :: 3 - Alpha",
   "Intended Audience :: Developers",
   "Intended Audience :: Science/Research",
   "Operating System :: OS Independent",
