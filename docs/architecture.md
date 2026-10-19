@@ -1,8 +1,8 @@
 # Architecture
 
-This page describes the target design. The status column shows what exists today,
-and everything else on the page is planned. The reasons behind the choices are in the
-[decision records](adr/README.md).
+This page describes the design. The status column shows which components are built
+and which are planned, and the sections below describe what is built. The reasons
+behind the choices are in the [decision records](adr/README.md).
 
 ```mermaid
 flowchart LR
@@ -24,8 +24,8 @@ flowchart LR
 | MCP server | Table search, metadata and data from each source, with a provenance record on every data result | In progress ([spec 0001](specs/0001-ssb-mcp-server.md)) |
 | Calculation engine | Runs typed calculation plans over stored snapshots: DuckDB selects the cells, and the arithmetic uses exact rational numbers | Built, with the agent's `calculate` tool ([spec 0002](specs/0002-snapshots-and-calculation.md)) |
 | Evidence gate | Matches every number in an answer to source data or a calculation result, and blocks the answer otherwise | Built, with the agent's retry ([spec 0003](specs/0003-evidence-gate.md)) |
-| Agent | Plans, calls tools and drafts the answer, in a loop of its own over a chat completions API | Built; not yet measured with a model ([spec 0004](specs/0004-agent.md)) |
-| Evaluation suite | Versioned questions with computed answers, run with Inspect AI | Built; not yet run with a model ([spec 0005](specs/0005-evaluation-suite.md)) |
+| Agent | Plans, calls tools and drafts the answer, in a loop of its own over a chat completions API | Built, and measured by the evaluation suite ([spec 0004](specs/0004-agent.md)) |
+| Evaluation suite | Versioned questions with computed answers, run with Inspect AI | Built, with its runs published in [`evals/results/`](../evals/results/README.md) ([spec 0005](specs/0005-evaluation-suite.md)) |
 | Table search | Hybrid full-text and vector search over table metadata, in PostgreSQL with pgvector | Planned, M3 |
 | Model gateway | Routes requests between local and hosted models within budgets, using LiteLLM | Planned, M3 |
 | Tracing | OpenTelemetry traces, viewed in Langfuse | Planned, M3 |
@@ -408,9 +408,9 @@ writes is read back with its value and decimals.
 ## Agent (M2)
 
 The agent answers one question in a loop over a chat completions endpoint
-([ADR 0010](adr/0010-agent-loop.md)). It has not yet run with a model in this
-repository's tests: the tests marked `model` need an endpoint, and the evaluation
-suite that will measure the agent is planned.
+([ADR 0010](adr/0010-agent-loop.md)). The default test run uses no model, since the
+tests marked `model` need an endpoint. The evaluation suite measures the agent with a
+model, and its runs are published in [`evals/results/`](../evals/results/README.md).
 
 ### Configuration
 
@@ -596,11 +596,12 @@ logged at debug level.
 
 The suite measures how often the agent answers correctly, refuses when it should and
 is blocked by the gate ([spec 0005](specs/0005-evaluation-suite.md)). The scorer, its
-report, the first question set, the runner of its reference plans and the run of one
-question are in `opencited.evals`, which imports nothing from Inspect, so the main
-test job covers them ([ADR 0012](adr/0012-inspect-evaluations.md)). The Inspect task
-and the run report are in `evals/`, which a CI job of its own type-checks and tests
-with the `evals` dependency group. No run with a model has been made yet.
+report, the schema of the question sets, the runner of their reference plans and the
+run of one question are in `opencited.evals`, which imports nothing from Inspect, so
+the main test job covers them ([ADR 0012](adr/0012-inspect-evaluations.md)). The
+Inspect task and the run report are in `evals/`, which a CI job of its own
+type-checks and tests with the `evals` dependency group. The reports of the published
+runs are in [`evals/results/`](../evals/results/README.md).
 
 ### Questions and reference plans
 
@@ -623,12 +624,12 @@ its place, and the label is the ranked dimension's label in the first cell; a ra
 with a tie for first place has no single label and stops the run of that question.
 A full run sends more requests than SSB's rate limit allows in a minute, so a query
 that the limit holds back waits as long as the limit says and is sent again, three
-times at most. In CI every reference plan runs against recordings that
-`scripts/record_ssb_fixtures.py --questions evals/questions/v1.jsonl` made with the
-client's selection normalisation, code joining and parameter order, which a test
-compares with the client's request, so the replay finds each one. A test also runs
-the whole set on one client under the rate limit, and checks that each year in a
-question's text is a period its queries fetch.
+times at most. In CI the reference plan of every question in the three sets runs
+against recordings that `scripts/record_ssb_fixtures.py --questions` made for each
+set with the client's selection normalisation, code joining and parameter order,
+which a test compares with the client's request, so the replay finds each one. Other
+tests run each whole set on one client under the rate limit and check that each year
+in a question's text is a period its queries fetch.
 
 ### Scorer
 
