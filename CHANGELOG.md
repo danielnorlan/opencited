@@ -45,3 +45,6 @@ The first release.
   and tests on Python 3.13 and 3.14, recorded SSB responses for the tests, a nightly
   live test against SSB's API, and a release workflow that publishes to PyPI with
   trusted publishing.
+
+[Unreleased]: https://github.com/danielnorlan/opencited/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/danielnorlan/opencited/releases/tag/v0.1.0

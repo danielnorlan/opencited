@@ -21,10 +21,11 @@ the files and uploads nothing.
 
 1. In a pull request, set the version in `pyproject.toml` and in both `version` fields
    of `server.json`, move the entries under "Unreleased" in `CHANGELOG.md` to a section
-   for the version, and merge it. `scripts/check_release.py`, which `make check` and
-   CI run, refuses versions that disagree. For the first release, the same pull
-   request removes the README's notes that the package is not on PyPI, since PyPI
-   shows the README as the package's page and keeps it as it was uploaded.
+   for the version, update the links at the end of that file for the new tag, and
+   merge it. `scripts/check_release.py`, which `make check` and CI run, refuses
+   versions that disagree. For the first release, the same pull request removes the
+   README's notes that the package is not on PyPI, since PyPI shows the README as the
+   package's page and keeps it as it was uploaded.
 2. Run the release workflow by hand on `main` under Actions, and check that it
    passes. It validates `server.json` against the MCP Registry's schema, builds the
    files, checks them with `twine check`, lists what an upload would send and starts
