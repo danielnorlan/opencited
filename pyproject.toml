@@ -21,7 +21,7 @@ classifiers = [
 ]
 dependencies = [
   "anyio>=4.15,<5",
-  "duckdb>=1.5.6,<1.6",
+  "duckdb>=1.5.6,<2.1",
   "httpx2>=2.13,<3",
   "jsonschema>=4.26,<5",
   "mcp>=2.3,<2.4",
@@ -49,7 +49,7 @@ dev = [
   "types-jsonschema>=4.26.0.20261006",
 ]
 evals = [
-    "inspect-ai==0.3.279",
+    "inspect-ai==0.3.287",
 ]
 
 [build-system]
